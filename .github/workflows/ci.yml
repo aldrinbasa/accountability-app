@@ -1,0 +1,127 @@
+name: CI
+
+# Gate + deploy pipeline (Story 1.1).
+#
+# Release rhythm: one branch per epic (e.g. `epic-1`), pushed for every story; merged to `main`
+# only at epic end.
+#   - push to any branch except main -> verify + db-test -> deploy Vercel Preview (proofy-dev)
+#                                       -> alias it to the stable dev URL
+#   - push/merge to main             -> verify + db-test -> deploy Vercel Production (proofy-prod)
+# A failing job blocks every deploy. Supabase migrations and Edge Functions never deploy from
+# here; they go through the manual `supabase-deploy.yml` (dev first, then prod, before merging).
+
+on:
+  push:
+    branches: ['**']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Never cancel a main run mid production deploy.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  # Pinned, never `latest` (Trove lesson: `latest` hits the rate-limited GitHub API).
+  SUPABASE_CLI_VERSION: 3.1.0
+  VERCEL_CLI_VERSION: 65.16.0
+  STABLE_DEV_URL: proofy-dev.vercel.app
+
+jobs:
+  verify:
+    name: Verify · typecheck · lint · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run test
+      - run: npm run build
+      - name: Service worker was produced
+        run: test -f dist/sw.js
+
+  db-test:
+    name: Database · pgTAP · generated types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Start local Supabase (database + auth only)
+        run: >-
+          supabase start
+          -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,studio,edge-runtime,logflare,vector,supavisor
+      # Runs before `supabase test db`, because the pgTAP setup file adds test-only schemas.
+      - name: Generated types match the committed file
+        run: |
+          supabase gen types typescript --local > "$RUNNER_TEMP/database.types.ts"
+          if ! diff -u src/adapters/supabase/database.types.ts "$RUNNER_TEMP/database.types.ts"; then
+            echo "::error file=src/adapters/supabase/database.types.ts::Out of date. Run 'npm run gen:types' (or download the 'database-types' artifact of this run) and commit it. Never edit it by hand."
+            exit 1
+          fi
+      - name: Upload freshly generated types
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-types
+          path: ${{ runner.temp }}/database.types.ts
+          if-no-files-found: ignore
+      - name: pgTAP
+        run: supabase test db
+
+  deploy-preview:
+    name: Deploy Preview (dev)
+    if: github.ref != 'refs/heads/main'
+    needs: [verify, db-test]
+    runs-on: ubuntu-latest
+    # One branch at a time owns the stable dev alias; queue, never cancel.
+    concurrency:
+      group: deploy-preview-alias
+      cancel-in-progress: false
+    environment:
+      name: dev
+      url: https://${{ env.STABLE_DEV_URL }}
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      # No prebuild: Vercel builds the source on its side, where it injects the Preview-scope env
+      # vars (VITE_SUPABASE_* for proofy-dev). `vercel build` inside Actions would not.
+      - name: Deploy to Vercel Preview
+        id: deploy
+        run: |
+          url="$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --yes --token="$VERCEL_TOKEN")"
+          echo "Preview deployment: $url"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - name: Point the stable dev URL at this Preview
+        run: >-
+          npx --yes "vercel@$VERCEL_CLI_VERSION" alias set
+          "${{ steps.deploy.outputs.url }}" "$STABLE_DEV_URL" --token="$VERCEL_TOKEN"
+
+  deploy-prod:
+    name: Deploy production
+    if: github.ref == 'refs/heads/main'
+    needs: [verify, db-test]
+    runs-on: ubuntu-latest
+    environment:
+      name: prod
+      url: https://proofy.aldrinbasa.online
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      # Vercel builds with its Production-scope env vars (VITE_SUPABASE_* for proofy-prod).
+      - name: Deploy to Vercel Production
+        run: npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prod --yes --token="$VERCEL_TOKEN"
