@@ -107,6 +107,7 @@ jobs:
         run: >-
           npx --yes "vercel@$VERCEL_CLI_VERSION" alias set
           "${{ steps.deploy.outputs.url }}" "$STABLE_DEV_URL" --token="$VERCEL_TOKEN"
+          --scope="$VERCEL_ORG_ID"
 
   deploy-prod:
     name: Deploy production
