@@ -1,0 +1,50 @@
+name: Supabase Deploy
+
+# Pushes migrations and Edge Functions to one hosted project. Manual dispatch only, so schema
+# changes are always deliberate. Order (AD-19): dev first, then prod, both BEFORE merging the
+# client change that needs them. Migrations must be additive and backward compatible.
+# Secrets live in the chosen GitHub environment (dev -> proofy-dev, prod -> proofy-prod).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target Supabase project
+        type: choice
+        options: [dev, prod]
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Push migrations + functions (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          # Same pinned CLI as ci.yml. Never `latest`.
+          version: 3.1.0
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      # CLI 3.x targets the LOCAL database by default; --remote targets the linked project.
+      - name: Push migrations
+        run: supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
+      - name: Deploy Edge Functions (if any)
+        run: |
+          if ls -d supabase/functions/*/ >/dev/null 2>&1; then
+            supabase functions deploy --use-api
+          else
+            echo "No Edge Functions yet."
+          fi
