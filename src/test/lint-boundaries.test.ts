@@ -13,7 +13,8 @@ async function ruleIds(filePath: string, code: string): Promise<string[]> {
 const importAdapter =
   "import { supabase } from '@/adapters/supabase/client'\nexport const x = supabase\n"
 
-describe('eslint layer rules', () => {
+// The first lint warms up the TypeScript resolver, which can take tens of seconds on a cold, busy runner.
+describe('eslint layer rules', { timeout: 60_000 }, () => {
   it('blocks features -> adapters', async () => {
     expect(await ruleIds('src/features/auth/x.ts', importAdapter)).toContain(
       'boundaries/dependencies',

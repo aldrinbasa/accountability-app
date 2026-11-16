@@ -56,7 +56,17 @@ export function installMatchMedia(matches: boolean): void {
 
 // Node-environment tests (e.g. the lint test) have no window.
 const hasWindow = typeof window !== 'undefined'
-if (hasWindow) installMatchMedia(false)
+if (hasWindow) {
+  installMatchMedia(false)
+  // jsdom does not implement scrolling; the shell scrolls to top on a tab re-tap and on navigation.
+  Object.defineProperty(window, 'scrollTo', { writable: true, configurable: true, value: vi.fn() })
+  // jsdom has no pointer capture; sonner calls it when a toast is pressed (swipe tracking).
+  for (const name of ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const) {
+    if (!(name in Element.prototype)) {
+      Object.defineProperty(Element.prototype, name, { configurable: true, value: () => false })
+    }
+  }
+}
 
 // Reset shared global state so tests are order-independent.
 afterEach(() => {

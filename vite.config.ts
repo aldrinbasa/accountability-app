@@ -14,13 +14,34 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      // Prompt-to-refresh: the update toast arrives in Story 1.2.
+      // Prompt-to-refresh: a new worker waits until the member taps Update on the "Update ready."
+      // toast (src/app/update-prompt.tsx) or the app cold-starts again. No clientsClaim/skipWaiting.
       registerType: 'prompt',
       injectRegister: false,
-      // The web manifest, icons and fonts arrive in Story 1.2.
-      manifest: false,
+      manifest: {
+        name: 'Proofy',
+        short_name: 'Proofy',
+        description: 'Commit with your friends, prove it with a photo.',
+        id: '/',
+        start_url: '/today',
+        scope: '/',
+        display: 'standalone',
+        background_color: '#F6EEE3',
+        theme_color: '#F6EEE3',
+        icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          {
+            src: '/icons/icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        // Fonts and icons are precached so the app renders offline after one visit.
+        globPatterns: ['**/*.{js,css,html,svg,woff2,png,webmanifest}'],
       },
       devOptions: { enabled: false },
     }),
