@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router/dom'
+import { adapters } from '@/app/composition'
 import { createAppRouter } from '@/app/router'
 import { UpdatePrompt } from '@/app/update-prompt'
+import { BackendProvider } from '@/data/backend-context'
 import { Toaster } from '@/ui/toaster'
 
 export function App() {
@@ -11,7 +13,10 @@ export function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      {/* A session that ends (sign-out, other tab, expiry) drops every cached query. */}
+      <BackendProvider backend={adapters.backend} onSignedOut={() => queryClient.clear()}>
+        <RouterProvider router={router} />
+      </BackendProvider>
       <Toaster />
       <UpdatePrompt />
     </QueryClientProvider>

@@ -1,11 +1,11 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
-import { routes } from '@/app/router'
 import { AppShell } from '@/app/shell/app-shell'
 import { TodayScreen } from '@/app/screens/today'
 import { Sheet } from '@/ui/sheet'
 import { useState } from 'react'
+import { renderRoutes } from '@/test/fake-backend'
 
 /** Test-only Feed route with a sheet already open. */
 function FeedWithSheet() {
@@ -20,10 +20,9 @@ function FeedWithSheet() {
   )
 }
 
+/** The app routes, signed in (the auth gate lets the shell through). */
 function renderAt(path: string) {
-  const router = createMemoryRouter(routes, { initialEntries: [path] })
-  render(<RouterProvider router={router} />)
-  return router
+  return renderRoutes([path]).router
 }
 
 function tab(name: string) {

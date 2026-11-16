@@ -157,12 +157,21 @@ max_indexes = 5
 [auth]
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
-# in emails.
+# in emails. Local value here; on proofy-dev / proofy-prod CI overrides it with the CLI's
+# SUPABASE_AUTH_SITE_URL env override, set from the GitHub environment secret AUTH_SITE_URL
+# (.github/actions/supabase-push). An env() here would leave a literal "env(...)" locally.
 site_url = "http://127.0.0.1:5173"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
-# A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["http://127.0.0.1:5173", "http://localhost:5173"]
+# Redirect allowlist (globs). Every sign-in redirect is `{origin}/signin?next=…` (email link and
+# Google); if it is not covered, Supabase falls back to site_url and the email link breaks.
+# Same list on every environment: localhost, the stable dev URL, the prod subdomain.
+additional_redirect_urls = [
+  "http://127.0.0.1:5173/**",
+  "http://localhost:5173/**",
+  "https://proofy-dev.vercel.app/**",
+  "https://proofy.aldrinbasa.online/**",
+]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
@@ -198,7 +207,8 @@ password_requirements = ""
 
 [auth.rate_limit]
 # Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Raised from the 30/hour custom-SMTP default; Resend Free caps the day at 100 anyway.
+email_sent = 100
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.
@@ -226,33 +236,45 @@ enabled = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# Left undeclared on purpose: `supabase config push` leaves undeclared settings alone, so the hosted
+# "Confirm email" setting is not changed by CI. (Local default: off.)
+# enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # If enabled, users will need to provide their current password to change their password, unless
 # they signed in with a one-time password, magic link, or recovery link.
 # require_current_password = true
-# Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+# Minimum time between two sign-in emails to one address. Matches the app's 30 s "Resend code"
+# countdown (and the Resend cooldown).
+max_frequency = "30s"
 # Number of characters used in the email OTP.
 otp_length = 6
-# Number of seconds before the email OTP expires (defaults to 1 hour).
-otp_expiry = 3600
+# Link and code both expire after 15 minutes (the app's wrong-vs-expired copy relies on this).
+otp_expiry = 900
 
-# Use a production-ready SMTP server
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# Resend custom SMTP on proofy.aldrinbasa.online, each environment with its own sender.
+# Off locally (Mailpit catches local mail). CI turns it on for the hosted projects with the CLI env
+# override SUPABASE_AUTH_EMAIL_SMTP_ENABLED=true and fills the env() values from GitHub environment
+# secrets AUTH_SMTP_SENDER and AUTH_SMTP_PASS (.github/actions/supabase-push). Unset locally, the
+# env() values stay as harmless literals because the block is disabled.
+[auth.email.smtp]
+enabled = false
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(AUTH_SMTP_PASS)"
+admin_email = "env(AUTH_SMTP_SENDER)"
+sender_name = "Proofy"
 
-# Uncomment to customize email template
-# [auth.email.template.invite]
-# subject = "You have been invited"
-# content_path = "./supabase/templates/invite.html"
+# One template for both: hosted projects send "Confirm signup" to new members and "Magic link" to
+# returning ones. It carries the link and the 6-digit code.
+[auth.email.template.magic_link]
+subject = "Your Proofy sign-in link and code"
+content_path = "./supabase/templates/magic-link.html"
+
+[auth.email.template.confirmation]
+subject = "Your Proofy sign-in link and code"
+content_path = "./supabase/templates/magic-link.html"
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
@@ -307,9 +329,11 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
-[auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+# Left undeclared so `supabase config push` does not change the hosted TOTP setting (Proofy has no
+# MFA; local default: off).
+# [auth.mfa.totp]
+# enroll_enabled = false
+# verify_enabled = false
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]
@@ -340,6 +364,19 @@ url = ""
 # If enabled, the nonce check will be skipped. Required for local sign in with Google auth.
 skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
+email_optional = false
+
+# Google sign-in (plain OAuth redirect, PKCE). Off locally. CI turns it on for the hosted projects
+# with SUPABASE_AUTH_EXTERNAL_GOOGLE_ENABLED=true and fills the per-environment client from GitHub
+# environment secrets AUTH_GOOGLE_CLIENT_ID and AUTH_GOOGLE_SECRET. Google Cloud redirect URI:
+# https://<project-ref>.supabase.co/auth/v1/callback
+[auth.external.google]
+enabled = false
+client_id = "env(AUTH_GOOGLE_CLIENT_ID)"
+secret = "env(AUTH_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+skip_nonce_check = false
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS) standard.

@@ -1,6 +1,16 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient } from '@tanstack/react-query'
 import { App } from '@/app/app'
+import type { FakeBackend } from '@/test/fake-backend'
+
+// Signed in through a fake backend: no Supabase client in tests.
+const fake = vi.hoisted(() => ({ backend: null as unknown as FakeBackend }))
+vi.mock('@/app/composition', async () => {
+  const { createFakeBackend } = await import('@/test/fake-backend')
+  fake.backend = createFakeBackend()
+  return { adapters: { backend: fake.backend } }
+})
 
 const sw = vi.hoisted(() => ({ needRefresh: false, updateServiceWorker: vi.fn() }))
 
@@ -38,5 +48,20 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: 'Update' }))
     expect(sw.updateServiceWorker).toHaveBeenCalledWith(true)
+  })
+
+  it('clears the query cache when the session ends', async () => {
+    const clear = vi.spyOn(QueryClient.prototype, 'clear')
+    try {
+      render(<App />)
+      await screen.findByRole('heading', { level: 1, name: 'Friday' })
+      expect(clear).not.toHaveBeenCalled()
+
+      act(() => fake.backend.emit(null))
+      expect(clear).toHaveBeenCalledTimes(1)
+      expect(await screen.findByRole('heading', { name: 'Sign in to Proofy' })).toBeInTheDocument()
+    } finally {
+      clear.mockRestore()
+    }
   })
 })

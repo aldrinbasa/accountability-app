@@ -24,13 +24,19 @@ concurrency:
 
 jobs:
   deploy:
-    name: Push migrations + functions (${{ inputs.environment }})
+    name: Push auth config + migrations + functions (${{ inputs.environment }})
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # Hosted auth config (supabase config push, Story 1.3). Per environment.
+      AUTH_SITE_URL: ${{ secrets.AUTH_SITE_URL }}
+      AUTH_SMTP_SENDER: ${{ secrets.AUTH_SMTP_SENDER }}
+      AUTH_SMTP_PASS: ${{ secrets.AUTH_SMTP_PASS }}
+      AUTH_GOOGLE_CLIENT_ID: ${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
+      AUTH_GOOGLE_SECRET: ${{ secrets.AUTH_GOOGLE_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/supabase-push

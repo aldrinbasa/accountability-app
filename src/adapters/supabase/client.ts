@@ -25,8 +25,12 @@ const anonKey = configuredKey || 'anon-placeholder-key'
 /** The single Supabase client (anon key + user session; all access enforced by RLS). */
 export const supabase = createClient(url, anonKey, {
   auth: {
+    // PKCE for Google: the code verifier stays in this browser, and the redirect brings back `?code=`.
+    flowType: 'pkce',
+    // The session survives app restarts (localStorage).
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    // The sign-in screen reads `?code=` / `?token_hash=` itself and verifies them exactly once.
+    detectSessionInUrl: false,
   },
 })

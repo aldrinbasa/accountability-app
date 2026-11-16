@@ -1,0 +1,243 @@
+<!--
+  Proofy sign-in email: a magic link AND a 6-digit code in one email (FR-1).
+  Wired in supabase/config.toml for BOTH templates, pushed to the hosted projects by CI:
+    [auth.email.template.magic_link]   returning members
+    [auth.email.template.confirmation] new members (hosted projects send "Confirm signup" to them)
+
+  Link: .RedirectTo is the app's `emailRedirectTo`, always `{origin}/signin?next=…`, so the
+  token is appended with `&`. The SPA verifies `token_hash` in JS on load (so a mail scanner GET that
+  runs no JS should not use it up; confirm on proofy-dev). If `redirectTo` is not on the allowlist, Supabase falls back to the
+  site URL and this link breaks, so keep `additional_redirect_urls` covering `/signin?…`.
+  Code: .Token, same 15-minute expiry (`otp_expiry = 900`). The code is the path that works in
+  the installed iOS app, where a tapped link opens Safari instead.
+
+  Colours: Proofy "Sunset Zine" tokens (DESIGN.md); inline styles are light, the <style> block adds
+  the dark palette for clients that honour prefers-color-scheme. Web fonts don't load in email, so a
+  system stack stands in for Nunito / Baloo 2. No emoji.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <title>Sign in to Proofy</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        .p-bg {
+          background-color: #1c1230 !important;
+        }
+        .p-card {
+          background-color: #2a1c45 !important;
+          border-color: #ffebdd !important;
+        }
+        .p-ink {
+          color: #ffebdd !important;
+        }
+        .p-muted {
+          color: #d6bfd8 !important;
+        }
+        .p-word {
+          color: #ff7a5c !important;
+        }
+        .p-btn {
+          background-color: #ff7a5c !important;
+          border-color: #ffebdd !important;
+        }
+        .p-code {
+          background-color: #1c1230 !important;
+          border-color: #ffebdd !important;
+          color: #ffebdd !important;
+        }
+        .p-link {
+          color: #ffebdd !important;
+        }
+        .p-divider {
+          border-color: #5e4c78 !important;
+        }
+      }
+    </style>
+  </head>
+  <body style="margin: 0; padding: 0">
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      class="p-bg"
+      bgcolor="#F6EEE3"
+      style="margin: 0; padding: 0; background-color: #f6eee3"
+    >
+      <tr>
+        <td align="center" style="padding: 32px 16px">
+          <table
+            role="presentation"
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            class="p-card"
+            bgcolor="#FFF8EE"
+            style="
+              max-width: 480px;
+              background-color: #fff8ee;
+              border: 2.5px solid #2a1846;
+              border-radius: 18px;
+              font-family:
+                -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            "
+          >
+            <tr>
+              <td style="padding: 28px 28px 0 28px">
+                <div
+                  class="p-word"
+                  style="font-size: 28px; font-weight: 800; letter-spacing: 0.3px; color: #d0500a"
+                >
+                  Proofy
+                </div>
+                <h1
+                  class="p-ink"
+                  style="
+                    margin: 16px 0 8px 0;
+                    font-size: 22px;
+                    line-height: 1.25;
+                    font-weight: 800;
+                    color: #2a1846;
+                  "
+                >
+                  Your sign-in link and code
+                </h1>
+                <p
+                  class="p-muted"
+                  style="margin: 0 0 24px 0; font-size: 16px; line-height: 1.5; color: #5e4c78"
+                >
+                  Tap the button to sign in. Using the installed app? Type the code there instead.
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td align="left" style="padding: 0 28px">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td
+                      class="p-btn"
+                      bgcolor="#FF6F59"
+                      style="
+                        background-color: #ff6f59;
+                        border: 2.5px solid #2a1846;
+                        border-radius: 14px;
+                        box-shadow: 3px 4px 0 #2a1846;
+                      "
+                    >
+                      <a
+                        href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email"
+                        style="
+                          display: inline-block;
+                          padding: 14px 28px;
+                          font-size: 18px;
+                          font-weight: 800;
+                          color: #2a1846;
+                          text-decoration: none;
+                        "
+                        >Sign in to Proofy</a
+                      >
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 28px 28px 0 28px">
+                <p
+                  class="p-muted"
+                  style="margin: 0 0 8px 0; font-size: 14px; line-height: 1.4; color: #5e4c78"
+                >
+                  Or enter this code in the app:
+                </p>
+                <div
+                  class="p-code"
+                  style="
+                    display: inline-block;
+                    padding: 10px 18px;
+                    background-color: #f6eee3;
+                    border: 2.5px solid #2a1846;
+                    border-radius: 10px;
+                    font-size: 32px;
+                    font-weight: 800;
+                    letter-spacing: 8px;
+                    color: #2a1846;
+                    font-variant-numeric: tabular-nums;
+                  "
+                >
+                  {{ .Token }}
+                </div>
+                <p
+                  class="p-ink"
+                  style="
+                    margin: 10px 0 0 0;
+                    font-size: 14px;
+                    line-height: 1.4;
+                    font-weight: 700;
+                    color: #2a1846;
+                  "
+                >
+                  Expires in 15 min
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 24px 28px 0 28px">
+                <p
+                  class="p-muted"
+                  style="margin: 0; font-size: 13px; line-height: 1.5; color: #5e4c78"
+                >
+                  Button not working? Paste this link into your browser:
+                </p>
+                <p
+                  style="
+                    margin: 6px 0 0 0;
+                    font-size: 13px;
+                    line-height: 1.5;
+                    word-break: break-all;
+                  "
+                >
+                  <a
+                    class="p-link"
+                    href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email"
+                    style="color: #2a1846"
+                    >{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email</a
+                  >
+                </p>
+              </td>
+            </tr>
+
+            <tr>
+              <td style="padding: 24px 28px 28px 28px">
+                <p
+                  class="p-muted p-divider"
+                  style="
+                    margin: 0;
+                    padding-top: 16px;
+                    border-top: 1.5px solid #e4d6c4;
+                    font-size: 12px;
+                    line-height: 1.5;
+                    color: #5e4c78;
+                  "
+                >
+                  Someone asked to sign in to Proofy with this address. If it wasn't you, ignore
+                  this email. Nothing changes on your account.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

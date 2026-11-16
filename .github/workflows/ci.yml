@@ -4,10 +4,10 @@ name: CI
 #
 # Release rhythm: one branch per epic (e.g. `epic-1`), pushed for every story; merged to `main`
 # only at epic end.
-#   - push to any branch except main -> verify + db-test -> migrations + functions to proofy-dev
+#   - push to any branch except main -> verify + db-test -> auth config + migrations + functions to proofy-dev
 #                                       -> deploy Vercel Preview -> alias it to the stable dev URL
 #   - push/merge to main             -> verify + db-test -> (approval on the `prod` environment)
-#                                       -> migrations + functions to proofy-prod
+#                                       -> auth config + migrations + functions to proofy-prod
 #                                       -> deploy Vercel Production
 # A failing job or step blocks every later deploy, so the app never goes live ahead of its
 # database. Migrations must be additive and backward compatible (the previous app version keeps
@@ -101,9 +101,15 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # Hosted auth config (supabase config push, Story 1.3). Per environment.
+      AUTH_SITE_URL: ${{ secrets.AUTH_SITE_URL }}
+      AUTH_SMTP_SENDER: ${{ secrets.AUTH_SMTP_SENDER }}
+      AUTH_SMTP_PASS: ${{ secrets.AUTH_SMTP_PASS }}
+      AUTH_GOOGLE_CLIENT_ID: ${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
+      AUTH_GOOGLE_SECRET: ${{ secrets.AUTH_GOOGLE_SECRET }}
     steps:
       - uses: actions/checkout@v4
-      - name: Migrations + Edge Functions to proofy-dev
+      - name: Auth config + migrations + Edge Functions to proofy-dev
         uses: ./.github/actions/supabase-push
       # No prebuild: Vercel builds the source on its side, where it injects the Preview-scope env
       # vars (VITE_SUPABASE_* for proofy-dev). `vercel build` inside Actions would not.
@@ -150,9 +156,15 @@ jobs:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      # Hosted auth config (supabase config push, Story 1.3). Per environment.
+      AUTH_SITE_URL: ${{ secrets.AUTH_SITE_URL }}
+      AUTH_SMTP_SENDER: ${{ secrets.AUTH_SMTP_SENDER }}
+      AUTH_SMTP_PASS: ${{ secrets.AUTH_SMTP_PASS }}
+      AUTH_GOOGLE_CLIENT_ID: ${{ secrets.AUTH_GOOGLE_CLIENT_ID }}
+      AUTH_GOOGLE_SECRET: ${{ secrets.AUTH_GOOGLE_SECRET }}
     steps:
       - uses: actions/checkout@v4
-      - name: Migrations + Edge Functions to proofy-prod
+      - name: Auth config + migrations + Edge Functions to proofy-prod
         uses: ./.github/actions/supabase-push
       # Vercel builds with its Production-scope env vars (VITE_SUPABASE_* for proofy-prod).
       - name: Deploy to Vercel Production
