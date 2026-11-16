@@ -103,11 +103,22 @@ jobs:
           url="$(npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --yes --token="$VERCEL_TOKEN")"
           echo "Preview deployment: $url"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+      # Calls the Vercel REST API directly: `vercel alias set` first loads the token's user
+      # (/v2/user), which a team-scoped token cannot read ("User not found", 404).
       - name: Point the stable dev URL at this Preview
-        run: >-
-          npx --yes "vercel@$VERCEL_CLI_VERSION" alias set
-          "${{ steps.deploy.outputs.url }}" "$STABLE_DEV_URL" --token="$VERCEL_TOKEN"
-          --scope="$VERCEL_ORG_ID"
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          api="https://api.vercel.com"
+          auth="Authorization: Bearer $VERCEL_TOKEN"
+          host="${DEPLOY_URL#https://}"
+          id="$(curl -sS --fail-with-body -H "$auth" "$api/v13/deployments/$host?teamId=$VERCEL_ORG_ID" | jq -r '.id')"
+          echo "Deployment id: $id"
+          curl -sS --fail-with-body -X POST -H "$auth" -H "Content-Type: application/json" \
+            -d "{\"alias\":\"$STABLE_DEV_URL\"}" \
+            "$api/v2/deployments/$id/aliases?teamId=$VERCEL_ORG_ID"
+          echo
+          echo "https://$STABLE_DEV_URL now serves $DEPLOY_URL"
 
   deploy-prod:
     name: Deploy production
