@@ -4,11 +4,15 @@ name: CI
 #
 # Release rhythm: one branch per epic (e.g. `epic-1`), pushed for every story; merged to `main`
 # only at epic end.
-#   - push to any branch except main -> verify + db-test -> deploy Vercel Preview (proofy-dev)
-#                                       -> alias it to the stable dev URL
-#   - push/merge to main             -> verify + db-test -> deploy Vercel Production (proofy-prod)
-# A failing job blocks every deploy. Supabase migrations and Edge Functions never deploy from
-# here; they go through the manual `supabase-deploy.yml` (dev first, then prod, before merging).
+#   - push to any branch except main -> verify + db-test -> migrations + functions to proofy-dev
+#                                       -> deploy Vercel Preview -> alias it to the stable dev URL
+#   - push/merge to main             -> verify + db-test -> (approval on the `prod` environment)
+#                                       -> migrations + functions to proofy-prod
+#                                       -> deploy Vercel Production
+# A failing job or step blocks every later deploy, so the app never goes live ahead of its
+# database. Migrations must be additive and backward compatible (the previous app version keeps
+# running against the new schema until the new one is live). `supabase-deploy.yml` is the manual
+# fallback for re-running a database push alone.
 
 on:
   push:
@@ -82,9 +86,10 @@ jobs:
     if: github.ref != 'refs/heads/main'
     needs: [verify, db-test]
     runs-on: ubuntu-latest
-    # One branch at a time owns the stable dev alias; queue, never cancel.
+    # One run at a time touches proofy-dev and the stable dev alias; queue, never cancel.
+    # Shared with the manual Supabase Deploy (dev).
     concurrency:
-      group: deploy-preview-alias
+      group: deploy-dev
       cancel-in-progress: false
     environment:
       name: dev
@@ -93,8 +98,13 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
+      - name: Migrations + Edge Functions to proofy-dev
+        uses: ./.github/actions/supabase-push
       # No prebuild: Vercel builds the source on its side, where it injects the Preview-scope env
       # vars (VITE_SUPABASE_* for proofy-dev). `vercel build` inside Actions would not.
       - name: Deploy to Vercel Preview
@@ -125,6 +135,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: [verify, db-test]
     runs-on: ubuntu-latest
+    # Shared with the manual Supabase Deploy (prod).
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    # The `prod` environment has a required reviewer, so this job waits for an Approve click.
     environment:
       name: prod
       url: https://proofy.aldrinbasa.online
@@ -132,8 +147,13 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
+      - name: Migrations + Edge Functions to proofy-prod
+        uses: ./.github/actions/supabase-push
       # Vercel builds with its Production-scope env vars (VITE_SUPABASE_* for proofy-prod).
       - name: Deploy to Vercel Production
         run: npx --yes "vercel@$VERCEL_CLI_VERSION" deploy --prod --yes --token="$VERCEL_TOKEN"

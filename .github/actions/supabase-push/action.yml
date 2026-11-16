@@ -1,0 +1,29 @@
+name: Supabase push
+description: >-
+  Apply pending migrations and deploy Edge Functions to one hosted Supabase project. Reads
+  SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD and SUPABASE_PROJECT_REF from the job env (set them
+  from the job's GitHub environment secrets). Idempotent: with nothing pending it reports
+  "Remote database is up to date" and changes nothing.
+
+runs:
+  using: composite
+  steps:
+    - uses: supabase/setup-cli@v1
+      with:
+        # Same pinned CLI as ci.yml. Never `latest`.
+        version: 3.1.0
+    - name: Link project
+      shell: bash
+      run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+    # CLI 3.x targets the LOCAL database by default; --remote targets the linked project.
+    - name: Push migrations
+      shell: bash
+      run: supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
+    - name: Deploy Edge Functions (if any)
+      shell: bash
+      run: |
+        if ls -d supabase/functions/*/ >/dev/null 2>&1; then
+          supabase functions deploy --use-api
+        else
+          echo "No Edge Functions yet."
+        fi

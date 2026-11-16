@@ -1,8 +1,9 @@
 name: Supabase Deploy
 
-# Pushes migrations and Edge Functions to one hosted project. Manual dispatch only, so schema
-# changes are always deliberate. Order (AD-19): dev first, then prod, both BEFORE merging the
-# client change that needs them. Migrations must be additive and backward compatible.
+# Manual fallback. CI already applies migrations and Edge Functions on every deploy (ci.yml):
+# epic branches -> proofy-dev, main -> proofy-prod (after the prod approval). Use this to re-run a
+# push without deploying the app, e.g. after fixing a secret.
+# Always set "Use workflow from" to the epic branch: the run uses that branch's supabase/ folder.
 # Secrets live in the chosen GitHub environment (dev -> proofy-dev, prod -> proofy-prod).
 
 on:
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: supabase-deploy-${{ inputs.environment }}
+  group: deploy-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -32,19 +33,4 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with:
-          # Same pinned CLI as ci.yml. Never `latest`.
-          version: 3.1.0
-      - name: Link project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
-      # CLI 3.x targets the LOCAL database by default; --remote targets the linked project.
-      - name: Push migrations
-        run: supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
-      - name: Deploy Edge Functions (if any)
-        run: |
-          if ls -d supabase/functions/*/ >/dev/null 2>&1; then
-            supabase functions deploy --use-api
-          else
-            echo "No Edge Functions yet."
-          fi
+      - uses: ./.github/actions/supabase-push
