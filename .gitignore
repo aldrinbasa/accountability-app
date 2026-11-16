@@ -1,0 +1,42 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Dependencies
+node_modules
+dist
+dist-ssr
+coverage
+
+# Local env files
+*.local
+.env
+.env.*
+!.env.example
+
+# Deploy tooling
+.vercel
+
+# BMAD tooling & planning artifacts (kept local — not part of the app build)
+.claude/
+_bmad/
+_bmad-output/
+skills-lock.json
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Supabase CLI local link/session artifacts
+supabase/.temp/
+
+# Local agent instructions
+CLAUDE.md
