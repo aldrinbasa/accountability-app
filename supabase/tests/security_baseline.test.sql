@@ -1,12 +1,28 @@
--- Security baseline (Story 1.1, AD-16): the private schema is closed, and objects created after
--- the baseline migration get no default privileges for client roles.
+-- Security baseline (Story 1.1, AD-16): the private schema is closed to anon, and objects created
+-- after the baseline migration get no default privileges for client roles.
+-- Story 1.6 gives authenticated USAGE on private and EXECUTE on exactly three RLS helpers
+-- (is_member, is_admin, shares_group); nothing else in private is executable by a client role.
 begin;
-select plan(18);
+select plan(20);
 
--- private schema: exists, closed to client roles
+-- private schema: exists, closed to anon; authenticated may only reach the RLS helpers
 select has_schema('private', 'schema private exists');
 select ok(not has_schema_privilege('anon', 'private', 'USAGE'), 'anon has no USAGE on private');
-select ok(not has_schema_privilege('authenticated', 'private', 'USAGE'), 'authenticated has no USAGE on private');
+select ok(has_schema_privilege('authenticated', 'private', 'USAGE'), 'authenticated has USAGE on private (Story 1.6 RLS helpers)');
+select results_eq(
+  $$ select p.proname::text from pg_catalog.pg_proc p
+     where p.pronamespace = 'private'::regnamespace
+       and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+     order by 1 $$,
+  $$ values ('is_admin'::text), ('is_member'::text), ('shares_group'::text) $$,
+  'authenticated can execute only is_admin, is_member and shares_group in private'
+);
+select is(
+  (select count(*)::integer from pg_catalog.pg_proc p
+   where p.pronamespace = 'private'::regnamespace
+     and (has_function_privilege('anon', p.oid, 'EXECUTE') or has_function_privilege('public', p.oid, 'EXECUTE'))),
+  0, 'anon and PUBLIC can execute nothing in private'
+);
 
 -- a function created now in public: nobody but its owner may execute it
 create function public.baseline_probe_fn() returns integer language sql as 'select 1';
