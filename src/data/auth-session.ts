@@ -1,7 +1,7 @@
-import { useContext, useMemo, useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import type { AuthUser } from '@/domain/auth'
 import type { BackendPort } from '@/ports/backend-port'
-import { BackendContext, type BackendContextValue } from '@/data/backend-context-value'
+import { useBackendContext } from '@/data/backend-context-value'
 
 export type AuthSession =
   | { status: 'loading'; user: null }
@@ -72,12 +72,6 @@ export function createAuthSessionStore(
     },
     setUser: set,
   }
-}
-
-function useBackendContext(hook: string): BackendContextValue {
-  const value = useContext(BackendContext)
-  if (!value) throw new Error(`${hook} must be used inside <BackendProvider>`)
-  return value
 }
 
 /** The current session: loading (first read pending), signed-in with the user, or signed-out. */

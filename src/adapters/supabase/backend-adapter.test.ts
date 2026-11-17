@@ -1,13 +1,29 @@
 import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js'
 import type { AuthErrorCode } from '@/domain/auth'
-import { supabaseBackendAdapter as adapter } from '@/adapters/supabase/backend-adapter'
+import type { BackendErrorCode } from '@/domain/error-codes'
+import { givenNameOf, supabaseBackendAdapter as adapter } from '@/adapters/supabase/backend-adapter'
 
 const auth = vi.hoisted(() => ({
   signInWithOtp: vi.fn(),
   verifyOtp: vi.fn(),
+  getSession: vi.fn(),
 }))
 
-vi.mock('@/adapters/supabase/client', () => ({ supabase: { auth } }))
+// A chainable stand-in for supabase.from(...).select(...).eq(...).maybeSingle().
+const db = vi.hoisted(() => {
+  const query = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn(),
+  }
+  query.select.mockReturnValue(query)
+  query.eq.mockReturnValue(query)
+  return { query, from: vi.fn(() => query), rpc: vi.fn() }
+})
+
+vi.mock('@/adapters/supabase/client', () => ({
+  supabase: { auth, from: db.from, rpc: db.rpc },
+}))
 
 const USER = { id: 'user-1', email: 'jo@example.com' }
 const expired = () => new AuthApiError('Token has expired or is invalid', 403, 'otp_expired')
@@ -24,6 +40,9 @@ async function codeOf(promise: Promise<unknown>): Promise<AuthErrorCode> {
 beforeEach(() => {
   auth.signInWithOtp.mockReset()
   auth.verifyOtp.mockReset()
+  auth.getSession.mockReset()
+  db.query.maybeSingle.mockReset()
+  db.rpc.mockReset()
 })
 
 describe('supabaseBackendAdapter error mapping', () => {
@@ -93,5 +112,101 @@ describe('supabaseBackendAdapter error mapping', () => {
       email: 'jo@example.com',
       options: { emailRedirectTo: 'https://a.test/signin?next=%2Ftoday', shouldCreateUser: true },
     })
+  })
+})
+
+describe('givenNameOf', () => {
+  it('prefers given_name, then the first word of full_name or name', () => {
+    expect(givenNameOf({ given_name: 'Josephine', full_name: 'Jo Cruz' })).toBe('Josephine')
+    expect(givenNameOf({ full_name: '  Jo Cruz ' })).toBe('Jo')
+    expect(givenNameOf({ name: 'Marco Polo' })).toBe('Marco')
+    expect(givenNameOf({ given_name: '  ', name: 'Marco' })).toBe('Marco')
+  })
+
+  it('has none for email sign-ins', () => {
+    expect(givenNameOf({})).toBeNull()
+    expect(givenNameOf(undefined)).toBeNull()
+    expect(givenNameOf({ given_name: 42 })).toBeNull()
+  })
+
+  it('puts it on the signed-in user', async () => {
+    auth.verifyOtp.mockResolvedValue({
+      data: { user: { ...USER, user_metadata: { given_name: 'Jo' } }, session: {} },
+      error: null,
+    })
+    await expect(adapter.verifyEmailCode('jo@example.com', '123456')).resolves.toEqual({
+      ...USER,
+      givenName: 'Jo',
+    })
+  })
+})
+
+async function backendCodeOf(promise: Promise<unknown>): Promise<BackendErrorCode> {
+  try {
+    await promise
+  } catch (error) {
+    return (error as { code: BackendErrorCode }).code
+  }
+  throw new Error('expected a rejection')
+}
+
+const ROW = { id: 'user-1', display_name: 'Jo', avatar_path: null, time_zone: 'Asia/Manila' }
+const PROFILE = { id: 'user-1', displayName: 'Jo', avatarPath: null, timeZone: 'Asia/Manila' }
+const pgError = (message: string) => ({ message, code: 'P0001', details: '', hint: '' })
+
+describe('profiles', () => {
+  it('reads the own row by the session user id', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.maybeSingle.mockResolvedValue({ data: ROW, error: null, status: 200 })
+    await expect(adapter.getMyProfile()).resolves.toEqual(PROFILE)
+    expect(db.from).toHaveBeenCalledWith('profiles')
+    expect(db.query.eq).toHaveBeenCalledWith('id', 'user-1')
+  })
+
+  it('no row (before Setup) or no session → null', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.maybeSingle.mockResolvedValue({ data: null, error: null, status: 200 })
+    await expect(adapter.getMyProfile()).resolves.toBeNull()
+
+    auth.getSession.mockResolvedValue({ data: { session: null }, error: null })
+    await expect(adapter.getMyProfile()).resolves.toBeNull()
+  })
+
+  it('a read that never got a response → network', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.maybeSingle.mockResolvedValue({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.getMyProfile())).toBe('network')
+  })
+
+  it('save_profile passes name and zone and maps the returned row', async () => {
+    db.rpc.mockResolvedValue({ data: ROW, error: null, status: 200 })
+    await expect(adapter.saveProfile('Jo', 'Asia/Manila')).resolves.toEqual(PROFILE)
+    expect(db.rpc).toHaveBeenCalledWith('save_profile', {
+      p_display_name: 'Jo',
+      p_time_zone: 'Asia/Manila',
+    })
+  })
+
+  it('maps RPC error codes from the message; anything else is unknown', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: pgError('invalid_display_name'),
+      status: 400,
+    })
+    expect(await backendCodeOf(adapter.saveProfile(' ', 'UTC'))).toBe('invalid_display_name')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('invalid_time_zone'), status: 400 })
+    expect(await backendCodeOf(adapter.saveProfile('Jo', 'Mars/Base'))).toBe('invalid_time_zone')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('boom'), status: 500 })
+    expect(await backendCodeOf(adapter.saveProfile('Jo', 'UTC'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.saveProfile('Jo', 'UTC'))).toBe('network')
   })
 })

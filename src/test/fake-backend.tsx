@@ -1,22 +1,38 @@
 import type { ReactNode } from 'react'
 import { render } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { AuthUser } from '@/domain/auth'
+import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
 import { routes } from '@/app/router'
 
 export const TEST_USER: AuthUser = { id: 'user-1', email: 'jo@example.com' }
 
+export const TEST_PROFILE: Profile = {
+  id: TEST_USER.id,
+  displayName: 'Jo',
+  avatarPath: null,
+  timeZone: 'Asia/Manila',
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
 }
 
-/** An in-memory BackendPort. Every method is a vi.fn; override behaviour per test. */
-export function createFakeBackend(initialUser: AuthUser | null = TEST_USER): FakeBackend {
+/**
+ * An in-memory BackendPort. Every method is a vi.fn; override behaviour per test. The signed-in
+ * member has a profile by default (so tests reach the shell); pass `profile: null` for a new member.
+ */
+export function createFakeBackend(
+  initialUser: AuthUser | null = TEST_USER,
+  options: { profile?: Profile | null } = {},
+): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
   let user = initialUser
+  let profile: Profile | null = options.profile === undefined ? TEST_PROFILE : options.profile
   const emit = (next: AuthUser | null) => {
     user = next
     for (const listener of listeners) listener(next)
@@ -38,14 +54,38 @@ export function createFakeBackend(initialUser: AuthUser | null = TEST_USER): Fak
     signOut: vi.fn(async () => {
       user = null
     }),
+    getMyProfile: vi.fn(async () => profile),
+    saveProfile: vi.fn(async (displayName: string, timeZone: string) => {
+      profile = {
+        id: user?.id ?? TEST_USER.id,
+        displayName,
+        avatarPath: profile?.avatarPath ?? null,
+        timeZone: profile?.timeZone ?? timeZone,
+      }
+      return profile
+    }),
   }
 }
 
-export function withBackend(backend: BackendPort, children: ReactNode, onSignedOut?: () => void) {
+/** A fresh query cache per render: no retries' worth of shared state between tests. */
+export function createTestQueryClient(): QueryClient {
+  return new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+}
+
+export function withBackend(
+  backend: BackendPort,
+  children: ReactNode,
+  onSignedOut?: () => void,
+  queryClient: QueryClient = createTestQueryClient(),
+) {
   return (
-    <BackendProvider backend={backend} onSignedOut={onSignedOut}>
-      {children}
-    </BackendProvider>
+    <QueryClientProvider client={queryClient}>
+      <BackendProvider backend={backend} onSignedOut={onSignedOut}>
+        {children}
+      </BackendProvider>
+    </QueryClientProvider>
   )
 }
 
@@ -53,11 +93,12 @@ export function withBackend(backend: BackendPort, children: ReactNode, onSignedO
 export function renderRoutes(
   initialEntries: InitialEntry[],
   backend: BackendPort = createFakeBackend(),
-  options: { initialIndex?: number; onSignedOut?: () => void } = {},
+  options: { initialIndex?: number; onSignedOut?: () => void; queryClient?: QueryClient } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries, initialIndex: options.initialIndex })
+  const queryClient = options.queryClient ?? createTestQueryClient()
   const utils = render(
-    withBackend(backend, <RouterProvider router={router} />, options.onSignedOut),
+    withBackend(backend, <RouterProvider router={router} />, options.onSignedOut, queryClient),
   )
-  return { router, backend, ...utils }
+  return { router, backend, queryClient, ...utils }
 }

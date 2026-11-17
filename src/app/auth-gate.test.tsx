@@ -1,7 +1,11 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { StrictMode } from 'react'
+import { createMemoryRouter, RouterProvider } from 'react-router'
+import { BackendError } from '@/domain/error-codes'
 import { NEXT_KEY, SIGNIN_KEY } from '@/data/pending-signin'
-import { createFakeBackend, renderRoutes } from '@/test/fake-backend'
+import { routes } from '@/app/router'
+import { createFakeBackend, renderRoutes, TEST_USER, withBackend } from '@/test/fake-backend'
 import { Toaster } from '@/ui/toaster'
 
 describe('auth gate', () => {
@@ -50,6 +54,73 @@ describe('auth gate', () => {
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/signin'))
     expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
     expect(onSignedOut).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('profile gate', () => {
+  const SETUP_HEADING = 'What do your friends call you?'
+  const newMember = () => createFakeBackend(TEST_USER, { profile: null })
+
+  it('no profile: any route goes to /setup and keeps the path as next', async () => {
+    const { router } = renderRoutes(['/board?g=x'], newMember())
+    expect(await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })).toBeVisible()
+    expect(router.state.location.pathname).toBe('/setup')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=x')
+    // Setup is a full-screen column: no shell nav.
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  })
+
+  it('no profile, signing in on /signin with a next: lands on /setup with next re-saved', async () => {
+    sessionStorage.setItem(NEXT_KEY, '/me?g=abc')
+    const { router } = renderRoutes(['/signin'], newMember())
+    await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })
+    expect(router.state.location.pathname).toBe('/setup')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/me?g=abc')
+  })
+
+  it('no profile, opening /setup directly: stays, saves no next', async () => {
+    const { router } = renderRoutes(['/setup'], newMember())
+    await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })
+    expect(router.state.location.pathname).toBe('/setup')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
+  })
+
+  it('has a profile: /setup goes to /today', async () => {
+    const { router } = renderRoutes(['/setup'])
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(screen.queryByRole('heading', { name: SETUP_HEADING })).not.toBeInTheDocument()
+  })
+
+  it('has a profile under StrictMode: /setup forwards once to the pending next and clears it', async () => {
+    sessionStorage.setItem(NEXT_KEY, '/feed?g=1')
+    const router = createMemoryRouter(routes, { initialEntries: ['/setup'] })
+    render(
+      <StrictMode>
+        {withBackend(createFakeBackend(), <RouterProvider router={router} />)}
+      </StrictMode>,
+    )
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/feed'))
+    expect(router.state.location.search).toBe('?g=1')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
+  })
+
+  it('shows blank paper while the profile loads', async () => {
+    const backend = createFakeBackend()
+    backend.getMyProfile = vi.fn(() => new Promise<never>(() => {}))
+    renderRoutes(['/today'], backend)
+    await vi.waitFor(() => expect(backend.getMyProfile).toHaveBeenCalled())
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument()
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  })
+
+  it('a failed profile read shows the app instead of a blank screen', async () => {
+    const backend = createFakeBackend()
+    backend.getMyProfile = vi.fn(async () => {
+      throw new BackendError('network')
+    })
+    const { router } = renderRoutes(['/board'], backend)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Board' })).toBeVisible()
+    expect(router.state.location.pathname).toBe('/board')
   })
 })
 

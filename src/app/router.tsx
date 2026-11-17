@@ -1,5 +1,5 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
-import { AuthGate, SignInLayout } from '@/app/auth-gate'
+import { AuthGate, SetupLayout, SignInLayout } from '@/app/auth-gate'
 import { AppShell } from '@/app/shell/app-shell'
 import { RedirectToToday } from '@/app/shell/redirect-to-today'
 import { TodayScreen } from '@/app/screens/today'
@@ -9,6 +9,7 @@ import { MeScreen } from '@/app/screens/me'
 import { SettingsScreen } from '@/app/screens/settings'
 import { CodeScreen } from '@/features/auth/code-screen'
 import { SignInScreen } from '@/features/auth/sign-in-screen'
+import { SetupScreen } from '@/features/me/setup-screen'
 
 export const routes: RouteObject[] = [
   // Pre-auth screens, outside the shell. Signed in, they forward to `next` or /today.
@@ -19,10 +20,14 @@ export const routes: RouteObject[] = [
       { path: 'signin/code', element: <CodeScreen /> },
     ],
   },
-  // Everything else needs a session.
+  // Everything else needs a session, and (except /setup itself) a profile.
   {
     element: <AuthGate />,
     children: [
+      {
+        element: <SetupLayout />,
+        children: [{ path: 'setup', element: <SetupScreen /> }],
+      },
       {
         element: <AppShell />,
         children: [

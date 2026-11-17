@@ -1,10 +1,13 @@
 import type { AuthUser } from '@/domain/auth'
+import type { Profile } from '@/domain/profile'
 
 /**
  * The app's one backend contract (AD-1). Story 1.3 adds the auth surface; later stories add reads,
  * RPCs and uploads. Implemented in src/adapters/supabase, wired only in src/app/composition.ts.
  *
  * Every auth method rejects with `AuthError` (src/domain/auth.ts) carrying an `AuthErrorCode`.
+ * Every data and RPC method rejects with `BackendError` (src/domain/error-codes.ts): an RPC error
+ * code from the AD-14 table, `network`, or `unknown`.
  */
 export interface BackendPort {
   /** The stored session's user (survives app restarts), or null when signed out. */
@@ -23,4 +26,12 @@ export interface BackendPort {
   signInWithGoogle(redirectTo: string): Promise<void>
   /** End this device's session. */
   signOut(): Promise<void>
+
+  /** The signed-in member's own profile, or null before Setup. */
+  getMyProfile(): Promise<Profile | null>
+  /**
+   * `save_profile`: creates the caller's profile, or on an existing one changes only the display
+   * name (the zone is kept). Resolves with the stored profile.
+   */
+  saveProfile(displayName: string, timeZone: string): Promise<Profile>
 }

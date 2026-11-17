@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { Database } from '@/adapters/supabase/database.types'
 
 const configuredUrl = import.meta.env.VITE_SUPABASE_URL
 const configuredKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -23,7 +24,7 @@ const url = configuredUrl || 'http://127.0.0.1:54321'
 const anonKey = configuredKey || 'anon-placeholder-key'
 
 /** The single Supabase client (anon key + user session; all access enforced by RLS). */
-export const supabase = createClient(url, anonKey, {
+export const supabase = createClient<Database>(url, anonKey, {
   auth: {
     // PKCE for Google: the code verifier stays in this browser, and the redirect brings back `?code=`.
     flowType: 'pkce',

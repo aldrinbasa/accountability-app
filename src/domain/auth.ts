@@ -1,7 +1,9 @@
-/** The signed-in member as the app sees it. Profiles (display name, photo) arrive in Story 1.4. */
+/** The signed-in member as the app sees it. The display name lives in `Profile` (profile.ts). */
 export interface AuthUser {
   id: string
   email: string | null
+  /** The provider's given name (Google), used only to prefill Setup. Absent for email sign-ins. */
+  givenName?: string
 }
 
 /** Stable auth failure codes. Adapters map provider errors onto these; copy lives in auth-errors.ts. */
