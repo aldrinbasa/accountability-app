@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test'
+import { loadEnv } from 'vite'
 import { BASE_URL, PHONE } from './e2e/support/phone'
 
 /**
@@ -9,6 +10,25 @@ import { BASE_URL, PHONE } from './e2e/support/phone'
  * key, then runs `npm run test:e2e`. Locally (needs Docker): `npm run db:start`, put the local URL and
  * anon key in .env.local, then `npm run test:e2e` (it builds first outside CI).
  */
+
+// Guard: the build must point at the local stack. Read the way `vite build` does (process env, then
+// .env.production.local, .env.production, .env.local, .env), so a hosted URL never gets tested.
+const supabaseUrl = loadEnv('production', process.cwd(), 'VITE_').VITE_SUPABASE_URL ?? ''
+let supabaseHost = ''
+try {
+  supabaseHost = new URL(supabaseUrl).hostname
+} catch {
+  // Missing or malformed: refused below.
+}
+if (supabaseHost !== '127.0.0.1' && supabaseHost !== 'localhost') {
+  throw new Error(
+    `e2e runs only against the local Supabase stack, but VITE_SUPABASE_URL is "${supabaseUrl}". ` +
+      'Set it to the local API URL (npm run db:start prints it) in the environment or .env.local.',
+  )
+}
+
+// Port 5173 because supabase/config.toml's auth `site_url` and redirect list allow
+// http://127.0.0.1:5173 for the local stack.
 const preview = 'npm run preview -- --port 5173 --strictPort'
 
 export default defineConfig({
@@ -23,7 +43,6 @@ export default defineConfig({
     ? [['list'], ['html', { open: 'never' }], ['github']]
     : [['list'], ['html', { open: 'never' }]],
   use: {
-    ...PHONE,
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
   },
@@ -32,7 +51,8 @@ export default defineConfig({
   webServer: {
     command: process.env.CI ? preview : `npm run build && ${preview}`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    // Never reuse whatever already listens on 5173 (e.g. `npm run dev` against a hosted project).
+    reuseExistingServer: false,
     timeout: 180_000,
   },
 })

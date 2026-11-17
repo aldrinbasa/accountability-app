@@ -6,6 +6,7 @@ import {
   signUp,
   switcher,
   switcherName,
+  tab,
 } from './support/members'
 
 // Matrix rows: Remove, Handover + delete (one continuous flow).
@@ -35,9 +36,28 @@ test('admin removes a member who rejoins, the admin hands over, the last member 
   await friend.reload()
   await expect(friend.getByRole('heading', { name: 'Start a group' })).toBeVisible()
   await expect(removed).toBeVisible()
+  // The device marked it seen.
+  await expect
+    .poll(() =>
+      friend.evaluate(() =>
+        Object.keys(localStorage).some((key) => key.startsWith('proofy.notice.removed.')),
+      ),
+    )
+    .toBe(true)
   await friend.reload()
   await expect(friend.getByRole('heading', { name: 'Start a group' })).toBeVisible()
-  await expect(removed).toHaveCount(0)
+  // Absent for a sustained window (8 consecutive empty samples, 250 ms apart), not just once:
+  // any sighting resets the run, so a toast raised after load fails the check.
+  let emptySamples = 0
+  await expect
+    .poll(
+      async () => {
+        emptySamples = (await removed.count()) === 0 ? emptySamples + 1 : -1000
+        return emptySamples
+      },
+      { intervals: [250], timeout: 5_000, message: 'removed notice stays absent' },
+    )
+    .toBeGreaterThanOrEqual(8)
 
   // Bo rejoins with the same invite.
   await friend.goto(`/join/${code}`)
@@ -58,7 +78,11 @@ test('admin removes a member who rejoins, the admin hands over, the last member 
 
   // Bo is admin now, and leaving deletes the group.
   await friend.reload()
-  await openGroupSettings(friend, 'Hand Crew')
+  await tab(friend, 'Me').click()
+  const friendRow = friend.getByRole('link', { name: /Hand Crew/ })
+  await expect(friendRow).toContainText(/admin/i)
+  await friendRow.click()
+  await expect(friend.getByRole('heading', { level: 1, name: 'Hand Crew' })).toBeVisible()
   await expect(friend.getByRole('heading', { name: 'Members' })).toBeVisible()
   await friend.getByRole('button', { name: 'Leave group' }).click()
   const lastSheet = friend.getByRole('dialog', { name: 'Leave Hand Crew?' })

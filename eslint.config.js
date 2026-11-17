@@ -43,6 +43,8 @@ export default tseslint.config(
       'dist',
       'dev-dist',
       'coverage',
+      'playwright-report',
+      'test-results',
       'node_modules',
       '_bmad',
       '_bmad-output',

@@ -21,6 +21,12 @@ test('a signed-out friend opens the invite link, signs in, sets up and joins', a
   // The admin's group is no longer waiting.
   await page.reload()
   await expect(switcher(page)).toHaveAccessibleName(switcherName('Join Crew'))
+  // Anchor on the loaded two-member state first, so the negative check cannot pass on stale data.
+  await switcher(page).click()
+  const sheet = page.getByRole('dialog', { name: 'Your groups' })
+  await expect(sheet.getByRole('button', { name: /Join Crew/ })).toContainText('2 members')
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
   await expect(page.getByText('Just you in here so far.')).toHaveCount(0)
 })
 

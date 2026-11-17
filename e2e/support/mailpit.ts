@@ -15,7 +15,8 @@ interface MailpitMessage {
   HTML: string
 }
 
-const CODE = /\b(\d{6})\b/
+// Six digits on their own, never a CSS hex colour like `#123456` in the HTML body.
+const CODE = /(?<!#)\b(\d{6})\b/
 
 /**
  * The 6-digit sign-in code sent to `email`, read from Mailpit's HTTP API. The subject is
