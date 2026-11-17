@@ -299,3 +299,82 @@ describe('groups', () => {
     expect(await backendCodeOf(adapter.createGroup('x'))).toBe('profile_required')
   })
 })
+
+describe('invites', () => {
+  it('create_invite passes the group and fresh flag and maps the row', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ code: 'K7QX2M', expires_at: '2026-11-24T10:00:00+00:00' }],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.createInvite('g1', false)).resolves.toEqual({
+      code: 'K7QX2M',
+      expiresAt: '2026-11-24T10:00:00+00:00',
+    })
+    expect(db.rpc).toHaveBeenCalledWith('create_invite', { p_group_id: 'g1', p_new: false })
+
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_admin'), status: 400 })
+    expect(await backendCodeOf(adapter.createInvite('g1', true))).toBe('not_admin')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.createInvite('g1', true))).toBe('not_member')
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.createInvite('g1', true))).toBe('unknown')
+  })
+
+  it('get_invite maps the preview; an unknown code and an unknown status are errors', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          group_id: 'g9',
+          group_name: 'Sunday Reset',
+          admin_display_name: 'Sam',
+          member_count: 3,
+          status: 'valid',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.getInvite('K7QX2M')).resolves.toEqual({
+      groupId: 'g9',
+      groupName: 'Sunday Reset',
+      adminName: 'Sam',
+      memberCount: 3,
+      status: 'valid',
+    })
+    expect(db.rpc).toHaveBeenCalledWith('get_invite', { p_code: 'K7QX2M' })
+
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('invite_not_found'), status: 400 })
+    expect(await backendCodeOf(adapter.getInvite('ZZZZZZ'))).toBe('invite_not_found')
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          group_id: 'g9',
+          group_name: 'x',
+          admin_display_name: 'y',
+          member_count: 1,
+          status: 'odd',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getInvite('K7QX2M'))).toBe('unknown')
+  })
+
+  it('join_group returns the group id and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({ data: 'g9', error: null, status: 200 })
+    await expect(adapter.joinGroup('K7QX2M')).resolves.toBe('g9')
+    expect(db.rpc).toHaveBeenCalledWith('join_group', { p_code: 'K7QX2M' })
+    for (const code of ['invite_expired', 'group_full', 'invite_not_found', 'profile_required']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.joinGroup('K7QX2M'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.joinGroup('K7QX2M'))).toBe('network')
+  })
+})

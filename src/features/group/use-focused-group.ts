@@ -85,7 +85,7 @@ export function useSyncFocusedGroup(): void {
   }, [resolvedId, urlId])
 }
 
-/** After creating a group: focus it and open Today on it. */
+/** After creating or joining a group: focus it and open Today on it. */
 export function useOpenGroupOnToday(): (groupId: string) => void {
   const navigate = useNavigate()
   return useCallback(
@@ -94,5 +94,17 @@ export function useOpenGroupOnToday(): (groupId: string) => void {
       void navigate({ pathname: '/today', search: searchWithGroup('', groupId) }, { replace: true })
     },
     [navigate],
+  )
+}
+
+/** Opens `/join/{code}`, keeping the current `?g=` (pushed, so back returns here). */
+export function useOpenJoinScreen(): (code: string) => void {
+  const navigate = useNavigate()
+  const { search } = useLocation()
+  return useCallback(
+    (code: string) => {
+      void navigate({ pathname: `/join/${encodeURIComponent(code)}`, search })
+    },
+    [navigate, search],
   )
 }

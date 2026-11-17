@@ -18,6 +18,22 @@ describe('error-code table (AD-14)', () => {
     expect(isRpcErrorCode('profile_required')).toBe(true)
   })
 
+  it('maps the invite and join codes to copy', () => {
+    for (const code of [
+      'not_admin',
+      'not_member',
+      'invite_not_found',
+      'invite_expired',
+      'group_full',
+    ]) {
+      expect(isRpcErrorCode(code)).toBe(true)
+    }
+    expect(errorCopy('invite_not_found')).toBe(
+      "That invite code doesn't work. Check it with whoever sent it.",
+    )
+    expect(errorCopy('group_full')).toMatch(/10 is the max/)
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)

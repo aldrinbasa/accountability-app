@@ -11,7 +11,7 @@ import { WaitingEmptyState } from '@/features/group/waiting-empty-state'
 /**
  * Today for the focused group. While the groups load: blank (plus the install notice). Load failed:
  * an Empty state with Try again. No current groups: the full-screen create screen. A waiting group:
- * the waiting Empty state. An active group: the day-name heading only, until Epic 2 adds content.
+ * the waiting Empty state (with the Invite panel for the admin). An active group: the day-name heading only, until Epic 2 adds content.
  * The install notice shows in every state.
  */
 export function TodayScreen() {
@@ -37,7 +37,7 @@ export function TodayScreen() {
   return (
     <Screen title={todayHeading()}>
       <InstallNotice />
-      {isWaiting(group) ? <WaitingEmptyState /> : null}
+      {isWaiting(group) ? <WaitingEmptyState group={group} /> : null}
     </Screen>
   )
 }

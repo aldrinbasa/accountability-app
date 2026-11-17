@@ -13,7 +13,8 @@ import { Sheet } from '@/ui/sheet'
 import { runAfterSheetClose } from '@/ui/sheet-history'
 import { CreateGroupForm } from '@/features/group/create-group-form'
 import { GroupDot } from '@/features/group/group-dot'
-import { useOpenGroupOnToday } from '@/features/group/use-focused-group'
+import { JoinCodeForm } from '@/features/group/join-code-form'
+import { useOpenGroupOnToday, useOpenJoinScreen } from '@/features/group/use-focused-group'
 
 export interface YourGroupsSheetProps {
   open: boolean
@@ -29,7 +30,8 @@ const ROW =
 
 /**
  * "Your groups": the current groups with role and member count, the focused one checked, and
- * "Create or join a group" last, which turns the sheet into the same create form as Today's.
+ * "Create or join a group" last, which turns the sheet into the same create and join-by-code forms
+ * as Today's.
  * Navigation waits for the sheet's history entry to go, so system back still means "back".
  */
 export function YourGroupsSheet({
@@ -40,13 +42,16 @@ export function YourGroupsSheet({
   onPick,
 }: YourGroupsSheetProps) {
   const [mode, setMode] = useState<'list' | 'create'>('list')
-  const [dirty, setDirty] = useState(false)
+  const [nameDirty, setNameDirty] = useState(false)
+  const [codeDirty, setCodeDirty] = useState(false)
   const openGroup = useOpenGroupOnToday()
+  const openJoin = useOpenJoinScreen()
 
   function setOpen(next: boolean) {
     if (!next) {
       setMode('list')
-      setDirty(false)
+      setNameDirty(false)
+      setCodeDirty(false)
     }
     onOpenChange(next)
   }
@@ -61,12 +66,17 @@ export function YourGroupsSheet({
     runAfterSheetClose(() => openGroup(groupId))
   }
 
+  function joinWithCode(code: string) {
+    setOpen(false)
+    runAfterSheetClose(() => openJoin(code))
+  }
+
   return (
     <Sheet
       open={open}
       onOpenChange={setOpen}
       title={mode === 'list' ? GROUP_COPY.switcherSheetTitle : GROUP_COPY.createHeading}
-      dirty={mode === 'create' && dirty}
+      dirty={mode === 'create' && (nameDirty || codeDirty)}
     >
       {mode === 'list' ? (
         <ul className="flex flex-col">
@@ -102,7 +112,8 @@ export function YourGroupsSheet({
       ) : (
         <div className="flex flex-col gap-3 pb-2">
           <p className="type-body-sm text-muted">{GROUP_COPY.createLine}</p>
-          <CreateGroupForm onCreated={created} onDirtyChange={setDirty} focusOnMount />
+          <CreateGroupForm onCreated={created} onDirtyChange={setNameDirty} focusOnMount />
+          <JoinCodeForm onCode={joinWithCode} onDirtyChange={setCodeDirty} />
         </div>
       )}
     </Sheet>

@@ -11,7 +11,7 @@
 -- The three RPCs call now() unqualified. Below, as the owner, their search_path is pointed at
 -- test_overrides first so tests.freeze_time moves their clock; the rollback undoes it.
 begin;
-select plan(95);
+select plan(96);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -338,6 +338,11 @@ select is(
   (select status from public.get_invite(current_setting('test.c1'))),
   'member',
   'a current member sees member even on an expired code'
+);
+select is(
+  public.join_group(current_setting('test.c1')),
+  current_setting('test.g1')::uuid,
+  'a current member re-joining with an expired code gets the group id'
 );
 
 -- Once every invite has expired (c2 at 10:01), create_invite (p_new false) makes a new one.

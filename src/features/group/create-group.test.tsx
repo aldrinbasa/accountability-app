@@ -26,9 +26,7 @@ function nameField() {
 describe('create a group (Today with no groups)', () => {
   it('shows the create screen with the approved copy, the nav and no switcher', async () => {
     await openCreateScreen()
-    expect(
-      screen.getByText('Give it a name your friends will recognize. Invites come next.'),
-    ).toBeInTheDocument()
+    expect(screen.getByText('Give it a name your friends will recognize.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Create a group' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /switch group/ })).not.toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument()

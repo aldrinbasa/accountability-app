@@ -127,6 +127,16 @@ export function InstallLayout() {
   )
 }
 
+/** Layout for /join/{code}: the same full-screen column as /setup, inside the auth gate. */
+export function JoinLayout() {
+  useFocusHeadingOnRouteChange()
+  return (
+    <FullScreenColumn>
+      <Outlet />
+    </FullScreenColumn>
+  )
+}
+
 /**
  * Layout for /signin and /signin/code: a phone-width column with no nav. Signed in, it goes to the
  * pending `next` path, clearing it, else /today. Right after a sign-in on this screen (a code, link

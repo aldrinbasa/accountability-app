@@ -1,5 +1,5 @@
 import type { AuthUser } from '@/domain/auth'
-import type { MyGroup } from '@/domain/groups'
+import type { Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 
 /**
@@ -40,4 +40,17 @@ export interface BackendPort {
   listMyGroups(): Promise<MyGroup[]>
   /** `create_group`: a new group with the caller as admin and their profile zone. Resolves with its id. */
   createGroup(name: string): Promise<string>
+
+  /**
+   * `create_invite` (admin only): the group's newest unexpired invite, or a new one when `fresh` is
+   * true or none is left. Rejects with `not_admin` / `not_member`.
+   */
+  createInvite(groupId: string, fresh: boolean): Promise<Invite>
+  /** `get_invite`: what a code leads to. Rejects with `invite_not_found` for an unknown code. */
+  getInvite(code: string): Promise<InvitePreview>
+  /**
+   * `join_group`: joins with a code and resolves with the group id (unchanged for a current
+   * member). Rejects with `invite_expired`, `group_full`, `invite_not_found` or `profile_required`.
+   */
+  joinGroup(code: string): Promise<string>
 }

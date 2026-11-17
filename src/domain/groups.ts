@@ -25,7 +25,7 @@ export const GROUP_MEMBER_MAX = 10
 /** Copy shared by the create form, the switcher, Me and group settings (Story 1.6 ACs). */
 export const GROUP_COPY = {
   createHeading: 'Start a group',
-  createLine: 'Give it a name your friends will recognize. Invites come next.',
+  createLine: 'Give it a name your friends will recognize.',
   nameLabel: 'Group name',
   create: 'Create a group',
   saving: 'Saving…',
@@ -111,4 +111,151 @@ export function memberCapacityText(group: Pick<MyGroup, 'memberCount'>): string 
 /** The switcher's accessible name. */
 export function switcherLabel(group: Pick<MyGroup, 'name'>): string {
   return `Group: ${group.name}, switch group`
+}
+
+// ===== Invites and joining (Story 1.7) =====
+
+/** An invite as the admin's Invite panel shows it (`create_invite`). */
+export interface Invite {
+  /** 6 characters from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`. */
+  code: string
+  /** ISO timestamp: creation + 7 days. Expired once now ≥ this. */
+  expiresAt: string
+}
+
+/** What an invite code leads to (`get_invite`), checked in this order on the server. */
+export type InviteStatus = 'member' | 'expired' | 'full' | 'valid'
+
+export const INVITE_STATUSES: readonly InviteStatus[] = ['member', 'expired', 'full', 'valid']
+
+export function isInviteStatus(value: unknown): value is InviteStatus {
+  return typeof value === 'string' && (INVITE_STATUSES as readonly string[]).includes(value)
+}
+
+/** The join screen's view of an invite. */
+export interface InvitePreview {
+  groupId: string
+  groupName: string
+  /** The group's current admin's display name. */
+  adminName: string
+  /** Current members. */
+  memberCount: number
+  status: InviteStatus
+}
+
+/** Copy for the admin's Invite panel (Story 1.7 ACs and approved Decisions). */
+export const INVITE_COPY = {
+  kicker: 'Invite friends',
+  meta: 'Link or code · up to 10 people',
+  shareLink: 'Share link',
+  copyCode: 'Copy code',
+  linkCopied: 'Link copied.',
+  codeCopied: 'Code copied.',
+  expired: 'This invite expired. Make a new one.',
+  makeNew: 'Make a new one',
+  making: 'Saving…',
+  full: "Group's full. 10 is the max.",
+  loadFailed: "Couldn't load the invite. Check your signal and tap Retry.",
+  newFailed: "Couldn't make a new invite. Check your signal and tap Retry.",
+  retry: 'Retry',
+} as const
+
+/** Copy for joining: the create screen's code entry and the /join/{code} screen. */
+export const JOIN_COPY = {
+  or: 'or',
+  codeHeading: 'Got an invite code?',
+  codeLabel: 'Invite code',
+  joinWithCode: 'Join with a code',
+  codeRequired: 'Type the invite code.',
+  kicker: "You're invited to",
+  join: 'Join',
+  joining: 'Joining…',
+  unknown: "That invite code doesn't work. Check it with whoever sent it.",
+  goToday: 'Go to Today',
+  offlineLine: "Can't reach Proofy.",
+  offlineBody: 'Joining needs a signal.',
+  tryAgain: 'Try again',
+  loadFailed: "Couldn't load the invite. Check your signal and tap Retry.",
+  joinFailed: "Couldn't join. Check your signal and tap Retry.",
+  retry: 'Retry',
+  screenTitle: 'Join a group',
+} as const
+
+/** "Couldn't copy. The code is K7QX2M." */
+export function copyFailedText(code: string): string {
+  return `Couldn't copy. The code is ${code}.`
+}
+
+/** "Couldn't copy. The link is https://…/join/K7QX2M." */
+export function copyLinkFailedText(url: string): string {
+  return `Couldn't copy. The link is ${url}.`
+}
+
+/** "Jo is the admin" */
+export function adminLine(adminName: string): string {
+  return `${adminName} is the admin`
+}
+
+/** "3 members" ("1 member" for one). */
+export function joinMemberCountText(count: number): string {
+  return count === 1 ? '1 member' : `${count} members`
+}
+
+/** "This invite expired. Ask Jo for a fresh one." */
+export function joinExpiredText(adminName: string): string {
+  return `This invite expired. Ask ${adminName} for a fresh one.`
+}
+
+/** "Sunday Reset is full. 10 is the max." */
+export function joinFullText(groupName: string): string {
+  return `${groupName} is full. 10 is the max.`
+}
+
+/**
+ * What a typed, pasted or linked code is looked up as: the text after the last "/" (trailing slashes ignored, so a pasted
+ * `…/join/K7QX2M` link works), upper-cased, with everything outside A–Z and 0–9 dropped.
+ */
+export function normalizeInviteCode(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, '')
+  const tail = trimmed.slice(trimmed.lastIndexOf('/') + 1)
+  return tail.toUpperCase().replace(/[^A-Z0-9]/g, '')
+}
+
+/** The share URL: `{origin}/join/{code}` (the one link without `?g=`). */
+export function inviteUrl(origin: string, code: string): string {
+  return `${origin}/join/${encodeURIComponent(code)}`
+}
+
+/** Whether an invite has expired at `now` (expired once now ≥ `expiresAt`). */
+export function inviteExpired(expiresAt: string, now: number | Date): boolean {
+  const end = Date.parse(expiresAt)
+  if (Number.isNaN(end)) return true
+  return (typeof now === 'number' ? now : now.getTime()) >= end
+}
+
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
+/** "Expires Tue 24 Nov", in the device's local time zone. */
+export function inviteExpiryText(expiresAt: string): string {
+  const date = new Date(expiresAt)
+  return `Expires ${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}`
+}
+
+/** The code spelled out for screen readers: "K 7 Q X 2 M". */
+export function spelledCode(code: string): string {
+  return Array.from(code).join(' ')
 }

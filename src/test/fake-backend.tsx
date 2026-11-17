@@ -3,7 +3,8 @@ import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { AuthUser } from '@/domain/auth'
-import type { MyGroup } from '@/domain/groups'
+import { BackendError } from '@/domain/error-codes'
+import type { Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
@@ -29,6 +30,18 @@ export const TEST_GROUP: MyGroup = {
   memberCount: 3,
 }
 
+/** An invite of `TEST_GROUP`, far from expiry (tests that need expiry pass their own). */
+export const TEST_INVITE: Invite = { code: 'K7QX2M', expiresAt: '2099-11-24T10:00:00.000Z' }
+
+/** Another member's group the test user is invited to (`TEST_INVITE_PREVIEW.groupId`). */
+export const TEST_INVITE_PREVIEW: InvitePreview = {
+  groupId: 'group-9',
+  groupName: 'Sunday Reset',
+  adminName: 'Sam',
+  memberCount: 3,
+  status: 'valid',
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -41,13 +54,22 @@ export interface FakeBackend extends BackendPort {
  */
 export function createFakeBackend(
   initialUser: AuthUser | null = TEST_USER,
-  options: { profile?: Profile | null; groups?: MyGroup[] } = {},
+  options: {
+    profile?: Profile | null
+    groups?: MyGroup[]
+    /** Codes `getInvite` / `joinGroup` know; default `TEST_INVITE.code` → `TEST_INVITE_PREVIEW`. */
+    invites?: Record<string, InvitePreview>
+  } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
   let user = initialUser
   let profile: Profile | null = options.profile === undefined ? TEST_PROFILE : options.profile
   let groups: MyGroup[] = options.groups ?? [TEST_GROUP]
   let created = 0
+  let invitesMade = 0
+  const invites: Record<string, InvitePreview> = options.invites ?? {
+    [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
+  }
   const emit = (next: AuthUser | null) => {
     user = next
     for (const listener of listeners) listener(next)
@@ -95,6 +117,37 @@ export function createFakeBackend(
         },
       ]
       return id
+    }),
+    createInvite: vi.fn(async (_groupId: string, fresh: boolean) => {
+      if (!fresh) return TEST_INVITE
+      invitesMade += 1
+      return { code: `NEW${invitesMade}AB`.slice(0, 6), expiresAt: '2099-12-01T10:00:00.000Z' }
+    }),
+    getInvite: vi.fn(async (code: string) => {
+      const invite = invites[code]
+      if (!invite) throw new BackendError('invite_not_found')
+      const member = groups.some((group) => group.id === invite.groupId)
+      return member ? { ...invite, status: 'member' as const } : invite
+    }),
+    joinGroup: vi.fn(async (code: string) => {
+      const invite = invites[code]
+      if (!invite) throw new BackendError('invite_not_found')
+      if (invite.status === 'expired') throw new BackendError('invite_expired')
+      if (invite.status === 'full') throw new BackendError('group_full')
+      if (!groups.some((group) => group.id === invite.groupId)) {
+        groups = [
+          ...groups,
+          {
+            id: invite.groupId,
+            name: invite.groupName,
+            timeZone: 'UTC',
+            role: 'member',
+            joinedAt: new Date().toISOString(),
+            memberCount: invite.memberCount + 1,
+          },
+        ]
+      }
+      return invite.groupId
     }),
   }
 }

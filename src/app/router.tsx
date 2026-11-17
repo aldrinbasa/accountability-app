@@ -1,5 +1,5 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
-import { AuthGate, InstallLayout, SetupLayout, SignInLayout } from '@/app/auth-gate'
+import { AuthGate, InstallLayout, JoinLayout, SetupLayout, SignInLayout } from '@/app/auth-gate'
 import { AppShell } from '@/app/shell/app-shell'
 import { RedirectToToday } from '@/app/shell/redirect-to-today'
 import { TodayScreen } from '@/app/screens/today'
@@ -9,6 +9,7 @@ import { MeScreen } from '@/app/screens/me'
 import { SettingsScreen } from '@/app/screens/settings'
 import { CodeScreen } from '@/features/auth/code-screen'
 import { SignInScreen } from '@/features/auth/sign-in-screen'
+import { JoinScreen } from '@/features/group/join-screen'
 import { GroupSettingsScreen } from '@/features/me/group-settings-screen'
 import { SetupScreen } from '@/features/me/setup-screen'
 import { InstallScreen } from '@/features/install/install-screen'
@@ -34,6 +35,11 @@ export const routes: RouteObject[] = [
       {
         element: <SetupLayout />,
         children: [{ path: 'setup', element: <SetupScreen /> }],
+      },
+      // Join by invite: full screen, no nav. A signed-out invitee comes back here after sign-in.
+      {
+        element: <JoinLayout />,
+        children: [{ path: 'join/:code', element: <JoinScreen /> }],
       },
       {
         element: <AppShell />,

@@ -8,6 +8,11 @@ export const ERROR_COPY = {
     "Your phone's time zone isn't one we know. Check its date and time settings, then try again.",
   invalid_group_name: 'Give the group a name.',
   profile_required: 'Set your display name first, then try again.',
+  not_admin: "Only the group's admin can do that.",
+  not_member: "You're not in this group anymore.",
+  invite_not_found: "That invite code doesn't work. Check it with whoever sent it.",
+  invite_expired: 'This invite expired. Ask the admin for a fresh one.',
+  group_full: 'That group is full. 10 is the max.',
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY

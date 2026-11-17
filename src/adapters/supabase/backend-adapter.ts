@@ -7,7 +7,7 @@ import {
 } from '@supabase/supabase-js'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
-import type { GroupRole, MyGroup } from '@/domain/groups'
+import { isInviteStatus, type GroupRole, type MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
@@ -136,7 +136,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
   return toAuthUser(user)
 }
 
-/** Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6). */
+/** Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7). */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
     const { data, error } = await supabase.auth.getSession()
@@ -227,6 +227,41 @@ export const supabaseBackendAdapter: BackendPort = {
     const { data, error, status } = await supabase.rpc('create_group', { p_name: name })
     if (error) throw toBackendError(error, status)
     if (!data) throw new BackendError('unknown', 'create_group returned no id')
+    return data
+  },
+
+  async createInvite(groupId, fresh) {
+    const { data, error, status } = await supabase.rpc('create_invite', {
+      p_group_id: groupId,
+      p_new: fresh,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'create_invite returned no row')
+    return { code: row.code, expiresAt: row.expires_at }
+  },
+
+  async getInvite(code) {
+    const { data, error, status } = await supabase.rpc('get_invite', { p_code: code })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_invite returned no row')
+    if (!isInviteStatus(row.status)) {
+      throw new BackendError('unknown', `get_invite returned status ${row.status}`)
+    }
+    return {
+      groupId: row.group_id,
+      groupName: row.group_name,
+      adminName: row.admin_display_name,
+      memberCount: row.member_count,
+      status: row.status,
+    }
+  },
+
+  async joinGroup(code) {
+    const { data, error, status } = await supabase.rpc('join_group', { p_code: code })
+    if (error) throw toBackendError(error, status)
+    if (!data) throw new BackendError('unknown', 'join_group returned no id')
     return data
   },
 }

@@ -5,13 +5,14 @@ import { GROUP_COPY } from '@/domain/groups'
 import { useMyGroups } from '@/data/groups'
 import { EmptyState } from '@/ui/empty-state'
 import { IconButton } from '@/ui/icon-button'
+import { InvitePanel } from '@/features/group/invite-panel'
 import { cameFromMe } from '@/features/me/pushed-from-me'
 
 /**
- * `/me/groups/{groupId}`, pushed from Me > My groups: the group name and a read-only "Group time
- * zone" row (editing arrives in Story 2.7). A group the member is not currently in goes back to Me,
+ * `/me/groups/{groupId}`, pushed from Me > My groups: the group name, the Invite panel (admin only)
+ * and a read-only "Group time zone" row (editing arrives in Story 2.7). A group the member is not currently in goes back to Me,
  * keeping `?g=`. Back always shows; a failed load with nothing cached shows Try again. Members,
- * invite, goal and leave arrive with later stories.
+ * goal and leave arrive with later stories.
  */
 export function GroupSettingsScreen() {
   const { groupId } = useParams()
@@ -43,6 +44,7 @@ export function GroupSettingsScreen() {
           <h1 tabIndex={-1} className="type-headline break-words">
             {group.name}
           </h1>
+          <InvitePanel key={group.id} group={group} />
           <div className="card flex flex-col gap-1">
             <h2 className="type-body-strong">{GROUP_COPY.timeZoneLabel}</h2>
             <p className="type-body">{group.timeZone}</p>
