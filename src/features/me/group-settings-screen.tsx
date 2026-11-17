@@ -1,27 +1,49 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { ArrowLeft, CloudSlash } from '@phosphor-icons/react'
-import { GROUP_COPY } from '@/domain/groups'
-import { useMyGroups } from '@/data/groups'
+import { ArrowLeft, CloudSlash, SignOut } from '@phosphor-icons/react'
+import {
+  endedMembershipFor,
+  GROUP_COPY,
+  LEAVE_COPY,
+  nextAdmin,
+  type MyGroup,
+} from '@/domain/groups'
+import { useAuthSession } from '@/data/auth-session'
+import { useEndedMemberships, useMembers, useMyGroups } from '@/data/groups'
 import { EmptyState } from '@/ui/empty-state'
+import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
+import { runAfterSheetClose } from '@/ui/sheet-history'
 import { InvitePanel } from '@/features/group/invite-panel'
+import { NotInGroupState } from '@/features/group/not-in-group-state'
+import { useMoveFocusAfterLeave } from '@/features/group/use-focused-group'
+import { LeaveGroupSheet } from '@/features/me/leave-group-sheet'
+import { MembersList } from '@/features/me/members-list'
 import { cameFromMe } from '@/features/me/pushed-from-me'
 
 /**
- * `/me/groups/{groupId}`, pushed from Me > My groups: the group name, the Invite panel (admin only)
- * and a read-only "Group time zone" row (editing arrives in Story 2.7). A group the member is not currently in goes back to Me,
- * keeping `?g=`. Back always shows; a failed load with nothing cached shows Try again. Members,
- * goal and leave arrive with later stories.
+ * `/me/groups/{groupId}`, pushed from Me > My groups: the group name, the Members list and the
+ * Invite panel (admin only), a read-only "Group time zone" row (editing arrives in Story 2.7) and
+ * the destructive "Leave group" row, which opens the confirm Sheet. After leaving, focus moves to
+ * the next current group (or the create screen) on Today.
+ * A group the member left or was removed from shows "You're not in {Group} anymore." with Go to
+ * Today; an id they were never in goes back to Me, keeping `?g=`. Back always shows; a failed load
+ * with nothing cached shows Try again. The group goal arrives with a later story.
  */
 export function GroupSettingsScreen() {
   const { groupId } = useParams()
   const location = useLocation()
   const navigate = useNavigate()
   const query = useMyGroups()
+  const { data: ended } = useEndedMemberships()
   const groups = query.data
-  const group = groups?.find((g) => g.id === groupId)
-  const unknown = groups !== undefined && !group
+  // Set as soon as the server confirms a leave, before the refetch drops the group: the screen keeps
+  // showing it (sheet included) while focus moves on, and shows neither the "not in {Group}
+  // anymore" state nor the redirect to Me for the group just left.
+  const [leftGroup, setLeftGroup] = useState<MyGroup | null>(null)
+  const group = groups?.find((g) => g.id === groupId) ?? leftGroup ?? undefined
+  const stale = groups && ended ? endedMembershipFor({ groups, ended }, groupId) : null
+  const unknown = groups !== undefined && ended !== undefined && !group && !stale
 
   useEffect(() => {
     if (unknown) void navigate({ pathname: '/me', search: location.search }, { replace: true })
@@ -40,17 +62,9 @@ export function GroupSettingsScreen() {
         <IconButton icon={ArrowLeft} label="Back" onClick={back} />
       </div>
       {group ? (
-        <>
-          <h1 tabIndex={-1} className="type-headline break-words">
-            {group.name}
-          </h1>
-          <InvitePanel key={group.id} group={group} />
-          <div className="card flex flex-col gap-1">
-            <h2 className="type-body-strong">{GROUP_COPY.timeZoneLabel}</h2>
-            <p className="type-body">{group.timeZone}</p>
-            <p className="type-body-sm text-muted">{GROUP_COPY.timeZoneNote}</p>
-          </div>
-        </>
+        <GroupSettings key={group.id} group={group} onLeaving={() => setLeftGroup(group)} />
+      ) : stale ? (
+        <NotInGroupState ended={stale} />
       ) : groups === undefined && query.isError ? (
         <EmptyState
           icon={CloudSlash}
@@ -60,5 +74,53 @@ export function GroupSettingsScreen() {
         />
       ) : null}
     </div>
+  )
+}
+
+function GroupSettings({ group, onLeaving }: { group: MyGroup; onLeaving: () => void }) {
+  const [leaving, setLeaving] = useState(false)
+  const moveFocus = useMoveFocusAfterLeave()
+  const userId = useAuthSession().user?.id
+  const isAdmin = group.role === 'admin'
+  // The Members list reads the same query, so the next admin's name is usually there already.
+  const members = useMembers(group.id, isAdmin).data
+  const next = isAdmin && members && userId ? nextAdmin(members, userId) : null
+
+  function left(remaining: MyGroup[]) {
+    setLeaving(false)
+    runAfterSheetClose(() => moveFocus(remaining, group.id))
+  }
+
+  return (
+    <>
+      <h1 tabIndex={-1} className="type-headline break-words">
+        {group.name}
+      </h1>
+      <MembersList group={group} />
+      <InvitePanel group={group} />
+      <div className="card flex flex-col gap-1">
+        <h2 className="type-body-strong">{GROUP_COPY.timeZoneLabel}</h2>
+        <p className="type-body">{group.timeZone}</p>
+        <p className="type-body-sm text-muted">{GROUP_COPY.timeZoneNote}</p>
+      </div>
+      <div className="card p-0">
+        <button
+          type="button"
+          className="flex min-h-row-min w-full items-center gap-3 rounded-wob px-3 text-left text-miss type-body-strong press-overlay"
+          onClick={() => setLeaving(true)}
+        >
+          <Icon icon={SignOut} size={24} />
+          <span className="flex-1">{LEAVE_COPY.leaveGroup}</span>
+        </button>
+      </div>
+      <LeaveGroupSheet
+        open={leaving}
+        onOpenChange={setLeaving}
+        group={group}
+        nextAdminName={next?.displayName ?? null}
+        onLeaving={onLeaving}
+        onLeft={left}
+      />
+    </>
   )
 }

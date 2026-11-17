@@ -35,7 +35,7 @@ describe('Today states', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Check your signal and try again.')).toBeInTheDocument()
 
-    vi.mocked(backend.listMyGroups).mockResolvedValue([TEST_GROUP])
+    vi.mocked(backend.listMyGroups).mockResolvedValue({ groups: [TEST_GROUP], ended: [] })
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(
       await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' }),

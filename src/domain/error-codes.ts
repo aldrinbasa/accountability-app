@@ -13,6 +13,7 @@ export const ERROR_COPY = {
   invite_not_found: "That invite code doesn't work. Check it with whoever sent it.",
   invite_expired: 'This invite expired. Ask the admin for a fresh one.',
   group_full: 'That group is full. 10 is the max.',
+  cannot_remove_self: "You can't remove yourself. Use Leave group instead.",
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY

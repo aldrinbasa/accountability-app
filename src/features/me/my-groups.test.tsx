@@ -90,7 +90,7 @@ describe('Me > My groups', () => {
     expect(screen.getByText('Check your signal and try again.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
 
-    vi.mocked(backend.listMyGroups).mockResolvedValue([GYM, RESET])
+    vi.mocked(backend.listMyGroups).mockResolvedValue({ groups: [GYM, RESET], ended: [] })
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Gym Rats' })).toBeInTheDocument()
   })
@@ -103,7 +103,7 @@ describe('Me > My groups', () => {
     const retry = await screen.findByRole('alert', {}, { timeout: 3000 })
     expect(retry).toHaveTextContent("Couldn't load your groups. Check your signal and tap Retry.")
 
-    vi.mocked(backend.listMyGroups).mockResolvedValue([GYM, RESET])
+    vi.mocked(backend.listMyGroups).mockResolvedValue({ groups: [GYM, RESET], ended: [] })
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(await screen.findByRole('region', { name: 'My groups' })).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()

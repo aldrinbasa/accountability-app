@@ -2,7 +2,7 @@ import { act, screen } from '@testing-library/react'
 import { onlineManager } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { BackendError } from '@/domain/error-codes'
-import type { InvitePreview, MyGroup } from '@/domain/groups'
+import type { InvitePreview, MyGroup, MyGroupsSnapshot } from '@/domain/groups'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
 import { MY_GROUPS_KEY } from '@/data/groups'
 import { NEXT_KEY } from '@/data/pending-signin'
@@ -39,7 +39,7 @@ const SUNDAY: MyGroup = {
 /** A query cache already holding `['groups', 'me']` without the invite's group, and no observer. */
 function staleCache() {
   const queryClient = createTestQueryClient()
-  queryClient.setQueryData<MyGroup[]>(MY_GROUPS_KEY, [TEST_GROUP])
+  queryClient.setQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY, { groups: [TEST_GROUP], ended: [] })
   return queryClient
 }
 
@@ -310,7 +310,10 @@ describe('the admin after a second member joins', () => {
     const switcher = screen.getByRole('button', { name: 'Group: Gym Rats, switch group' })
     expect(switcher.querySelector('[data-waiting]')).not.toBeNull()
 
-    vi.mocked(backend.listMyGroups).mockResolvedValue([{ ...waiting, memberCount: 2 }])
+    vi.mocked(backend.listMyGroups).mockResolvedValue({
+      groups: [{ ...waiting, memberCount: 2 }],
+      ended: [],
+    })
     await act(() => queryClient.invalidateQueries({ queryKey: MY_GROUPS_KEY }))
     await vi.waitFor(() =>
       expect(screen.queryByText('Just you in here so far.')).not.toBeInTheDocument(),

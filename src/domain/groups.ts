@@ -259,3 +259,168 @@ export function inviteExpiryText(expiresAt: string): string {
 export function spelledCode(code: string): string {
   return Array.from(code).join(' ')
 }
+
+// ===== Leave, remove and admin handover (Story 1.8) =====
+
+/** Why a membership ended (`memberships.end_reason`). */
+export type EndReason = 'left' | 'removed' | 'account_deleted'
+
+export const END_REASONS: readonly EndReason[] = ['left', 'removed', 'account_deleted']
+
+export function isEndReason(value: unknown): value is EndReason {
+  return typeof value === 'string' && (END_REASONS as readonly string[]).includes(value)
+}
+
+/**
+ * A group the member was in and no longer is (left, removed or account deleted), readable through
+ * their own ended membership: its name for the stale-link Empty state and the removed notice. Only
+ * groups with no current membership of theirs; with several ended rows, the latest.
+ */
+export interface EndedMembership {
+  membershipId: string
+  groupId: string
+  name: string
+  endReason: EndReason
+  /** ISO timestamp. */
+  endedAt: string
+}
+
+/** One read of the member's groups: the current ones and the ones they are no longer in. */
+export interface MyGroupsSnapshot {
+  groups: MyGroup[]
+  ended: EndedMembership[]
+}
+
+/** A current member of a group, as the admin's Members list shows them. */
+export interface GroupMember {
+  membershipId: string
+  userId: string
+  displayName: string
+  role: GroupRole
+  /** ISO timestamp. */
+  joinedAt: string
+}
+
+/** Copy for leaving, removing and the notices around them (Story 1.8 ACs). */
+export const LEAVE_COPY = {
+  members: 'Members',
+  remove: 'Remove',
+  leaveGroup: 'Leave group',
+  saving: 'Saving…',
+  offline: "You're offline. Group changes need a signal.",
+  failed: "Couldn't update the group. Tap Retry.",
+  retry: 'Retry',
+  deletesGroup: 'This deletes the group.',
+  goToday: 'Go to Today',
+  membersFailed: "Couldn't load the members. Check your signal and tap Retry.",
+} as const
+
+/** "Leave Sunday Reset?" */
+export function leaveTitle(groupName: string): string {
+  return `Leave ${groupName}?`
+}
+
+/**
+ * The leave confirm body: the story line, plus "{Name} becomes admin." for an admin with others left
+ * (when the next admin is known), or "This deletes the group." for the last member.
+ */
+export function leaveBody(lastMember: boolean, nextAdminName: string | null): string {
+  const base = 'Your check-ins disappear from the Feed and you leave the leaderboard.'
+  if (lastMember) return `${base} ${LEAVE_COPY.deletesGroup}`
+  if (nextAdminName) return `${base} ${nextAdminName} becomes admin.`
+  return base
+}
+
+/** "Remove Sam?" */
+export function removeTitle(name: string): string {
+  return `Remove ${name}?`
+}
+
+export const REMOVE_BODY =
+  'Their open challenges and freeze requests are cancelled and they leave the leaderboard.'
+
+/** "Remove Sam" (the row's Remove link, named for screen readers). */
+export function removeLabel(name: string): string {
+  return `Remove ${name}`
+}
+
+/** "You're not in Sunday Reset anymore." */
+export function notInGroupText(groupName: string): string {
+  return `You're not in ${groupName} anymore.`
+}
+
+/** "You're no longer in Sunday Reset." */
+export function removedNoticeText(groupName: string): string {
+  return `You're no longer in ${groupName}.`
+}
+
+/** "Everyone else left Sunday Reset. Scoring pauses until someone joins." */
+export function everyoneLeftText(groupName: string): string {
+  return `Everyone else left ${groupName}. Scoring pauses until someone joins.`
+}
+
+function compareText(a: string, b: string): number {
+  if (a === b) return 0
+  return a < b ? -1 : 1
+}
+
+/**
+ * Members in handover order, the same as `private.end_membership`: earliest `joined_at`, ties by
+ * membership id (uuid text order equals the database's uuid order). `joined_at` is compared as the
+ * ISO text the server sends (one format, UTC), not parsed: `Date.parse` drops the microseconds, and
+ * two joins in the same millisecond must not fall back to id order.
+ */
+export function sortMembers(members: readonly GroupMember[]): GroupMember[] {
+  return [...members].sort(
+    (a, b) => compareText(a.joinedAt, b.joinedAt) || compareText(a.membershipId, b.membershipId),
+  )
+}
+
+/** Who becomes admin when `leavingUserId` leaves: the longest-standing other member, or null. */
+export function nextAdmin(
+  members: readonly GroupMember[],
+  leavingUserId: string,
+): GroupMember | null {
+  return sortMembers(members.filter((member) => member.userId !== leavingUserId))[0] ?? null
+}
+
+/** Where focus goes after leaving `leftId`: the earliest joined remaining group, or null. */
+export function nextFocusAfterLeave(groups: readonly MyGroup[], leftId: string): MyGroup | null {
+  return sortByJoined(groups.filter((group) => group.id !== leftId))[0] ?? null
+}
+
+/** The ended membership behind a stale `?g=` or `/me/groups/{id}`, when the member is not back in it. */
+export function endedMembershipFor(
+  snapshot: Pick<MyGroupsSnapshot, 'groups' | 'ended'>,
+  groupId: string | null | undefined,
+): EndedMembership | null {
+  if (!groupId || snapshot.groups.some((group) => group.id === groupId)) return null
+  return snapshot.ended.find((ended) => ended.groupId === groupId) ?? null
+}
+
+/** Removal notices older than this stay silent (e.g. on a fresh device). */
+export const REMOVED_NOTICE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * Removals to tell the member about once: ended with `removed` within the last 7 days and not yet
+ * seen on this device. Newest first.
+ */
+export function removedNotices(
+  ended: readonly EndedMembership[],
+  now: number,
+  seen: (membershipId: string) => boolean,
+): EndedMembership[] {
+  return ended
+    .filter((membership) => {
+      if (membership.endReason !== 'removed') return false
+      const at = Date.parse(membership.endedAt)
+      if (Number.isNaN(at) || now - at > REMOVED_NOTICE_WINDOW_MS) return false
+      return !seen(membership.membershipId)
+    })
+    .sort((a, b) => Date.parse(b.endedAt) - Date.parse(a.endedAt))
+}
+
+/** True when the last-seen member count was 2 or more and the group is now down to 1. */
+export function everyoneElseLeft(lastSeenCount: number | null, memberCount: number): boolean {
+  return lastSeenCount !== null && lastSeenCount >= 2 && memberCount === 1
+}

@@ -7,7 +7,15 @@ import {
 } from '@supabase/supabase-js'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
-import { isInviteStatus, type GroupRole, type MyGroup } from '@/domain/groups'
+import {
+  isEndReason,
+  isInviteStatus,
+  type EndedMembership,
+  type GroupMember,
+  type GroupRole,
+  type MyGroup,
+  type MyGroupsSnapshot,
+} from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
@@ -48,7 +56,10 @@ function toProfile(row: ProfileRow): Profile {
   }
 }
 
-type MembershipRow = Pick<Tables<'memberships'>, 'user_id' | 'role' | 'joined_at' | 'ended_at'>
+type MembershipRow = Pick<
+  Tables<'memberships'>,
+  'id' | 'user_id' | 'role' | 'joined_at' | 'ended_at' | 'end_reason'
+>
 type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
   memberships: MembershipRow[]
 }
@@ -57,26 +68,65 @@ type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
  * Groups with their memberships embedded. RLS returns every group the member was ever in, and for
  * each the member's own rows plus, while they are a current member, everyone's current rows.
  */
-const GROUP_COLUMNS = 'id, name, time_zone, memberships(user_id, role, joined_at, ended_at)'
+const GROUP_COLUMNS =
+  'id, name, time_zone, memberships(id, user_id, role, joined_at, ended_at, end_reason)'
 
-/** Keeps the groups where `userId` has a current membership, with the count of current members. */
-export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroup[] {
+function toRole(role: string): GroupRole {
+  return role === 'admin' ? 'admin' : 'member'
+}
+
+/**
+ * Splits the rows into the groups where `userId` has a current membership (with the count of current
+ * members) and the groups they are no longer in (their latest ended membership of each).
+ */
+export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroupsSnapshot {
   const groups: MyGroup[] = []
+  const ended: EndedMembership[] = []
   for (const row of rows) {
     const current = row.memberships.filter((m) => m.ended_at === null)
     const mine = current.find((m) => m.user_id === userId)
-    if (!mine) continue
-    const role: GroupRole = mine.role === 'admin' ? 'admin' : 'member'
+    if (!mine) {
+      const last = row.memberships
+        .filter((m) => m.user_id === userId && m.ended_at !== null)
+        .sort((a, b) => Date.parse(b.ended_at ?? '') - Date.parse(a.ended_at ?? ''))[0]
+      if (last?.ended_at && isEndReason(last.end_reason)) {
+        ended.push({
+          membershipId: last.id,
+          groupId: row.id,
+          name: row.name,
+          endReason: last.end_reason,
+          endedAt: last.ended_at,
+        })
+      }
+      continue
+    }
     groups.push({
       id: row.id,
       name: row.name,
       timeZone: row.time_zone,
-      role,
+      role: toRole(mine.role),
       joinedAt: mine.joined_at,
       memberCount: current.length,
     })
   }
-  return groups
+  return { groups, ended }
+}
+
+type MemberRow = Pick<Tables<'memberships'>, 'id' | 'user_id' | 'role' | 'joined_at'> & {
+  profiles: Pick<Tables<'profiles'>, 'display_name'> | null
+}
+
+/** A group's current memberships with each member's display name. */
+const MEMBER_COLUMNS = 'id, user_id, role, joined_at, profiles(display_name)'
+
+export function toGroupMembers(rows: readonly MemberRow[]): GroupMember[] {
+  return rows.map((row) => ({
+    membershipId: row.id,
+    userId: row.user_id,
+    displayName: row.profiles?.display_name ?? '',
+    role: toRole(row.role),
+    joinedAt: row.joined_at,
+  }))
 }
 
 /**
@@ -136,7 +186,10 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
   return toAuthUser(user)
 }
 
-/** Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7). */
+/**
+ * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
+ * members, leave and remove (1.8).
+ */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
     const { data, error } = await supabase.auth.getSession()
@@ -263,5 +316,30 @@ export const supabaseBackendAdapter: BackendPort = {
     if (error) throw toBackendError(error, status)
     if (!data) throw new BackendError('unknown', 'join_group returned no id')
     return data
+  },
+
+  async listMembers(groupId) {
+    const { data, error, status } = await supabase
+      .from('memberships')
+      .select(MEMBER_COLUMNS)
+      .eq('group_id', groupId)
+      .is('ended_at', null)
+      .order('joined_at')
+      .order('id')
+    if (error) throw toBackendError(error, status)
+    return toGroupMembers(data ?? [])
+  },
+
+  async leaveGroup(groupId) {
+    const { error, status } = await supabase.rpc('leave_group', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+  },
+
+  async removeMember(groupId, userId) {
+    const { error, status } = await supabase.rpc('remove_member', {
+      p_group_id: groupId,
+      p_user_id: userId,
+    })
+    if (error) throw toBackendError(error, status)
   },
 }

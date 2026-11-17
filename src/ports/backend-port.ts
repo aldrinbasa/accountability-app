@@ -1,5 +1,5 @@
 import type { AuthUser } from '@/domain/auth'
-import type { Invite, InvitePreview, MyGroup } from '@/domain/groups'
+import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 
 /**
@@ -36,8 +36,11 @@ export interface BackendPort {
    */
   saveProfile(displayName: string, timeZone: string): Promise<Profile>
 
-  /** The signed-in member's current groups (ended memberships left out), each with its member count. */
-  listMyGroups(): Promise<MyGroup[]>
+  /**
+   * The signed-in member's current groups, each with its member count, plus the groups they are no
+   * longer in (latest ended membership each, for the stale-link Empty state and the removed notice).
+   */
+  listMyGroups(): Promise<MyGroupsSnapshot>
   /** `create_group`: a new group with the caller as admin and their profile zone. Resolves with its id. */
   createGroup(name: string): Promise<string>
 
@@ -53,4 +56,14 @@ export interface BackendPort {
    * member). Rejects with `invite_expired`, `group_full`, `invite_not_found` or `profile_required`.
    */
   joinGroup(code: string): Promise<string>
+
+  /** A group's current members with display names, in handover order (earliest joined first). */
+  listMembers(groupId: string): Promise<GroupMember[]>
+  /** `leave_group`: ends the caller's membership. Rejects with `not_member`. */
+  leaveGroup(groupId: string): Promise<void>
+  /**
+   * `remove_member` (admin only): ends another member's membership. Rejects with `not_admin`,
+   * `cannot_remove_self` or `not_member`.
+   */
+  removeMember(groupId: string, userId: string): Promise<void>
 }

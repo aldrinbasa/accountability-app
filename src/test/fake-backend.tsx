@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { AuthUser } from '@/domain/auth'
 import { BackendError } from '@/domain/error-codes'
-import type { Invite, InvitePreview, MyGroup } from '@/domain/groups'
+import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
@@ -29,6 +29,31 @@ export const TEST_GROUP: MyGroup = {
   joinedAt: '2026-11-01T10:00:00.000Z',
   memberCount: 3,
 }
+
+/** `TEST_GROUP`'s members: the test user (admin), then Priya and Sam. */
+export const TEST_MEMBERS: GroupMember[] = [
+  {
+    membershipId: 'm-1',
+    userId: TEST_USER.id,
+    displayName: 'Jo',
+    role: 'admin',
+    joinedAt: '2026-11-01T10:00:00.000Z',
+  },
+  {
+    membershipId: 'm-2',
+    userId: 'user-2',
+    displayName: 'Priya',
+    role: 'member',
+    joinedAt: '2026-11-02T10:00:00.000Z',
+  },
+  {
+    membershipId: 'm-3',
+    userId: 'user-3',
+    displayName: 'Sam',
+    role: 'member',
+    joinedAt: '2026-11-03T10:00:00.000Z',
+  },
+]
 
 /** An invite of `TEST_GROUP`, far from expiry (tests that need expiry pass their own). */
 export const TEST_INVITE: Invite = { code: 'K7QX2M', expiresAt: '2099-11-24T10:00:00.000Z' }
@@ -59,12 +84,20 @@ export function createFakeBackend(
     groups?: MyGroup[]
     /** Codes `getInvite` / `joinGroup` know; default `TEST_INVITE.code` → `TEST_INVITE_PREVIEW`. */
     invites?: Record<string, InvitePreview>
+    /** Groups the user is no longer in (default none). */
+    ended?: EndedMembership[]
+    /** Current members per group id; default `TEST_MEMBERS` for `TEST_GROUP`. */
+    members?: Record<string, GroupMember[]>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
   let user = initialUser
   let profile: Profile | null = options.profile === undefined ? TEST_PROFILE : options.profile
   let groups: MyGroup[] = options.groups ?? [TEST_GROUP]
+  let ended: EndedMembership[] = options.ended ?? []
+  const members: Record<string, GroupMember[]> = options.members ?? {
+    [TEST_GROUP.id]: TEST_MEMBERS,
+  }
   let created = 0
   let invitesMade = 0
   const invites: Record<string, InvitePreview> = options.invites ?? {
@@ -101,7 +134,7 @@ export function createFakeBackend(
       }
       return profile
     }),
-    listMyGroups: vi.fn(async () => groups),
+    listMyGroups: vi.fn(async () => ({ groups, ended })),
     createGroup: vi.fn(async (name: string) => {
       created += 1
       const id = `group-new-${created}`
@@ -148,6 +181,37 @@ export function createFakeBackend(
         ]
       }
       return invite.groupId
+    }),
+    listMembers: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return members[groupId] ?? []
+    }),
+    leaveGroup: vi.fn(async (groupId: string) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      groups = groups.filter((g) => g.id !== groupId)
+      // The last member's leave deletes the group, so nothing is left to read.
+      if (group.memberCount > 1) {
+        ended = [
+          ...ended,
+          {
+            membershipId: `m-${groupId}-left`,
+            groupId,
+            name: group.name,
+            endReason: 'left',
+            endedAt: new Date().toISOString(),
+          },
+        ]
+      }
+    }),
+    removeMember: vi.fn(async (groupId: string, userId: string) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group || group.role !== 'admin') throw new BackendError('not_admin')
+      if (userId === (user?.id ?? TEST_USER.id)) throw new BackendError('cannot_remove_self')
+      const current = members[groupId] ?? []
+      if (!current.some((member) => member.userId === userId)) throw new BackendError('not_member')
+      members[groupId] = current.filter((member) => member.userId !== userId)
+      groups = groups.map((g) => (g.id === groupId ? { ...g, memberCount: g.memberCount - 1 } : g))
     }),
   }
 }

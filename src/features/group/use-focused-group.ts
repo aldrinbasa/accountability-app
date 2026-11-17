@@ -1,8 +1,14 @@
 import { useCallback, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { resolveFocusedGroup, type MyGroup } from '@/domain/groups'
+import {
+  endedMembershipFor,
+  nextFocusAfterLeave,
+  resolveFocusedGroup,
+  type EndedMembership,
+  type MyGroup,
+} from '@/domain/groups'
 import { getStoredFocusedGroup, setStoredFocusedGroup } from '@/data/focused-group'
-import { useMyGroups } from '@/data/groups'
+import { useEndedMemberships, useMyGroups } from '@/data/groups'
 
 /** The search string with `?g=` set to `groupId`, or removed for null. Other params are kept. */
 export function searchWithGroup(search: string, groupId: string | null): string {
@@ -56,17 +62,36 @@ export function useFocusedGroup(): FocusedGroup {
 }
 
 /**
+ * The group `?g=` points at when the member is no longer in it (left, removed), so the shell shows
+ * "You're not in {Group} anymore." instead of a tab. Null otherwise, while loading, and when not
+ * `active` (the shell passes true on Today, Feed and Board only; group settings has its own).
+ * Also null when that group is the stored focused group: the URL is then the app's own synced
+ * `?g=` (or the PWA reopening on it), so focus moves on as usual and Today tells a removal by toast.
+ */
+export function useStaleGroupLink(active: boolean): EndedMembership | null {
+  const { data: groups } = useMyGroups()
+  const { data: ended } = useEndedMemberships()
+  const { search } = useLocation()
+  if (!active || !groups || !ended) return null
+  const stale = endedMembershipFor({ groups, ended }, new URLSearchParams(search).get('g'))
+  if (!stale || stale.groupId === getStoredFocusedGroup()) return null
+  return stale
+}
+
+/**
  * Keeps the URL and the device store on the resolved focus. Once the groups load and the resolved
  * id differs from `?g=`, the URL is replaced (never pushed, and the location state is kept, so tab
- * history is not disturbed); with no groups `?g=` is dropped. Mounted once, in the app shell.
+ * history is not disturbed); with no groups `?g=` is dropped. `paused` while the shell shows the
+ * "not in {Group} anymore" state for an ended group's `?g=`, which must stay in the URL until "Go to
+ * Today". Mounted once, in the app shell.
  */
-export function useSyncFocusedGroup(): void {
+export function useSyncFocusedGroup(paused = false): void {
   const { group, groups } = useFocusedGroup()
   const location = useLocation()
   const navigate = useNavigate()
   const urlId = new URLSearchParams(location.search).get('g')
-  // undefined: groups not loaded yet, so nothing to sync.
-  const resolvedId = groups === undefined ? undefined : (group?.id ?? null)
+  // undefined: groups not loaded yet (or a stale link shows), so nothing to sync.
+  const resolvedId = groups === undefined || paused ? undefined : (group?.id ?? null)
 
   useEffect(() => {
     if (resolvedId === undefined) return
@@ -92,6 +117,34 @@ export function useOpenGroupOnToday(): (groupId: string) => void {
     (groupId: string) => {
       setStoredFocusedGroup(groupId)
       void navigate({ pathname: '/today', search: searchWithGroup('', groupId) }, { replace: true })
+    },
+    [navigate],
+  )
+}
+
+/** "Go to Today" from a stale link: `/today` with `?g=` dropped, so focus resolves afresh. */
+export function useGoToTodayWithoutGroup(): () => void {
+  const navigate = useNavigate()
+  const { search } = useLocation()
+  return useCallback(() => {
+    void navigate({ pathname: '/today', search: searchWithGroup(search, null) }, { replace: true })
+  }, [navigate, search])
+}
+
+/**
+ * After leaving a group: focus the next current group (earliest joined) and open Today on it, or
+ * forget the focus and open Today (the Create or join a group screen) when none remain.
+ */
+export function useMoveFocusAfterLeave(): (remaining: readonly MyGroup[], leftId: string) => void {
+  const navigate = useNavigate()
+  return useCallback(
+    (remaining: readonly MyGroup[], leftId: string) => {
+      const next = nextFocusAfterLeave(remaining, leftId)
+      setStoredFocusedGroup(next?.id ?? null)
+      void navigate(
+        { pathname: '/today', search: searchWithGroup('', next?.id ?? null) },
+        { replace: true },
+      )
     },
     [navigate],
   )

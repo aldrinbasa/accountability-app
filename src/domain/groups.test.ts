@@ -18,6 +18,23 @@ import {
   switcherLabel,
   trimGroupName,
   validateGroupName,
+  endedMembershipFor,
+  everyoneElseLeft,
+  everyoneLeftText,
+  isEndReason,
+  leaveBody,
+  leaveTitle,
+  nextAdmin,
+  nextFocusAfterLeave,
+  notInGroupText,
+  removedNotices,
+  removedNoticeText,
+  removeLabel,
+  removeTitle,
+  REMOVE_BODY,
+  sortMembers,
+  type EndedMembership,
+  type GroupMember,
   type MyGroup,
 } from '@/domain/groups'
 
@@ -135,5 +152,103 @@ describe('invites and joining', () => {
     }
     expect(isInviteStatus('open')).toBe(false)
     expect(isInviteStatus(null)).toBe(false)
+  })
+})
+
+describe('leave, remove and admin handover', () => {
+  function member(membershipId: string, userId: string, joinedAt: string): GroupMember {
+    return { membershipId, userId, displayName: userId, role: 'member', joinedAt }
+  }
+
+  it('orders members like the database handover: earliest joined, ties by membership id', () => {
+    const jo = member('m-b', 'jo', '2026-11-01T10:00:00Z')
+    const sam = member('m-c', 'sam', '2026-11-02T10:00:00Z')
+    const priya = member('m-a', 'priya', '2026-11-02T10:00:00Z')
+    expect(sortMembers([sam, jo, priya]).map((m) => m.userId)).toEqual(['jo', 'priya', 'sam'])
+  })
+
+  it('compares joined_at as text, so microseconds within one millisecond still count', () => {
+    const early = member('m-z', 'early', '2026-11-02T10:00:00.123456+00:00')
+    const late = member('m-a', 'late', '2026-11-02T10:00:00.123789+00:00')
+    expect(sortMembers([late, early]).map((m) => m.userId)).toEqual(['early', 'late'])
+    expect(
+      nextAdmin([late, early, member('m-0', 'jo', '2026-11-01T10:00:00+00:00')], 'jo')?.userId,
+    ).toBe('early')
+  })
+
+  it('nextAdmin is the longest-standing other member, or null when none is left', () => {
+    const jo = member('m-1', 'jo', '2026-11-01T10:00:00Z')
+    const sam = member('m-3', 'sam', '2026-11-03T10:00:00Z')
+    const priya = member('m-2', 'priya', '2026-11-02T10:00:00Z')
+    expect(nextAdmin([jo, sam, priya], 'jo')?.userId).toBe('priya')
+    expect(nextAdmin([jo], 'jo')).toBeNull()
+  })
+
+  it('leave copy: the base line, plus the handover or the delete line', () => {
+    expect(leaveTitle('Sunday Reset')).toBe('Leave Sunday Reset?')
+    const base = 'Your check-ins disappear from the Feed and you leave the leaderboard.'
+    expect(leaveBody(false, null)).toBe(base)
+    expect(leaveBody(false, 'Priya')).toBe(`${base} Priya becomes admin.`)
+    expect(leaveBody(true, null)).toBe(`${base} This deletes the group.`)
+  })
+
+  it('remove and notice copy', () => {
+    expect(removeTitle('Sam')).toBe('Remove Sam?')
+    expect(REMOVE_BODY).toBe(
+      'Their open challenges and freeze requests are cancelled and they leave the leaderboard.',
+    )
+    expect(removeLabel('Sam')).toBe('Remove Sam')
+    expect(notInGroupText('Sunday Reset')).toBe("You're not in Sunday Reset anymore.")
+    expect(removedNoticeText('Sunday Reset')).toBe("You're no longer in Sunday Reset.")
+    expect(everyoneLeftText('Sunday Reset')).toBe(
+      'Everyone else left Sunday Reset. Scoring pauses until someone joins.',
+    )
+  })
+
+  it('focus after leaving goes to the earliest joined remaining group, or null', () => {
+    expect(nextFocusAfterLeave([A, B, C], 'c')).toBe(A)
+    expect(nextFocusAfterLeave([A], 'a')).toBeNull()
+  })
+
+  it('knows the end reasons', () => {
+    expect(isEndReason('removed')).toBe(true)
+    expect(isEndReason('kicked')).toBe(false)
+  })
+
+  const ended = (
+    membershipId: string,
+    endReason: EndedMembership['endReason'],
+    endedAt: string,
+    groupId = membershipId,
+  ): EndedMembership => ({ membershipId, groupId, name: groupId, endReason, endedAt })
+
+  it('endedMembershipFor finds a group the member is no longer in, never a current one', () => {
+    const old = ended('m-x', 'left', '2026-11-01T00:00:00Z', 'x')
+    const back = ended('m-a', 'left', '2026-11-01T00:00:00Z', 'a')
+    const snapshot = { groups: [A], ended: [old, back] }
+    expect(endedMembershipFor(snapshot, 'x')).toBe(old)
+    expect(endedMembershipFor(snapshot, 'a')).toBeNull()
+    expect(endedMembershipFor(snapshot, 'nope')).toBeNull()
+    expect(endedMembershipFor(snapshot, null)).toBeNull()
+  })
+
+  it('removedNotices: removals within 7 days not yet seen, newest first', () => {
+    const now = Date.parse('2026-11-20T12:00:00Z')
+    const recent = ended('m-1', 'removed', '2026-11-19T12:00:00Z')
+    const newer = ended('m-2', 'removed', '2026-11-20T11:00:00Z')
+    const edge = ended('m-3', 'removed', '2026-11-13T12:00:00Z')
+    const old = ended('m-4', 'removed', '2026-11-13T11:59:59Z')
+    const left = ended('m-5', 'left', '2026-11-20T11:00:00Z')
+    const seen = ended('m-6', 'removed', '2026-11-20T11:00:00Z')
+    const result = removedNotices([recent, newer, edge, old, left, seen], now, (id) => id === 'm-6')
+    expect(result.map((m) => m.membershipId)).toEqual(['m-2', 'm-1', 'm-3'])
+  })
+
+  it('everyoneElseLeft: last seen 2 or more and now 1', () => {
+    expect(everyoneElseLeft(2, 1)).toBe(true)
+    expect(everyoneElseLeft(5, 1)).toBe(true)
+    expect(everyoneElseLeft(1, 1)).toBe(false)
+    expect(everyoneElseLeft(null, 1)).toBe(false)
+    expect(everyoneElseLeft(3, 2)).toBe(false)
   })
 })

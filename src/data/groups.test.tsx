@@ -1,10 +1,19 @@
 import type { ReactNode } from 'react'
 import { renderHook, waitFor } from '@testing-library/react'
+import { BackendError } from '@/domain/error-codes'
+import type { EndedMembership, MyGroupsSnapshot } from '@/domain/groups'
+import { getLastSeenCount } from '@/data/group-notices'
 import {
   inviteKey,
   invitePreviewKey,
+  membersKey,
   MY_GROUPS_KEY,
+  remainingGroups,
   useCreateGroup,
+  useEndedMemberships,
+  useLeaveGroup,
+  useMembers,
+  useRemoveMember,
   useInvite,
   useInvitePreview,
   useJoinGroup,
@@ -17,6 +26,7 @@ import {
   TEST_GROUP,
   TEST_INVITE,
   TEST_INVITE_PREVIEW,
+  TEST_MEMBERS,
   withBackend,
 } from '@/test/fake-backend'
 
@@ -33,7 +43,7 @@ describe('group data', () => {
     const { result } = renderHook(() => useMyGroups(), { wrapper })
     await waitFor(() => expect(result.current.data).toEqual([TEST_GROUP]))
     expect(backend.listMyGroups).toHaveBeenCalledTimes(1)
-    expect(queryClient.getQueryData(MY_GROUPS_KEY)).toEqual([TEST_GROUP])
+    expect(queryClient.getQueryData(MY_GROUPS_KEY)).toEqual({ groups: [TEST_GROUP], ended: [] })
   })
 
   it('useCreateGroup calls create_group and refetches the groups before resolving', async () => {
@@ -45,9 +55,12 @@ describe('group data', () => {
 
     const id = await result.current.create.mutateAsync('Sunday Reset')
     expect(backend.createGroup).toHaveBeenCalledWith('Sunday Reset')
-    expect(queryClient.getQueryData(MY_GROUPS_KEY)).toEqual([
-      expect.objectContaining({ id, name: 'Sunday Reset', role: 'admin', memberCount: 1 }),
-    ])
+    expect(queryClient.getQueryData(MY_GROUPS_KEY)).toEqual({
+      groups: [
+        expect.objectContaining({ id, name: 'Sunday Reset', role: 'admin', memberCount: 1 }),
+      ],
+      ended: [],
+    })
   })
 })
 
@@ -97,12 +110,98 @@ describe('invite data', () => {
     const id = await result.current.join.mutateAsync('K7QX2M')
     expect(id).toBe(TEST_INVITE_PREVIEW.groupId)
     expect(backend.joinGroup).toHaveBeenCalledWith('K7QX2M')
-    expect(queryClient.getQueryData<{ id: string }[]>(MY_GROUPS_KEY)?.map((g) => g.id)).toEqual([
-      'group-1',
-      TEST_INVITE_PREVIEW.groupId,
-    ])
+    expect(
+      queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)?.groups.map((g) => g.id),
+    ).toEqual(['group-1', TEST_INVITE_PREVIEW.groupId])
     expect(queryClient.getQueryData<{ status: string }>(invitePreviewKey('K7QX2M'))?.status).toBe(
       'member',
     )
+  })
+})
+
+describe('members, leave and remove data', () => {
+  const ENDED: EndedMembership = {
+    membershipId: 'm-old',
+    groupId: 'group-old',
+    name: 'Old crew',
+    endReason: 'removed',
+    endedAt: '2026-11-10T10:00:00.000Z',
+  }
+
+  it("useEndedMemberships reads the ended part of ['groups', 'me']", async () => {
+    const { backend, wrapper } = setup(createFakeBackend(undefined, { ended: [ENDED] }))
+    const { result } = renderHook(() => ({ ended: useEndedMemberships(), groups: useMyGroups() }), {
+      wrapper,
+    })
+    await waitFor(() => expect(result.current.ended.data).toEqual([ENDED]))
+    expect(result.current.groups.data).toEqual([TEST_GROUP])
+    expect(backend.listMyGroups).toHaveBeenCalledTimes(1)
+  })
+
+  it("useMembers reads ['members', groupId], only when enabled", async () => {
+    const { backend, queryClient, wrapper } = setup()
+    const disabled = renderHook(() => useMembers('group-1', false), { wrapper })
+    expect(disabled.result.current.fetchStatus).toBe('idle')
+    expect(backend.listMembers).not.toHaveBeenCalled()
+
+    const { result } = renderHook(() => useMembers('group-1', true), { wrapper })
+    await waitFor(() => expect(result.current.data).toEqual(TEST_MEMBERS))
+    expect(queryClient.getQueryData(membersKey('group-1'))).toEqual(TEST_MEMBERS)
+  })
+
+  it("useLeaveGroup leaves, refetches ['groups', 'me'] with no observer and drops the group's queries", async () => {
+    const other = { ...TEST_GROUP, id: 'group-2', name: 'Sunday Reset' }
+    const { backend, queryClient, wrapper } = setup(
+      createFakeBackend(undefined, { groups: [TEST_GROUP, other] }),
+    )
+    queryClient.setQueryData(MY_GROUPS_KEY, { groups: [TEST_GROUP, other], ended: [] })
+    queryClient.setQueryData(membersKey('group-1'), TEST_MEMBERS)
+    queryClient.setQueryData(inviteKey('group-1'), TEST_INVITE)
+    const { result } = renderHook(() => useLeaveGroup('group-1'), { wrapper })
+
+    await result.current.mutateAsync()
+    expect(backend.leaveGroup).toHaveBeenCalledWith('group-1')
+    const snapshot = queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)
+    expect(snapshot?.groups.map((g) => g.id)).toEqual(['group-2'])
+    expect(snapshot?.ended.map((e) => e.groupId)).toEqual(['group-1'])
+    expect(remainingGroups(queryClient, 'group-1').map((g) => g.id)).toEqual(['group-2'])
+    expect(queryClient.getQueryData(membersKey('group-1'))).toBeUndefined()
+    expect(queryClient.getQueryData(inviteKey('group-1'))).toBeUndefined()
+  })
+
+  it('useLeaveGroup treats not_member as already left and rejects other failures', async () => {
+    const { backend, wrapper } = setup()
+    const { result } = renderHook(() => useLeaveGroup('group-1'), { wrapper })
+    vi.mocked(backend.leaveGroup).mockRejectedValueOnce(new BackendError('not_member'))
+    await expect(result.current.mutateAsync()).resolves.toBeUndefined()
+    vi.mocked(backend.leaveGroup).mockRejectedValueOnce(new BackendError('network'))
+    await expect(result.current.mutateAsync()).rejects.toMatchObject({ code: 'network' })
+  })
+
+  it('useRemoveMember treats not_member as already gone and rejects other failures', async () => {
+    const { backend, wrapper } = setup()
+    const { result } = renderHook(() => useRemoveMember('group-1'), { wrapper })
+    vi.mocked(backend.removeMember).mockRejectedValueOnce(new BackendError('not_member'))
+    await expect(result.current.mutateAsync('user-3')).resolves.toBeUndefined()
+    vi.mocked(backend.removeMember).mockRejectedValueOnce(new BackendError('network'))
+    await expect(result.current.mutateAsync('user-3')).rejects.toMatchObject({ code: 'network' })
+  })
+
+  it('useRemoveMember removes, refreshes members and groups, and stores the new member count', async () => {
+    const { backend, queryClient, wrapper } = setup()
+    const { result } = renderHook(
+      () => ({ members: useMembers('group-1', true), remove: useRemoveMember('group-1') }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.members.data).toEqual(TEST_MEMBERS))
+    await result.current.remove.mutateAsync('user-3')
+    expect(backend.removeMember).toHaveBeenCalledWith('group-1', 'user-3')
+    expect(
+      queryClient.getQueryData<{ userId: string }[]>(membersKey('group-1'))?.map((m) => m.userId),
+    ).toEqual(['user-1', 'user-2'])
+    expect(queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)?.groups[0]?.memberCount).toBe(
+      2,
+    )
+    expect(getLastSeenCount('group-1')).toBe(2)
   })
 })

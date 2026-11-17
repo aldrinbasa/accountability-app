@@ -34,6 +34,11 @@ describe('error-code table (AD-14)', () => {
     expect(errorCopy('group_full')).toMatch(/10 is the max/)
   })
 
+  it('maps the leave and remove codes to copy', () => {
+    expect(isRpcErrorCode('cannot_remove_self')).toBe(true)
+    expect(errorCopy('cannot_remove_self')).toMatch(/Leave group/)
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)

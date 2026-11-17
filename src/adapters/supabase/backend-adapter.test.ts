@@ -14,10 +14,13 @@ const db = vi.hoisted(() => {
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
+    is: vi.fn(),
+    order: vi.fn(),
     maybeSingle: vi.fn(),
   }
   query.select.mockReturnValue(query)
   query.eq.mockReturnValue(query)
+  query.is.mockReturnValue(query)
   return { query, from: vi.fn(() => query), rpc: vi.fn() }
 })
 
@@ -228,14 +231,22 @@ describe('profiles', () => {
 })
 
 describe('groups', () => {
-  const member = (user_id: string, role: string, ended_at: string | null = null) => ({
+  const member = (
+    user_id: string,
+    role: string,
+    ended_at: string | null = null,
+    end_reason: string | null = ended_at ? 'left' : null,
+    id = `m-${user_id}-${ended_at ?? 'current'}`,
+  ) => ({
+    id,
     user_id,
     role,
     joined_at: '2026-11-01T10:00:00+00:00',
     ended_at,
+    end_reason,
   })
 
-  it('lists current groups with role, join time and current member count', async () => {
+  it('lists current groups with role, join time and current member count, and ended ones', async () => {
     auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
     db.query.select.mockReturnValueOnce(
       Promise.resolve({
@@ -255,23 +266,55 @@ describe('groups', () => {
             id: 'g2',
             name: 'Old crew',
             time_zone: 'UTC',
-            memberships: [member('user-1', 'member', '2026-11-03T00:00:00+00:00')],
+            memberships: [
+              member('user-1', 'member', '2026-11-03T00:00:00+00:00', 'left', 'm-old'),
+              member('user-1', 'member', '2026-11-05T00:00:00+00:00', 'removed', 'm-last'),
+            ],
+          },
+          // Left once and back in: current, not ended.
+          {
+            id: 'g3',
+            name: 'Back again',
+            time_zone: 'UTC',
+            memberships: [
+              member('user-1', 'member', '2026-11-03T00:00:00+00:00'),
+              member('user-1', 'member'),
+            ],
           },
         ],
         error: null,
         status: 200,
       }),
     )
-    await expect(adapter.listMyGroups()).resolves.toEqual([
-      {
-        id: 'g1',
-        name: 'Gym Rats',
-        timeZone: 'Asia/Manila',
-        role: 'admin',
-        joinedAt: '2026-11-01T10:00:00+00:00',
-        memberCount: 2,
-      },
-    ])
+    await expect(adapter.listMyGroups()).resolves.toEqual({
+      groups: [
+        {
+          id: 'g1',
+          name: 'Gym Rats',
+          timeZone: 'Asia/Manila',
+          role: 'admin',
+          joinedAt: '2026-11-01T10:00:00+00:00',
+          memberCount: 2,
+        },
+        {
+          id: 'g3',
+          name: 'Back again',
+          timeZone: 'UTC',
+          role: 'member',
+          joinedAt: '2026-11-01T10:00:00+00:00',
+          memberCount: 1,
+        },
+      ],
+      ended: [
+        {
+          membershipId: 'm-last',
+          groupId: 'g2',
+          name: 'Old crew',
+          endReason: 'removed',
+          endedAt: '2026-11-05T00:00:00+00:00',
+        },
+      ],
+    })
     expect(db.from).toHaveBeenCalledWith('groups')
   })
 
@@ -376,5 +419,75 @@ describe('invites', () => {
       status: 0,
     })
     expect(await backendCodeOf(adapter.joinGroup('K7QX2M'))).toBe('network')
+  })
+})
+
+describe('members, leave and remove', () => {
+  it("lists a group's current members with display names, in handover order", async () => {
+    db.query.order.mockReturnValueOnce(db.query).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'm1',
+          user_id: 'user-1',
+          role: 'admin',
+          joined_at: '2026-11-01T10:00:00+00:00',
+          profiles: { display_name: 'Jo' },
+        },
+        {
+          id: 'm2',
+          user_id: 'user-2',
+          role: 'member',
+          joined_at: '2026-11-02T10:00:00+00:00',
+          profiles: { display_name: 'Sam' },
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.listMembers('g1')).resolves.toEqual([
+      {
+        membershipId: 'm1',
+        userId: 'user-1',
+        displayName: 'Jo',
+        role: 'admin',
+        joinedAt: '2026-11-01T10:00:00+00:00',
+      },
+      {
+        membershipId: 'm2',
+        userId: 'user-2',
+        displayName: 'Sam',
+        role: 'member',
+        joinedAt: '2026-11-02T10:00:00+00:00',
+      },
+    ])
+    expect(db.from).toHaveBeenCalledWith('memberships')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g1')
+    expect(db.query.is).toHaveBeenCalledWith('ended_at', null)
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'joined_at')
+    expect(db.query.order).toHaveBeenNthCalledWith(2, 'id')
+  })
+
+  it('leave_group passes the group id and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await expect(adapter.leaveGroup('g1')).resolves.toBeUndefined()
+    expect(db.rpc).toHaveBeenCalledWith('leave_group', { p_group_id: 'g1' })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.leaveGroup('g1'))).toBe('not_member')
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.leaveGroup('g1'))).toBe('network')
+  })
+
+  it('remove_member passes the group and user ids and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await expect(adapter.removeMember('g1', 'user-2')).resolves.toBeUndefined()
+    expect(db.rpc).toHaveBeenCalledWith('remove_member', { p_group_id: 'g1', p_user_id: 'user-2' })
+    for (const code of ['not_admin', 'cannot_remove_self', 'not_member']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.removeMember('g1', 'user-2'))).toBe(code)
+    }
   })
 })

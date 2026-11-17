@@ -13,8 +13,11 @@ export interface EmptyStateProps {
   icon: PhosphorIcon
   /** The handwritten line (`hand-lg`). */
   line: string
-  /** The required `body-sm` muted sentence that carries the meaning. */
-  body: string
+  /**
+   * The `body-sm` muted sentence that carries the meaning. Leave it out only when the line already
+   * says everything (e.g. "You're not in Sunday Reset anymore.").
+   */
+  body?: string
   /** At most one primary action. */
   action?: EmptyStateAction
   className?: string
@@ -29,7 +32,7 @@ export function EmptyState({ icon, line, body, action, className }: EmptyStatePr
     >
       <Icon icon={icon} size={64} />
       <p className="type-hand-lg">{line}</p>
-      <p className="max-w-[30ch] type-body-sm text-muted">{body}</p>
+      {body ? <p className="max-w-[30ch] type-body-sm text-muted">{body}</p> : null}
       {action ? (
         <Button variant="primary" className="mt-2" onClick={action.onClick}>
           {action.label}
