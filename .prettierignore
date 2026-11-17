@@ -9,3 +9,5 @@ _bmad-output
 docs
 supabase/.temp
 src/adapters/supabase/database.types.ts
+playwright-report
+test-results

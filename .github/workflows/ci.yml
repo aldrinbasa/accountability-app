@@ -4,9 +4,9 @@ name: CI
 #
 # Release rhythm: one branch per epic (e.g. `epic-1`), pushed for every story; merged to `main`
 # only at epic end.
-#   - push to any branch except main -> verify + db-test -> auth config + migrations + functions to proofy-dev
+#   - push to any branch except main -> verify + db-test + e2e -> auth config + migrations + functions to proofy-dev
 #                                       -> deploy Vercel Preview -> alias it to the stable dev URL
-#   - push/merge to main             -> verify + db-test -> (approval on the `prod` environment)
+#   - push/merge to main             -> verify + db-test + e2e -> (approval on the `prod` environment)
 #                                       -> auth config + migrations + functions to proofy-prod
 #                                       -> deploy Vercel Production
 # A failing job or step blocks every later deploy, so the app never goes live ahead of its
@@ -112,10 +112,61 @@ jobs:
           echo "::error::Types were stale. Committed the regenerated file as $(git rev-parse --short HEAD); its CI run verifies and deploys. Pull before your next local change."
           exit 1
 
+  # Browser end-to-end tests (Story 1.9): Playwright drives the built app against this runner's
+  # LOCAL Supabase stack (real auth and database, Mailpit catches the sign-in codes). No secrets,
+  # never a hosted project. Both deploy jobs wait for it.
+  e2e:
+    name: Browser end-to-end · Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      # Keeps kong (API gateway), postgrest, auth (gotrue) and mailpit; the app needs nothing else yet.
+      - name: Start local Supabase (API, auth, database, Mailpit)
+        run: >-
+          supabase start
+          -x realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor
+      # The local API URL and anon key are the CLI's fixed local values, not secrets.
+      - name: Point the build at the local stack
+        run: |
+          supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          echo "Variables from supabase status:"; sed -E 's/=.*//' "$RUNNER_TEMP/supabase.env"
+          set -a; . "$RUNNER_TEMP/supabase.env"; set +a
+          if [ -z "${API_URL:-}" ] || [ -z "${ANON_KEY:-}" ]; then
+            echo "::error::supabase status did not report API_URL and ANON_KEY."
+            exit 1
+          fi
+          echo "VITE_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
+          echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          if [ -n "${MAILPIT_URL:-}" ]; then echo "MAILPIT_URL=$MAILPIT_URL" >> "$GITHUB_ENV"; fi
+      - run: npm run build
+      - name: Install Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Playwright
+        run: npm run test:e2e
+      - name: Upload Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
   deploy-preview:
     name: Deploy Preview (dev)
     if: github.ref != 'refs/heads/main'
-    needs: [verify, db-test]
+    needs: [verify, db-test, e2e]
     runs-on: ubuntu-latest
     # One run at a time touches proofy-dev and the stable dev alias; queue, never cancel.
     # Shared with the manual Supabase Deploy (dev).
@@ -170,7 +221,7 @@ jobs:
   deploy-prod:
     name: Deploy production
     if: github.ref == 'refs/heads/main'
-    needs: [verify, db-test]
+    needs: [verify, db-test, e2e]
     runs-on: ubuntu-latest
     # Shared with the manual Supabase Deploy (prod).
     concurrency:

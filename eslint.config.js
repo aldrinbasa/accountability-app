@@ -136,6 +136,13 @@ export default tseslint.config(
     rules: { 'boundaries/dependencies': 'off' },
   },
   {
+    // Playwright e2e tests run in Node and drive the built app from outside, so the layer map does
+    // not apply (they import nothing from src). They never call `fetch`; Mailpit is read through
+    // Playwright's request context.
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: { globals: { ...globals.node } },
+  },
+  {
     files: ['src/sw.ts'],
     languageOptions: { globals: { ...globals.serviceworker } },
   },
