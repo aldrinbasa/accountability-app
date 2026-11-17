@@ -131,6 +131,12 @@ isOneToOne: false
 "join_group":
 { Args: { "p_code": string }; Returns: string
                            },
+"leave_group":
+{ Args: { "p_group_id": string }; Returns: undefined
+                           },
+"remove_member":
+{ Args: { "p_group_id": string,"p_user_id": string }; Returns: undefined
+                           },
 "save_profile":
 { Args: { "p_display_name": string,"p_time_zone": string }; Returns: {
               "avatar_path": string | null,
