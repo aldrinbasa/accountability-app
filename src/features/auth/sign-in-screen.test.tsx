@@ -20,13 +20,13 @@ async function openSignIn(path = '/signin', backend = createFakeBackend(null)) {
 }
 
 describe('SignInScreen: start', () => {
-  it('shows Continue with Google and the labelled email field with "Send link and code"', async () => {
+  it('shows Continue with Google and the labelled email field with "Send code"', async () => {
     await openSignIn()
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument()
     const email = screen.getByLabelText('Email')
     expect(email).toHaveAttribute('type', 'email')
     expect(email).toHaveAttribute('autocomplete', 'email')
-    expect(screen.getByRole('button', { name: 'Send link and code' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send code' })).toBeInTheDocument()
   })
 })
 
@@ -37,7 +37,7 @@ describe('SignInScreen: send', () => {
     const { router, backend } = await openSignIn()
 
     await user.type(screen.getByLabelText('Email'), 'jo@example.com')
-    await user.click(screen.getByRole('button', { name: 'Send link and code' }))
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
 
     expect(backend.sendEmailCode).toHaveBeenCalledWith(
       'jo@example.com',
@@ -48,8 +48,8 @@ describe('SignInScreen: send', () => {
     expect(stored.email).toBe('jo@example.com')
     expect(typeof stored.sentAt).toBe('number')
     expect(
-      await screen.findByText(/We sent a link and a 6-digit code to/, { exact: false }),
-    ).toHaveTextContent('We sent a link and a 6-digit code to jo@example.com.')
+      await screen.findByText(/We sent a 6-digit code to/, { exact: false }),
+    ).toHaveTextContent('We sent a 6-digit code to jo@example.com.')
   })
 
   it('an invalid email shows the Field error, linked and focused, cleared on input', async () => {
@@ -58,7 +58,7 @@ describe('SignInScreen: send', () => {
     const email = screen.getByLabelText('Email')
 
     await user.type(email, 'jo@example')
-    await user.click(screen.getByRole('button', { name: 'Send link and code' }))
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
 
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent("That doesn't look like an email address.")
@@ -76,7 +76,7 @@ describe('SignInScreen: send', () => {
     const { backend } = await openSignIn()
     setOnline(false)
     await user.type(screen.getByLabelText('Email'), 'jo@example.com')
-    await user.click(screen.getByRole('button', { name: 'Send link and code' }))
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
     expect(screen.getByRole('alert')).toHaveTextContent("You're offline. Connect to sign in.")
     expect(backend.sendEmailCode).not.toHaveBeenCalled()
   })
@@ -89,7 +89,7 @@ describe('SignInScreen: send', () => {
     })
     const { router } = await openSignIn('/signin', backend)
     await user.type(screen.getByLabelText('Email'), 'jo@example.com')
-    await user.click(screen.getByRole('button', { name: 'Send link and code' }))
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "Couldn't send the email. Try again.",
     )
@@ -105,7 +105,7 @@ describe('SignInScreen: send', () => {
     })
     await openSignIn('/signin', backend)
     await user.type(screen.getByLabelText('Email'), 'jo@example.com')
-    await user.click(screen.getByRole('button', { name: 'Send link and code' }))
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
       "You're offline. Connect to sign in.",
     )

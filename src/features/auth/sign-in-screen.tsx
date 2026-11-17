@@ -224,7 +224,7 @@ export function SignInScreen() {
           }
         />
         <Button type="submit" variant="primary" fullWidth busy={sending} busyLabel="Sending…">
-          Send link and code
+          Send code
         </Button>
       </form>
     </div>

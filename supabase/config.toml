@@ -267,13 +267,13 @@ admin_email = "env(AUTH_SMTP_SENDER)"
 sender_name = "Proofy"
 
 # One template for both: hosted projects send "Confirm signup" to new members and "Magic link" to
-# returning ones. It carries the link and the 6-digit code.
+# returning ones. Code only (a link would open Safari, not the installed app); the code is in the subject too.
 [auth.email.template.magic_link]
-subject = "Your Proofy sign-in link and code"
+subject = "{{ .Token }} is your Proofy code"
 content_path = "./supabase/templates/magic-link.html"
 
 [auth.email.template.confirmation]
-subject = "Your Proofy sign-in link and code"
+subject = "{{ .Token }} is your Proofy code"
 content_path = "./supabase/templates/magic-link.html"
 
 # Uncomment to customize notification email template

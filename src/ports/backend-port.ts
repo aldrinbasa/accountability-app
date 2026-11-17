@@ -11,7 +11,7 @@ export interface BackendPort {
   getSession(): Promise<AuthUser | null>
   /** Subscribe to session changes (sign-in, sign-out, other tabs). Returns an unsubscribe function. */
   onAuthChange(callback: (user: AuthUser | null) => void): () => void
-  /** Email a magic link and a 6-digit code. The link points at `redirectTo` plus the token hash. */
+  /** Email a 6-digit code (the email is code-only; `redirectTo` is kept for a future link). */
   sendEmailCode(email: string, redirectTo: string): Promise<void>
   /** Verify the 6-digit code from the email. Creates the session in this browser context. */
   verifyEmailCode(email: string, code: string): Promise<AuthUser>

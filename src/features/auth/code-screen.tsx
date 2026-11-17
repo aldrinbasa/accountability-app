@@ -127,8 +127,7 @@ function CodeForm({
           Check your email.
         </h1>
         <p className="type-body">
-          We sent a link and a 6-digit code to{' '}
-          <strong className="break-all">{pending.email}</strong>.
+          We sent a 6-digit code to <strong className="break-all">{pending.email}</strong>.
         </p>
       </div>
 

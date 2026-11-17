@@ -29,8 +29,8 @@ describe('CodeScreen', () => {
   it('reads email and send time from sessionStorage (reload-safe) and shows the one code field', async () => {
     storePending(T0)
     await openCode()
-    expect(screen.getByText(/We sent a link and a 6-digit code to/)).toHaveTextContent(
-      'We sent a link and a 6-digit code to jo@example.com.',
+    expect(screen.getByText(/We sent a 6-digit code to/)).toHaveTextContent(
+      'We sent a 6-digit code to jo@example.com.',
     )
     const field = screen.getByLabelText('6-digit code')
     expect(field).toHaveAttribute('inputmode', 'numeric')
