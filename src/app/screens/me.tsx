@@ -1,26 +1,38 @@
 import { Link, useLocation } from 'react-router'
 import { CaretRight, GearSix } from '@phosphor-icons/react'
 import { Screen } from '@/app/screens/screen'
-import type { PushedFromMeState } from '@/app/screens/settings'
+import { GROUP_COPY } from '@/domain/groups'
+import { useMyGroups } from '@/data/groups'
+import { useMyProfile } from '@/data/profile'
 import { Icon } from '@/ui/icon'
+import { InlineRetry } from '@/ui/inline-retry'
+import { MyGroupsList } from '@/features/me/my-groups-list'
+import { pushedFromMeState } from '@/features/me/pushed-from-me'
 
-/** Placeholder until the Me stories (profile, badges, groups). Settings is reachable from here. */
+/**
+ * Me: the display name, My groups and Settings. Profile details, badges and streaks arrive in
+ * Epic 4.
+ */
 export function MeScreen() {
   const { search, state } = useLocation()
-  // Keep what sits behind Me (the Today entry) so tab navigation still works from Settings.
-  const pushedState: PushedFromMeState = {
-    ...(state && typeof state === 'object' ? state : {}),
-    fromMe: true,
-  }
+  const { data: profile } = useMyProfile()
+  const groupsQuery = useMyGroups()
+  const groups = groupsQuery.data
 
   return (
     <Screen title="Me">
-      <p className="card type-body">Your profile, badges and settings live here.</p>
+      {profile ? <p className="-mt-1 type-title">{profile.displayName}</p> : null}
+      {groups ? <MyGroupsList groups={groups} /> : null}
+      {!groups && groupsQuery.isError ? (
+        <InlineRetry onRetry={() => void groupsQuery.refetch()} retryLabel={GROUP_COPY.retry}>
+          {GROUP_COPY.myGroupsFailed}
+        </InlineRetry>
+      ) : null}
       <ul className="card flex flex-col p-0">
         <li>
           <Link
             to={{ pathname: '/me/settings', search }}
-            state={pushedState}
+            state={pushedFromMeState(state)}
             className="flex min-h-row-min w-full items-center gap-3 rounded-wob px-3 text-ink type-body press-overlay"
           >
             <Icon icon={GearSix} size={24} />

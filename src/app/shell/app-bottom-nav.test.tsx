@@ -5,7 +5,7 @@ import { AppShell } from '@/app/shell/app-shell'
 import { TodayScreen } from '@/app/screens/today'
 import { Sheet } from '@/ui/sheet'
 import { useState } from 'react'
-import { renderRoutes } from '@/test/fake-backend'
+import { createFakeBackend, renderRoutes, withBackend } from '@/test/fake-backend'
 
 /** Test-only Feed route with a sheet already open. */
 function FeedWithSheet() {
@@ -88,7 +88,8 @@ describe('bottom nav', () => {
   it('rebuilds history as [Today, tab] on a cold start on another tab', async () => {
     const router = renderAt('/board')
     await screen.findByRole('heading', { level: 1, name: 'Board' })
-    await vi.waitFor(() => expect(router.state.historyAction).toBe('PUSH'))
+    // The rebuild pushes /board; the focus sync then replaces it with the group query.
+    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=group-1'))
     expect(router.state.location.pathname).toBe('/board')
 
     await act(() => router.navigate(-1))
@@ -116,23 +117,23 @@ describe('bottom nav', () => {
   })
 
   it('redirects / to /today, keeping the group query', async () => {
-    const router = renderAt('/?g=abc')
+    const router = renderAt('/?g=group-1')
     await screen.findByRole('heading', { level: 1 })
     expect(router.state.location.pathname).toBe('/today')
-    expect(router.state.location.search).toBe('?g=abc')
+    expect(router.state.location.search).toBe('?g=group-1')
   })
 
   it('carries ?g= across tab switches and in the tab links', async () => {
     const user = userEvent.setup()
-    const router = renderAt('/today?g=abc')
+    const router = renderAt('/today?g=group-1')
     await screen.findByRole('heading', { level: 1 })
     for (const name of ['Today', 'Feed', 'Board', 'Me']) {
-      expect(tab(name).getAttribute('href')).toContain('?g=abc')
+      expect(tab(name).getAttribute('href')).toContain('?g=group-1')
     }
 
     for (const name of ['Feed', 'Board', 'Today']) {
       await user.click(tab(name))
-      expect(router.state.location.search).toBe('?g=abc')
+      expect(router.state.location.search).toBe('?g=group-1')
     }
     expect(router.state.location.pathname).toBe('/today')
   })
@@ -157,7 +158,7 @@ describe('bottom nav', () => {
         initialIndex: 1,
       },
     )
-    render(<RouterProvider router={router} />)
+    render(withBackend(createFakeBackend(), <RouterProvider router={router} />))
     await screen.findByRole('dialog', { name: 'Test sheet' })
 
     await user.keyboard('{Escape}')

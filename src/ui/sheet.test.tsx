@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Sheet } from '@/ui/sheet'
+import { runAfterSheetClose } from '@/ui/sheet-history'
 
 function dragHandle(): Element {
   const handle = document.querySelector('[data-sheet-drag]')
@@ -19,6 +20,29 @@ function Harness({ dirty = false }: { dirty?: boolean }) {
       </button>
       <Sheet open={open} onOpenChange={setOpen} title="Test sheet" dirty={dirty && value !== ''}>
         <input aria-label="note" value={value} onChange={(e) => setValue(e.target.value)} />
+      </Sheet>
+    </>
+  )
+}
+
+/** Closes itself and asks for a callback once its history entry is gone (a pick inside a sheet). */
+function PickHarness({ onPicked }: { onPicked: (sheetEntryOnTop: boolean) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        open
+      </button>
+      <Sheet open={open} onOpenChange={setOpen} title="Pick sheet">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false)
+            runAfterSheetClose(() => onPicked(window.history.state?.sheet === true))
+          }}
+        >
+          pick
+        </button>
       </Sheet>
     </>
   )
@@ -116,6 +140,22 @@ describe('Sheet', () => {
 
     await user.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(window.history.state?.sheet).not.toBe(true))
+  })
+
+  it("runAfterSheetClose waits until the closed sheet's history entry is gone", async () => {
+    const user = userEvent.setup()
+    const onPicked = vi.fn()
+    render(<PickHarness onPicked={onPicked} />)
+    await user.click(screen.getByRole('button', { name: 'open' }))
+    await user.click(await screen.findByRole('button', { name: 'pick' }))
+    await waitFor(() => expect(onPicked).toHaveBeenCalledWith(false))
+    expect(onPicked).toHaveBeenCalledTimes(1)
+  })
+
+  it('runAfterSheetClose runs right away with no sheet open', () => {
+    const callback = vi.fn()
+    runAfterSheetClose(callback)
+    expect(callback).toHaveBeenCalledTimes(1)
   })
 
   it('on system back with unsaved input, asks first and keeps the sheet and its entry', async () => {

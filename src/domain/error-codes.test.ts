@@ -12,6 +12,12 @@ describe('error-code table (AD-14)', () => {
     expect(ERROR_COPY.invalid_time_zone).toMatch(/time zone/)
   })
 
+  it('maps the group codes to copy', () => {
+    expect(errorCopy('invalid_group_name')).toBe('Give the group a name.')
+    expect(isRpcErrorCode('invalid_group_name')).toBe(true)
+    expect(isRpcErrorCode('profile_required')).toBe(true)
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)

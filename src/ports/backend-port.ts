@@ -1,4 +1,5 @@
 import type { AuthUser } from '@/domain/auth'
+import type { MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 
 /**
@@ -34,4 +35,9 @@ export interface BackendPort {
    * name (the zone is kept). Resolves with the stored profile.
    */
   saveProfile(displayName: string, timeZone: string): Promise<Profile>
+
+  /** The signed-in member's current groups (ended memberships left out), each with its member count. */
+  listMyGroups(): Promise<MyGroup[]>
+  /** `create_group`: a new group with the caller as admin and their profile zone. Resolves with its id. */
+  createGroup(name: string): Promise<string>
 }

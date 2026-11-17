@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { BellRinging, DeviceMobile } from '@phosphor-icons/react'
 import { INSTALL_PATH, installNotice } from '@/domain/install'
 import { dismissInstallHint, promptInstall, useInstallState } from '@/data/install-state'
@@ -22,12 +22,14 @@ const NOTICE_COPY = {
 export function InstallNotice() {
   const state = useInstallState()
   const navigate = useNavigate()
+  const { search } = useLocation()
   // Read once per visit to Today (render stays pure); Not now moves it to the dismissal time.
   const [now, setNow] = useState(() => new Date())
   const notice = installNotice(state, now)
 
   function openGuide() {
-    void navigate(INSTALL_PATH)
+    // Keeps `?g=`, so the guide's way back lands on the same group.
+    void navigate({ pathname: INSTALL_PATH, search })
   }
 
   async function install() {

@@ -20,7 +20,7 @@ afterEach(() => {
 
 async function openToday() {
   const result = renderRoutes(['/today'])
-  await screen.findByText('Your commitments for today show up here.')
+  await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' })
   return result
 }
 
@@ -37,6 +37,7 @@ describe('Today install notice', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show me how' }))
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/install'))
+    expect(router.state.location.search).toBe('?g=group-1')
     expect(
       await screen.findByRole('heading', { level: 1, name: 'Put Proofy on your home screen' }),
     ).toBeInTheDocument()

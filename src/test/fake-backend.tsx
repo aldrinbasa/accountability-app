@@ -3,6 +3,7 @@ import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { AuthUser } from '@/domain/auth'
+import type { MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
@@ -18,6 +19,16 @@ export const TEST_PROFILE: Profile = {
   timeZone: 'Asia/Manila',
 }
 
+/** The default group: active (3 members), the test user is its admin. */
+export const TEST_GROUP: MyGroup = {
+  id: 'group-1',
+  name: 'Gym Rats',
+  timeZone: 'Asia/Manila',
+  role: 'admin',
+  joinedAt: '2026-11-01T10:00:00.000Z',
+  memberCount: 3,
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -26,14 +37,17 @@ export interface FakeBackend extends BackendPort {
 /**
  * An in-memory BackendPort. Every method is a vi.fn; override behaviour per test. The signed-in
  * member has a profile by default (so tests reach the shell); pass `profile: null` for a new member.
+ * They are in one active group (`TEST_GROUP`) by default; pass `groups: []` for none.
  */
 export function createFakeBackend(
   initialUser: AuthUser | null = TEST_USER,
-  options: { profile?: Profile | null } = {},
+  options: { profile?: Profile | null; groups?: MyGroup[] } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
   let user = initialUser
   let profile: Profile | null = options.profile === undefined ? TEST_PROFILE : options.profile
+  let groups: MyGroup[] = options.groups ?? [TEST_GROUP]
+  let created = 0
   const emit = (next: AuthUser | null) => {
     user = next
     for (const listener of listeners) listener(next)
@@ -64,6 +78,23 @@ export function createFakeBackend(
         timeZone: profile?.timeZone ?? timeZone,
       }
       return profile
+    }),
+    listMyGroups: vi.fn(async () => groups),
+    createGroup: vi.fn(async (name: string) => {
+      created += 1
+      const id = `group-new-${created}`
+      groups = [
+        ...groups,
+        {
+          id,
+          name: name.trim(),
+          timeZone: profile?.timeZone ?? 'UTC',
+          role: 'admin',
+          joinedAt: new Date().toISOString(),
+          memberCount: 1,
+        },
+      ]
+      return id
     }),
   }
 }

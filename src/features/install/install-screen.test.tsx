@@ -110,7 +110,7 @@ describe('InstallScreen', () => {
   it('Android with a kept prompt: one coral Install Proofy button; accept moves on', async () => {
     const user = userEvent.setup()
     setDevice(UA.android)
-    sessionStorage.setItem(NEXT_KEY, '/feed?g=1')
+    sessionStorage.setItem(NEXT_KEY, '/feed?g=group-1')
     const event = keepFakePrompt('accepted')
     const { router } = await openGuide()
     expect(
@@ -123,7 +123,7 @@ describe('InstallScreen', () => {
     await user.click(install)
     expect(event.prompt).toHaveBeenCalledTimes(1)
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/feed'))
-    expect(router.state.location.search).toBe('?g=1')
+    expect(router.state.location.search).toBe('?g=group-1')
     expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
   })
 
@@ -172,7 +172,7 @@ describe('InstallScreen', () => {
   it('Continue without installing stores the dismissal and goes to the pending next', async () => {
     const user = userEvent.setup()
     setDevice(UA.iphoneSafari)
-    sessionStorage.setItem(NEXT_KEY, '/me?g=abc')
+    sessionStorage.setItem(NEXT_KEY, '/me?g=group-1')
     const { router } = await openGuide()
     await user.click(screen.getByRole('button', { name: 'Continue without installing' }))
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/me'))
@@ -193,18 +193,18 @@ describe('InstallScreen', () => {
 
   it('a new member: the guide shows before Setup, and Continue keeps next for after Setup', async () => {
     const user = userEvent.setup()
-    sessionStorage.setItem(NEXT_KEY, '/board?g=x')
+    sessionStorage.setItem(NEXT_KEY, '/board?g=group-1')
     const backend = createFakeBackend(TEST_USER, { profile: null })
     const { router } = await openGuide(HEADING, backend)
     await user.click(screen.getByRole('button', { name: 'Continue without installing' }))
     await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })
     expect(router.state.location.pathname).toBe('/setup')
-    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=x')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=group-1')
   })
 
   it('already installed: /install redirects to the pending next, or /today', async () => {
     localStorage.setItem(INSTALLED_KEY, '1')
-    sessionStorage.setItem(NEXT_KEY, '/board?g=x')
+    sessionStorage.setItem(NEXT_KEY, '/board?g=group-1')
     const first = renderRoutes(['/install'])
     await vi.waitFor(() => expect(first.router.state.location.pathname).toBe('/board'))
     expect(screen.queryByRole('heading', { name: HEADING })).not.toBeInTheDocument()

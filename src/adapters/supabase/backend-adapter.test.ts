@@ -226,3 +226,76 @@ describe('profiles', () => {
     expect(await backendCodeOf(adapter.saveProfile('Jo', 'UTC'))).toBe('network')
   })
 })
+
+describe('groups', () => {
+  const member = (user_id: string, role: string, ended_at: string | null = null) => ({
+    user_id,
+    role,
+    joined_at: '2026-11-01T10:00:00+00:00',
+    ended_at,
+  })
+
+  it('lists current groups with role, join time and current member count', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.select.mockReturnValueOnce(
+      Promise.resolve({
+        data: [
+          {
+            id: 'g1',
+            name: 'Gym Rats',
+            time_zone: 'Asia/Manila',
+            memberships: [
+              member('user-1', 'admin'),
+              member('user-2', 'member'),
+              member('user-3', 'member', '2026-11-02T00:00:00+00:00'),
+            ],
+          },
+          // Ended for the caller: RLS still shows the group and their own ended row.
+          {
+            id: 'g2',
+            name: 'Old crew',
+            time_zone: 'UTC',
+            memberships: [member('user-1', 'member', '2026-11-03T00:00:00+00:00')],
+          },
+        ],
+        error: null,
+        status: 200,
+      }),
+    )
+    await expect(adapter.listMyGroups()).resolves.toEqual([
+      {
+        id: 'g1',
+        name: 'Gym Rats',
+        timeZone: 'Asia/Manila',
+        role: 'admin',
+        joinedAt: '2026-11-01T10:00:00+00:00',
+        memberCount: 2,
+      },
+    ])
+    expect(db.from).toHaveBeenCalledWith('groups')
+  })
+
+  it('a groups read that never got a response → network; no session → unknown', async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.select.mockReturnValueOnce(
+      Promise.resolve({
+        data: null,
+        error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+        status: 0,
+      }),
+    )
+    expect(await backendCodeOf(adapter.listMyGroups())).toBe('network')
+    auth.getSession.mockResolvedValue({ data: { session: null }, error: null })
+    expect(await backendCodeOf(adapter.listMyGroups())).toBe('unknown')
+  })
+
+  it('create_group passes the name, returns the id and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({ data: 'g9', error: null, status: 200 })
+    await expect(adapter.createGroup('Gym Rats')).resolves.toBe('g9')
+    expect(db.rpc).toHaveBeenCalledWith('create_group', { p_name: 'Gym Rats' })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('invalid_group_name'), status: 400 })
+    expect(await backendCodeOf(adapter.createGroup(' '))).toBe('invalid_group_name')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('profile_required'), status: 400 })
+    expect(await backendCodeOf(adapter.createGroup('x'))).toBe('profile_required')
+  })
+})

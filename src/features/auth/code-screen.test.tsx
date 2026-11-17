@@ -78,7 +78,7 @@ describe('CodeScreen', () => {
 
   it('a correct code signs in and routes to the pending next, then clears it', async () => {
     storePending(T0)
-    sessionStorage.setItem(NEXT_KEY, '/board?g=abc')
+    sessionStorage.setItem(NEXT_KEY, '/board?g=group-1')
     const { router, backend } = await openCode()
 
     await act(async () => {
@@ -86,7 +86,7 @@ describe('CodeScreen', () => {
     })
     expect(backend.verifyEmailCode).toHaveBeenCalledWith('jo@example.com', '123456')
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/board'))
-    expect(router.state.location.search).toBe('?g=abc')
+    expect(router.state.location.search).toBe('?g=group-1')
     expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
   })
 

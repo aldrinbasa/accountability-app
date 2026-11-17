@@ -6,15 +6,7 @@ import { useAuthActions } from '@/data/auth-session'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
 import { showToast } from '@/ui/toast'
-
-/** Location state on /me/settings when it was pushed from Me (so back can pop to it). */
-export interface PushedFromMeState {
-  fromMe?: boolean
-}
-
-function cameFromMe(state: unknown): boolean {
-  return !!state && typeof state === 'object' && (state as PushedFromMeState).fromMe === true
-}
+import { cameFromMe } from '@/features/me/pushed-from-me'
 
 /**
  * Me > Settings, a pushed screen with a back button (an installed iOS app has no browser back).

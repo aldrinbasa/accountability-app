@@ -37,11 +37,11 @@ describe('auth gate', () => {
   })
 
   it('signed in on /signin with a pending next: goes there and clears it', async () => {
-    sessionStorage.setItem(NEXT_KEY, '/me?g=abc')
+    sessionStorage.setItem(NEXT_KEY, '/me?g=group-1')
     sessionStorage.setItem(SIGNIN_KEY, JSON.stringify({ email: 'jo@example.com', sentAt: 1 }))
     const { router } = renderRoutes(['/signin'])
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/me'))
-    expect(router.state.location.search).toBe('?g=abc')
+    expect(router.state.location.search).toBe('?g=group-1')
     expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
     expect(sessionStorage.getItem(SIGNIN_KEY)).toBeNull()
   })
@@ -64,20 +64,20 @@ describe('profile gate', () => {
   const newMember = () => createFakeBackend(TEST_USER, { profile: null })
 
   it('no profile: any route goes to /setup and keeps the path as next', async () => {
-    const { router } = renderRoutes(['/board?g=x'], newMember())
+    const { router } = renderRoutes(['/board?g=group-1'], newMember())
     expect(await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })).toBeVisible()
     expect(router.state.location.pathname).toBe('/setup')
-    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=x')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=group-1')
     // Setup is a full-screen column: no shell nav.
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
   })
 
   it('no profile, signing in on /signin with a next: lands on /setup with next re-saved', async () => {
-    sessionStorage.setItem(NEXT_KEY, '/me?g=abc')
+    sessionStorage.setItem(NEXT_KEY, '/me?g=group-1')
     const { router } = renderRoutes(['/signin'], newMember())
     await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })
     expect(router.state.location.pathname).toBe('/setup')
-    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/me?g=abc')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/me?g=group-1')
   })
 
   it('no profile, opening /setup directly: stays, saves no next', async () => {
@@ -94,7 +94,7 @@ describe('profile gate', () => {
   })
 
   it('has a profile under StrictMode: /setup forwards once to the pending next and clears it', async () => {
-    sessionStorage.setItem(NEXT_KEY, '/feed?g=1')
+    sessionStorage.setItem(NEXT_KEY, '/feed?g=group-1')
     const router = createMemoryRouter(routes, { initialEntries: ['/setup'] })
     render(
       <StrictMode>
@@ -102,7 +102,7 @@ describe('profile gate', () => {
       </StrictMode>,
     )
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/feed'))
-    expect(router.state.location.search).toBe('?g=1')
+    expect(router.state.location.search).toBe('?g=group-1')
     expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
   })
 
@@ -196,31 +196,31 @@ describe('install guide right after sign-in', () => {
   it('new member in a tab: /install first, then Continue goes to /setup and then to next', async () => {
     const user = userEvent.setup()
     setDevice(UA.iphoneSafari)
-    sessionStorage.setItem(NEXT_KEY, '/board?g=x')
+    sessionStorage.setItem(NEXT_KEY, '/board?g=group-1')
     sessionStorage.setItem(SIGNIN_KEY, JSON.stringify({ email: 'jo@example.com', sentAt: 1 }))
     const { router } = await signIn({ profile: null })
 
     expect(await screen.findByRole('heading', { level: 1, name: GUIDE_HEADING })).toBeVisible()
     expect(router.state.location.pathname).toBe('/install')
     // The guide keeps the pending next; the sign-in state is done with.
-    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=x')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=group-1')
     expect(sessionStorage.getItem(SIGNIN_KEY)).toBeNull()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Continue without installing' }))
     await screen.findByRole('heading', { level: 1, name: SETUP_HEADING })
     expect(router.state.location.pathname).toBe('/setup')
-    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=x')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=group-1')
 
     await user.type(screen.getByLabelText('Display name'), 'Jo')
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/board'))
-    expect(router.state.location.search).toBe('?g=x')
+    expect(router.state.location.search).toBe('?g=group-1')
   })
 
   it('returning member: /install, then Continue goes to the pending next', async () => {
     const user = userEvent.setup()
-    sessionStorage.setItem(NEXT_KEY, '/me?g=abc')
+    sessionStorage.setItem(NEXT_KEY, '/me?g=group-1')
     const { router } = await signIn()
     await screen.findByRole('heading', { level: 1, name: GUIDE_HEADING })
     await user.click(screen.getByRole('button', { name: 'Continue without installing' }))
@@ -279,7 +279,7 @@ describe('install guide right after sign-in', () => {
   it('a cold open of an already signed-in member never shows the guide', async () => {
     for (const path of ['/signin', '/today']) {
       const { router, unmount } = renderRoutes([path])
-      await screen.findByText('Your commitments for today show up here.')
+      await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' })
       expect(router.state.location.pathname).toBe('/today')
       expect(screen.queryByRole('heading', { name: GUIDE_HEADING })).not.toBeInTheDocument()
       unmount()
@@ -287,7 +287,7 @@ describe('install guide right after sign-in', () => {
   })
 
   it('under StrictMode the sign-in goes to /install once and keeps next', async () => {
-    sessionStorage.setItem(NEXT_KEY, '/board?g=x')
+    sessionStorage.setItem(NEXT_KEY, '/board?g=group-1')
     const backend = createFakeBackend(null)
     const router = createMemoryRouter(routes, { initialEntries: ['/signin'] })
     render(<StrictMode>{withBackend(backend, <RouterProvider router={router} />)}</StrictMode>)
@@ -295,6 +295,6 @@ describe('install guide right after sign-in', () => {
     act(() => backend.emit(TEST_USER))
     await screen.findByRole('heading', { level: 1, name: GUIDE_HEADING })
     expect(router.state.location.pathname).toBe('/install')
-    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=x')
+    expect(sessionStorage.getItem(NEXT_KEY)).toBe('/board?g=group-1')
   })
 })

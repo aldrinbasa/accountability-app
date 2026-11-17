@@ -9,6 +9,7 @@ import { MeScreen } from '@/app/screens/me'
 import { SettingsScreen } from '@/app/screens/settings'
 import { CodeScreen } from '@/features/auth/code-screen'
 import { SignInScreen } from '@/features/auth/sign-in-screen'
+import { GroupSettingsScreen } from '@/features/me/group-settings-screen'
 import { SetupScreen } from '@/features/me/setup-screen'
 import { InstallScreen } from '@/features/install/install-screen'
 
@@ -43,6 +44,7 @@ export const routes: RouteObject[] = [
           { path: 'board', element: <BoardScreen /> },
           { path: 'me', element: <MeScreen /> },
           { path: 'me/settings', element: <SettingsScreen /> },
+          { path: 'me/groups/:groupId', element: <GroupSettingsScreen /> },
         ],
       },
       { path: '*', element: <RedirectToToday /> },

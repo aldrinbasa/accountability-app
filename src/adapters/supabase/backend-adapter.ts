@@ -7,6 +7,7 @@ import {
 } from '@supabase/supabase-js'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
+import type { GroupRole, MyGroup } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
@@ -47,6 +48,37 @@ function toProfile(row: ProfileRow): Profile {
   }
 }
 
+type MembershipRow = Pick<Tables<'memberships'>, 'user_id' | 'role' | 'joined_at' | 'ended_at'>
+type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
+  memberships: MembershipRow[]
+}
+
+/**
+ * Groups with their memberships embedded. RLS returns every group the member was ever in, and for
+ * each the member's own rows plus, while they are a current member, everyone's current rows.
+ */
+const GROUP_COLUMNS = 'id, name, time_zone, memberships(user_id, role, joined_at, ended_at)'
+
+/** Keeps the groups where `userId` has a current membership, with the count of current members. */
+export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroup[] {
+  const groups: MyGroup[] = []
+  for (const row of rows) {
+    const current = row.memberships.filter((m) => m.ended_at === null)
+    const mine = current.find((m) => m.user_id === userId)
+    if (!mine) continue
+    const role: GroupRole = mine.role === 'admin' ? 'admin' : 'member'
+    groups.push({
+      id: row.id,
+      name: row.name,
+      timeZone: row.time_zone,
+      role,
+      joinedAt: mine.joined_at,
+      memberCount: current.length,
+    })
+  }
+  return groups
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -56,6 +88,18 @@ function toBackendError(error: PostgrestError, status: number): BackendError {
   if (status === 0) return new BackendError('network', error.message)
   if (isRpcErrorCode(error.message)) return new BackendError(error.message)
   return new BackendError('unknown', error.message)
+}
+
+/** The session's user id for a data read, or a `BackendError` (never a silent empty result). */
+async function sessionUserId(read: string): Promise<string> {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) {
+    const offline = isAuthRetryableFetchError(error) && error.status === 0
+    throw new BackendError(offline ? 'network' : 'unknown', error.message)
+  }
+  const userId = data.session?.user.id
+  if (!userId) throw new BackendError('unknown', `No session for the ${read} read`)
+  return userId
 }
 
 function sessionUser(session: Session | null): AuthUser | null {
@@ -92,7 +136,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
   return toAuthUser(user)
 }
 
-/** Supabase implementation of `BackendPort` (auth surface, Story 1.3). */
+/** Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6). */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
     const { data, error } = await supabase.auth.getSession()
@@ -150,14 +194,8 @@ export const supabaseBackendAdapter: BackendPort = {
   },
 
   async getMyProfile() {
-    const { data: auth, error: authError } = await supabase.auth.getSession()
-    if (authError) {
-      const offline = isAuthRetryableFetchError(authError) && authError.status === 0
-      throw new BackendError(offline ? 'network' : 'unknown', authError.message)
-    }
-    const userId = auth.session?.user.id
     // Never "no profile" without a session: that would send a member with a profile to /setup.
-    if (!userId) throw new BackendError('unknown', 'No session for the profile read')
+    const userId = await sessionUserId('profile')
     // Filtered by id even though RLS shows only the own row today: Story 1.6 widens profile reads.
     const { data, error, status } = await supabase
       .from('profiles')
@@ -176,5 +214,19 @@ export const supabaseBackendAdapter: BackendPort = {
     if (error) throw toBackendError(error, status)
     if (!data) throw new BackendError('unknown', 'save_profile returned no row')
     return toProfile(data)
+  },
+
+  async listMyGroups() {
+    const userId = await sessionUserId('groups')
+    const { data, error, status } = await supabase.from('groups').select(GROUP_COLUMNS)
+    if (error) throw toBackendError(error, status)
+    return toMyGroups(data ?? [], userId)
+  },
+
+  async createGroup(name) {
+    const { data, error, status } = await supabase.rpc('create_group', { p_name: name })
+    if (error) throw toBackendError(error, status)
+    if (!data) throw new BackendError('unknown', 'create_group returned no id')
+    return data
   },
 }

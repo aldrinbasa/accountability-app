@@ -117,7 +117,7 @@ describe('SetupScreen', () => {
           finish = () => resolve(save(name, zone))
         }),
     ) as typeof backend.saveProfile
-    sessionStorage.setItem(NEXT_KEY, '/board?g=x')
+    sessionStorage.setItem(NEXT_KEY, '/board?g=group-1')
     const { router } = await openSetup(backend)
 
     await user.type(screen.getByLabelText('Display name'), 'Jo')
@@ -129,7 +129,7 @@ describe('SetupScreen', () => {
 
     finish()
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/board'))
-    expect(router.state.location.search).toBe('?g=x')
+    expect(router.state.location.search).toBe('?g=group-1')
     expect(sessionStorage.getItem(NEXT_KEY)).toBeNull()
   })
 

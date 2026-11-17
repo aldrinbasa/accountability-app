@@ -1,18 +1,30 @@
 import { useEffect } from 'react'
-import { Outlet, ScrollRestoration } from 'react-router'
+import { Outlet, ScrollRestoration, useLocation } from 'react-router'
+import { GroupSwitcher } from '@/features/group/group-switcher'
+import { useSyncFocusedGroup } from '@/features/group/use-focused-group'
 import { AppBottomNav } from '@/app/shell/app-bottom-nav'
+import { useFinishTodayReturn } from '@/app/shell/use-tab-navigation'
 import {
   useColdStartHistory,
   useEscapeToToday,
   useFocusHeadingOnRouteChange,
 } from '@/app/shell/use-shell-history'
 
+/** Screens whose top bar carries the group switcher. */
+const SWITCHER_PATHS = new Set(['/today', '/feed', '/board'])
+
 /**
- * Phone-first shell: one column up to 480px on paper, top safe area, content, bottom nav with the
- * lifted Camera button. The document is the scroller; it keeps focused items clear of the nav with
- * `scroll-padding-bottom` (class on <html>), and the content ends with the same clearance.
+ * Phone-first shell: one column up to 480px on paper, top safe area (with the group switcher on
+ * Today, Feed and Board), content, bottom nav with the lifted Camera button. The document is the
+ * scroller; it keeps focused items clear of the nav with `scroll-padding-bottom` (class on <html>),
+ * and the content ends with the same clearance. It also keeps `?g=` on the resolved focused group.
  */
 export function AppShell() {
+  const { pathname } = useLocation()
+  // Trailing slashes still match a route (`/today/`), so compare without them.
+  const screenPath = pathname.replace(/\/+$/, '') || '/'
+  useFinishTodayReturn()
+  useSyncFocusedGroup()
   useColdStartHistory()
   useEscapeToToday()
   useFocusHeadingOnRouteChange()
@@ -25,8 +37,14 @@ export function AppShell() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-content-max flex-col pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
-      {/* Top bar: pads the top safe area. Story 1.6 adds the group switcher and the bell here. */}
-      <header className="paper sticky top-0 z-(--z-top-bar) pt-[env(safe-area-inset-top)]" />
+      {/* Top bar: pads the top safe area. The bell joins the switcher in Epic 6. */}
+      <header className="paper sticky top-0 z-(--z-top-bar) pt-[env(safe-area-inset-top)]">
+        {SWITCHER_PATHS.has(screenPath) ? (
+          <div className="flex px-gutter pt-2 empty:hidden">
+            <GroupSwitcher />
+          </div>
+        ) : null}
+      </header>
       <main className="flex flex-1 flex-col px-gutter nav-clearance">
         <Outlet />
       </main>

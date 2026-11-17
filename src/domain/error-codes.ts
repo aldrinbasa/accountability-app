@@ -6,6 +6,8 @@ export const ERROR_COPY = {
   invalid_display_name: 'Pick a name your friends will recognize.',
   invalid_time_zone:
     "Your phone's time zone isn't one we know. Check its date and time settings, then try again.",
+  invalid_group_name: 'Give the group a name.',
+  profile_required: 'Set your display name first, then try again.',
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY
