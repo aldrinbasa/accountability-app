@@ -43,6 +43,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"invites": {
+                  Row: {
+                    "code": string,"created_at": string,"created_by": string | null,"expires_at": string,"group_id": string,"id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "code": string,"created_at"?: string,"created_by"?: string | null,"expires_at": string,"group_id": string,"id"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "code"?: string,"created_at"?: string,"created_by"?: string | null,"expires_at"?: string,"group_id"?: string,"id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "invites_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "invites_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"memberships": {
                   Row: {
                     "created_at": string,"end_reason": string | null,"ended_at": string | null,"group_id": string,"id": string,"joined_at": string,"role": string,"updated_at": string,"user_id": string
@@ -91,6 +117,19 @@ isOneToOne: false
           Functions: {
             "create_group":
 { Args: { "p_name": string }; Returns: string
+                           },
+"create_invite":
+{ Args: { "p_group_id": string,"p_new"?: boolean }; Returns: {
+              "code": string,"expires_at": string
+            }[]
+                           },
+"get_invite":
+{ Args: { "p_code": string }; Returns: {
+              "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
+            }[]
+                           },
+"join_group":
+{ Args: { "p_code": string }; Returns: string
                            },
 "save_profile":
 { Args: { "p_display_name": string,"p_time_zone": string }; Returns: {
