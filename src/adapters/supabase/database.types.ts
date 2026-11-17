@@ -23,7 +23,53 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "profiles": {
+            "groups": {
+                  Row: {
+                    "created_at": string,"created_by": string | null,"id": string,"name": string,"time_zone": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"name": string,"time_zone": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"name"?: string,"time_zone"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "groups_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"memberships": {
+                  Row: {
+                    "created_at": string,"end_reason": string | null,"ended_at": string | null,"group_id": string,"id": string,"joined_at": string,"role": string,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"end_reason"?: string | null,"ended_at"?: string | null,"group_id": string,"id"?: string,"joined_at"?: string,"role": string,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"end_reason"?: string | null,"ended_at"?: string | null,"group_id"?: string,"id"?: string,"joined_at"?: string,"role"?: string,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "memberships_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "memberships_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"profiles": {
                   Row: {
                     "avatar_path": string | null,"created_at": string,"display_name": string,"id": string,"time_zone": string,"updated_at": string
                   }
@@ -43,7 +89,10 @@ export type Database = {
             [_ in never]: never
           }
           Functions: {
-            "save_profile":
+            "create_group":
+{ Args: { "p_name": string }; Returns: string
+                           },
+"save_profile":
 { Args: { "p_display_name": string,"p_time_zone": string }; Returns: {
               "avatar_path": string | null,
 "created_at": string,
