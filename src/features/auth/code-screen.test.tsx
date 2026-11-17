@@ -2,7 +2,10 @@ import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AuthError } from '@/domain/auth'
 import { NEXT_KEY, SIGNIN_KEY } from '@/data/pending-signin'
-import { createFakeBackend, renderRoutes } from '@/test/fake-backend'
+import { createFakeBackend, renderRoutes, stubInstalled } from '@/test/fake-backend'
+
+// Installed device: a sign-in goes straight on (the install guide has its own tests).
+beforeEach(() => stubInstalled())
 
 const T0 = new Date(2026, 10, 17, 9, 0, 0).getTime()
 

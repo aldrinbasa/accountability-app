@@ -5,12 +5,14 @@ import { createMemoryRouter, RouterProvider } from 'react-router'
 import { AuthError } from '@/domain/auth'
 import { NEXT_KEY, SIGNIN_KEY } from '@/data/pending-signin'
 import { routes } from '@/app/router'
-import { createFakeBackend, renderRoutes, withBackend } from '@/test/fake-backend'
+import { createFakeBackend, renderRoutes, stubInstalled, withBackend } from '@/test/fake-backend'
 
 function setOnline(online: boolean) {
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online })
 }
 
+// Installed device: a sign-in goes straight on (the install guide has its own tests).
+beforeEach(() => stubInstalled())
 afterEach(() => setOnline(true))
 
 async function openSignIn(path = '/signin', backend = createFakeBackend(null)) {

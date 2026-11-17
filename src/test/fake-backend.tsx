@@ -6,6 +6,7 @@ import type { AuthUser } from '@/domain/auth'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
+import { INSTALLED_KEY } from '@/data/install-state'
 import { routes } from '@/app/router'
 
 export const TEST_USER: AuthUser = { id: 'user-1', email: 'jo@example.com' }
@@ -101,4 +102,12 @@ export function renderRoutes(
     withBackend(backend, <RouterProvider router={router} />, options.onSignedOut, queryClient),
   )
   return { router, backend, queryClient, ...utils }
+}
+
+/**
+ * Marks this device as installed, so a sign-in goes straight on instead of to the install guide.
+ * localStorage is cleared after every test (src/test/setup.ts).
+ */
+export function stubInstalled(): void {
+  localStorage.setItem(INSTALLED_KEY, '1')
 }
