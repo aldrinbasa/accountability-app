@@ -175,6 +175,50 @@ describe('SetupScreen', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(backend.saveProfile).toHaveBeenCalledTimes(2)
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    await vi.waitFor(() =>
+      expect(screen.queryByText("Couldn't save. Try again.")).not.toBeInTheDocument(),
+    )
+  })
+
+  it('a zone Postgres does not know: saves again with UTC and goes to /today', async () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+      timeZone: 'America/Ciudad_Juarez',
+    } as Intl.ResolvedDateTimeFormatOptions)
+    const user = userEvent.setup()
+    const backend = newMember()
+    const save = backend.saveProfile
+    backend.saveProfile = vi
+      .fn()
+      .mockRejectedValueOnce(new BackendError('invalid_time_zone'))
+      .mockImplementation(save) as typeof backend.saveProfile
+    const { router } = await openSetup(backend)
+
+    await user.type(screen.getByLabelText('Display name'), 'Jo')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(backend.saveProfile).toHaveBeenNthCalledWith(1, 'Jo', 'America/Ciudad_Juarez')
+    expect(backend.saveProfile).toHaveBeenNthCalledWith(2, 'Jo', 'UTC')
+  })
+
+  it('UTC rejected too: zone toast without Retry, name kept', async () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+      timeZone: 'America/Ciudad_Juarez',
+    } as Intl.ResolvedDateTimeFormatOptions)
+    const user = userEvent.setup()
+    const backend = newMember()
+    backend.saveProfile = vi.fn(async () => {
+      throw new BackendError('invalid_time_zone')
+    })
+    const { router } = await openSetup(backend)
+
+    await user.type(screen.getByLabelText('Display name'), 'Jo')
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(await screen.findByText(/time zone isn't one we know/)).toBeInTheDocument()
+    expect(backend.saveProfile).toHaveBeenCalledTimes(2)
+    expect(backend.saveProfile).toHaveBeenLastCalledWith('Jo', 'UTC')
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Display name')).toHaveValue('Jo')
+    expect(router.state.location.pathname).toBe('/setup')
   })
 
   it('invalid_display_name from the server shows the Field error copy', async () => {

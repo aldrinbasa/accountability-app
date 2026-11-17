@@ -51,7 +51,9 @@ export function useSaveProfile() {
   return useMutation({
     mutationFn: ({ displayName, timeZone }: SaveProfileInput) =>
       repository.save(displayName, timeZone),
-    onSuccess: (profile) => {
+    onSuccess: async (profile) => {
+      // A focus refetch started before the save could land after it and write `null` back.
+      await queryClient.cancelQueries({ queryKey: MY_PROFILE_KEY })
       queryClient.setQueryData(MY_PROFILE_KEY, profile)
     },
   })

@@ -150,9 +150,14 @@ export const supabaseBackendAdapter: BackendPort = {
   },
 
   async getMyProfile() {
-    const { data: auth } = await supabase.auth.getSession()
+    const { data: auth, error: authError } = await supabase.auth.getSession()
+    if (authError) {
+      const offline = isAuthRetryableFetchError(authError) && authError.status === 0
+      throw new BackendError(offline ? 'network' : 'unknown', authError.message)
+    }
     const userId = auth.session?.user.id
-    if (!userId) return null
+    // Never "no profile" without a session: that would send a member with a profile to /setup.
+    if (!userId) throw new BackendError('unknown', 'No session for the profile read')
     // Filtered by id even though RLS shows only the own row today: Story 1.6 widens profile reads.
     const { data, error, status } = await supabase
       .from('profiles')

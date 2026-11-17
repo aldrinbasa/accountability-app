@@ -163,13 +163,29 @@ describe('profiles', () => {
     expect(db.query.eq).toHaveBeenCalledWith('id', 'user-1')
   })
 
-  it('no row (before Setup) or no session → null', async () => {
+  it('no row (before Setup) → null', async () => {
     auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
     db.query.maybeSingle.mockResolvedValue({ data: null, error: null, status: 200 })
     await expect(adapter.getMyProfile()).resolves.toBeNull()
+  })
 
+  it('no session → unknown, never null', async () => {
     auth.getSession.mockResolvedValue({ data: { session: null }, error: null })
-    await expect(adapter.getMyProfile()).resolves.toBeNull()
+    expect(await backendCodeOf(adapter.getMyProfile())).toBe('unknown')
+  })
+
+  it('a getSession error → network when no response came back, else unknown', async () => {
+    auth.getSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: new AuthRetryableFetchError('Failed to fetch', 0),
+    })
+    expect(await backendCodeOf(adapter.getMyProfile())).toBe('network')
+    auth.getSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: new AuthApiError('Invalid Refresh Token', 400, 'refresh_token_not_found'),
+    })
+    expect(await backendCodeOf(adapter.getMyProfile())).toBe('unknown')
+    expect(db.query.maybeSingle).not.toHaveBeenCalled()
   })
 
   it('a read that never got a response → network', async () => {

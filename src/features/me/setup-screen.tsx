@@ -3,6 +3,7 @@ import { Camera } from '@phosphor-icons/react'
 import { errorCopy, isBackendError } from '@/domain/error-codes'
 import {
   DISPLAY_NAME_MAX,
+  FALLBACK_TIME_ZONE,
   PROFILE_COPY,
   prefillName,
   trimDisplayName,
@@ -14,7 +15,7 @@ import { Avatar } from '@/ui/avatar'
 import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
 import { TextField } from '@/ui/text-field'
-import { showToast } from '@/ui/toast'
+import { dismissToast, showToast } from '@/ui/toast'
 
 const SETUP_COPY = {
   heading: 'What do your friends call you?',
@@ -48,10 +49,27 @@ export function SetupScreen() {
   const busyRef = useRef(false)
   const [focusTick, setFocusTick] = useState(0)
   const nameRef = useRef<HTMLInputElement>(null)
+  // The "Couldn't save" toast with Retry: gone once a new save starts, on success and on unmount.
+  const failureToast = useRef<string | number | null>(null)
+  const mounted = useRef(false)
 
   useEffect(() => {
     if (focusTick > 0) nameRef.current?.focus()
   }, [focusTick])
+
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      dismissFailureToast()
+    }
+  }, [])
+
+  function dismissFailureToast() {
+    if (failureToast.current === null) return
+    dismissToast(failureToast.current)
+    failureToast.current = null
+  }
 
   function failName(message: string) {
     setNameError(message)
@@ -60,7 +78,7 @@ export function SetupScreen() {
 
   async function save(event?: FormEvent) {
     event?.preventDefault()
-    if (busyRef.current) return
+    if (busyRef.current || !mounted.current) return
     // Read from the field itself, so a Retry from the toast saves what is typed now.
     const value = trimDisplayName(nameRef.current?.value ?? name)
     const invalid = validateDisplayName(value)
@@ -73,8 +91,19 @@ export function SetupScreen() {
     busyRef.current = true
     setBusy(true)
     setNameError(null)
+    dismissFailureToast()
+    const zone = deviceTimeZone()
     try {
-      await saveProfile.mutateAsync({ displayName: value, timeZone: deviceTimeZone() })
+      try {
+        await saveProfile.mutateAsync({ displayName: value, timeZone: zone })
+      } catch (error) {
+        // A zone the browser knows but Postgres does not would lock the member out: save with UTC
+        // instead (Story 2.7 lets them pick a zone later).
+        const badZone = isBackendError(error) && error.code === 'invalid_time_zone'
+        if (!badZone || zone === FALLBACK_TIME_ZONE) throw error
+        await saveProfile.mutateAsync({ displayName: value, timeZone: FALLBACK_TIME_ZONE })
+      }
+      dismissFailureToast()
     } catch (error) {
       busyRef.current = false
       setBusy(false)
@@ -86,9 +115,14 @@ export function SetupScreen() {
       } else if (code === 'invalid_time_zone') {
         showToast(errorCopy(code), { variant: 'error' })
       } else {
-        showToast(PROFILE_COPY.saveFailed, {
+        failureToast.current = showToast(PROFILE_COPY.saveFailed, {
           variant: 'error',
-          action: { label: PROFILE_COPY.retry, onClick: () => void save() },
+          action: {
+            label: PROFILE_COPY.retry,
+            onClick: () => {
+              if (mounted.current) void save()
+            },
+          },
         })
       }
     }
