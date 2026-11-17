@@ -9,12 +9,12 @@ select plan(20);
 select has_schema('private', 'schema private exists');
 select ok(not has_schema_privilege('anon', 'private', 'USAGE'), 'anon has no USAGE on private');
 select ok(has_schema_privilege('authenticated', 'private', 'USAGE'), 'authenticated has USAGE on private (Story 1.6 RLS helpers)');
-select results_eq(
-  $$ select p.proname::text from pg_catalog.pg_proc p
-     where p.pronamespace = 'private'::regnamespace
-       and has_function_privilege('authenticated', p.oid, 'EXECUTE')
-     order by 1 $$,
-  $$ values ('is_admin'::text), ('is_member'::text), ('shares_group'::text) $$,
+select is(
+  (select pg_catalog.array_agg(p.proname::text collate "C" order by p.proname::text collate "C")
+   from pg_catalog.pg_proc p
+   where p.pronamespace = 'private'::regnamespace
+     and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
+  array['is_admin', 'is_member', 'shares_group']::text[],
   'authenticated can execute only is_admin, is_member and shares_group in private'
 );
 select is(
