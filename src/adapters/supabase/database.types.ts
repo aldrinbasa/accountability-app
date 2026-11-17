@@ -23,13 +23,41 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            [_ in never]: never
+            "profiles": {
+                  Row: {
+                    "avatar_path": string | null,"created_at": string,"display_name": string,"id": string,"time_zone": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "avatar_path"?: string | null,"created_at"?: string,"display_name": string,"id": string,"time_zone": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "avatar_path"?: string | null,"created_at"?: string,"display_name"?: string,"id"?: string,"time_zone"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                }
           }
           Views: {
             [_ in never]: never
           }
           Functions: {
-            [_ in never]: never
+            "save_profile":
+{ Args: { "p_display_name": string,"p_time_zone": string }; Returns: {
+              "avatar_path": string | null,
+"created_at": string,
+"display_name": string,
+"id": string,
+"time_zone": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "profiles"
+        isOneToOne: true
+        isSetofReturn: false
+      } }
           }
           Enums: {
             [_ in never]: never
