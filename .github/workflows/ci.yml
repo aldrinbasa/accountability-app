@@ -56,6 +56,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The types bot pushes with its own token; the stored GITHUB_TOKEN header would override it.
+          persist-credentials: false
       - uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
@@ -64,15 +67,18 @@ jobs:
           supabase start
           -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,studio,edge-runtime,logflare,vector,supavisor
       # Runs before `supabase test db`, because the pgTAP setup file adds test-only schemas.
-      - name: Generated types match the committed file
+      # Only records whether the committed types are stale; pgTAP still runs either way.
+      - name: Generate types and compare with the committed file
+        id: types
         run: |
           supabase gen types typescript --local > "$RUNNER_TEMP/database.types.ts"
-          if ! diff -u src/adapters/supabase/database.types.ts "$RUNNER_TEMP/database.types.ts"; then
-            echo "::error file=src/adapters/supabase/database.types.ts::Out of date. Run 'npm run gen:types' (or download the 'database-types' artifact of this run) and commit it. Never edit it by hand."
-            exit 1
+          if diff -u src/adapters/supabase/database.types.ts "$RUNNER_TEMP/database.types.ts"; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Upload freshly generated types
-        if: failure()
+        if: steps.types.outputs.stale == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: database-types
@@ -80,6 +86,31 @@ jobs:
           if-no-files-found: ignore
       - name: pgTAP
         run: supabase test db
+      # Stale types on a non-main branch: commit the generated file back to the branch as a bot
+      # commit (TYPES_PUSH_TOKEN, a fine-grained token with Contents read/write on this repo; the
+      # built-in GITHUB_TOKEN would not start a new run). This run then fails so nothing deploys
+      # with stale types; the bot commit's own run verifies and deploys. On main, or without the
+      # token, the run just fails and the artifact above is the fallback. Never edit the file by hand.
+      - name: Commit regenerated types (non-main) or fail
+        if: steps.types.outputs.stale == 'true'
+        env:
+          TYPES_PUSH_TOKEN: ${{ secrets.TYPES_PUSH_TOKEN }}
+        run: |
+          if [ "$GITHUB_REF" = "refs/heads/main" ] || [ -z "$TYPES_PUSH_TOKEN" ]; then
+            echo "::error file=src/adapters/supabase/database.types.ts::Out of date. Download the 'database-types' artifact of this run (or run 'npm run gen:types') and commit it. Never edit it by hand."
+            exit 1
+          fi
+          cp "$RUNNER_TEMP/database.types.ts" src/adapters/supabase/database.types.ts
+          git config user.name "proofy-types-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/adapters/supabase/database.types.ts
+          git commit -m "chore: regenerate database types (CI)"
+          if ! git push "https://x-access-token:${TYPES_PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF}"; then
+            echo "::error::Types were stale and the bot commit could not be pushed (the branch moved, or the token lacks access). Download the 'database-types' artifact instead."
+            exit 1
+          fi
+          echo "::error::Types were stale. Committed the regenerated file as $(git rev-parse --short HEAD); its CI run verifies and deploys. Pull before your next local change."
+          exit 1
 
   deploy-preview:
     name: Deploy Preview (dev)
