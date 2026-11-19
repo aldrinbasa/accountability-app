@@ -366,6 +366,16 @@ isOneToOne: false
               "can_delete": boolean,"can_rename": boolean,"commitment_id": string,"custom_name": string,"deadline": string,"group_id": string,"name": string,"preset_key": string
             }[]
                            },
+"get_today_items":
+{ Args: { "p_group_id": string }; Returns: {
+              "activity_name": string,"can_delete": boolean,"commitment_id": string,"counted": number,"custom_name": string,"days": (number)[],"deadline": string,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"target": number
+            }[]
+                           },
+"get_today_summary":
+{ Args: { "p_group_id": string }; Returns: {
+              "done": number,"left": number,"member_today": string,"planned": number,"week_number": number,"week_start": string
+            }[]
+                           },
 "join_group":
 { Args: { "p_code": string }; Returns: string
                            },
