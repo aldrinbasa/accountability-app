@@ -1,0 +1,13 @@
+node_modules
+dist
+dev-dist
+coverage
+package-lock.json
+_bmad
+_bmad-output
+.claude
+docs
+supabase/.temp
+src/adapters/supabase/database.types.ts
+playwright-report
+test-results

@@ -40,3 +40,7 @@ supabase/.temp/
 
 # Local agent instructions
 CLAUDE.md
+
+# Playwright output
+playwright-report
+test-results

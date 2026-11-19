@@ -1,0 +1,281 @@
+/*
+  Proofy design tokens: "Sunset Zine" palette, Sticker Scrapbook shapes.
+  Source of every value: _bmad-output/planning-artifacts/ux-designs/ux-accountability-app-2026-11-15/DESIGN.md
+  frontmatter (colors, typography, rounded, spacing, components). Elevation and stacking order exist
+  only in DESIGN.md prose (Elevation & Depth, Layout & Spacing) and are tokenised here as --shadow-* / --z-*.
+
+  Colors are semantic vars on :root, mapped into Tailwind through `@theme inline` so utilities resolve
+  through var() and flip live with <html data-theme>. index.html sets it before the first paint from the
+  member's Appearance choice (Auto follows `prefers-color-scheme`; src/data/theme.ts keeps it live).
+  Object roles (pola is the one exception) keep their light value in dark mode, so they are not overridden.
+*/
+
+/* ---------- Colors: light (default) ---------- */
+:root {
+  color-scheme: light dark;
+
+  --paper: #f6eee3;
+  --card: #fff8ee;
+  --ink: #2a1846;
+  --muted: #5e4c78;
+  --primary: #ff6f59;
+  --on-primary: #2a1846;
+  --success: #6a3fb5;
+  --streak: #d0500a;
+  --late: #9a5300;
+  --miss: #c42b3a;
+  --on-miss: #ffffff;
+  --error: #1d47a8;
+  --line: #2a1846;
+  --focus: #0e7c86;
+  --deco: #8c5adc;
+  --tape1: #ff6f5999;
+  --tape2: #8c5adc73;
+  --ph1: #ff6f59;
+  --ph2: #8c5adc;
+  --dot: #2a18461f;
+  --shadow-object: #2a18462e;
+  --shadow-sticker: #2a1846;
+  --camera-surface: #160e24;
+  --camera-ink: #ffebdd;
+  --camera-control: #160e24b8;
+  --scrim: #0a06128c;
+
+  /* Object roles: physical paper objects. Only pola changes in dark mode. */
+  --pola: #ffffff;
+  --sticky: #ffd27a;
+  --sticky2: #ffb3a8;
+  --vote: #c9b6ff;
+  --obj-ink: #2a1846;
+  --obj-muted: #4a3866;
+  --obj-focus: #09505a;
+  --obj-late: #9a5300;
+  --obj-miss: #c42b3a;
+  --obj-on-miss: #ffffff;
+  --obj-error: #1d47a8;
+
+  /* Stacking order (DESIGN.md Layout & Spacing). Use as z-(--z-nav). */
+  --z-content: 0;
+  --z-tape: 1;
+  --z-top-bar: 10;
+  --z-nav: 20;
+  --z-toast: 30;
+  --z-scrim: 40;
+  --z-sheet: 50;
+  --z-camera: 100;
+  --z-photo-viewer: 100;
+
+  /* Scroll containers end clear of the nav and the lifted Camera button (DESIGN.md Safe areas). */
+  --nav-clearance: calc(
+    var(--spacing-nav-height) + var(--spacing-camera-lift) + env(safe-area-inset-bottom) +
+      var(--spacing-4)
+  );
+}
+
+/* ---------- Colors: dark (data-theme, set from the Appearance choice) ---------- */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #1c1230;
+  --card: #2a1c45;
+  --ink: #ffebdd;
+  --muted: #d6bfd8;
+  --primary: #ff7a5c;
+  --on-primary: #2a1846;
+  --success: #b79cff;
+  --streak: #ffa552;
+  --late: #ffc870;
+  --miss: #ff7d8a;
+  --on-miss: #2a1846;
+  --error: #a9c1ff;
+  --line: #ffebdd;
+  --focus: #5ed1d9;
+  --deco: #b79cff;
+  --tape1: #ff7a5c8c;
+  --tape2: #b79cff73;
+  --ph1: #ff7a5c;
+  --ph2: #8c5adc;
+  --dot: #ffebdd0f;
+  --shadow-object: #00000059;
+  --shadow-sticker: #0a0612;
+  --camera-surface: #160e24;
+  --camera-ink: #ffebdd;
+  --camera-control: #160e24b8;
+  --scrim: #0a06128c;
+
+  /* The one object role that changes (DESIGN.md Colors table). */
+  --pola: #f6eee3;
+}
+
+/* ---------- Tailwind mapping: colors and hard-offset shadows (flip with the scheme) ---------- */
+@theme inline {
+  /* Drop Tailwind's default palette and blurred shadows: only Proofy tokens exist. */
+  --color-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-success: var(--success);
+  --color-streak: var(--streak);
+  --color-late: var(--late);
+  --color-miss: var(--miss);
+  --color-on-miss: var(--on-miss);
+  --color-error: var(--error);
+  --color-sticky: var(--sticky);
+  --color-sticky2: var(--sticky2);
+  --color-vote: var(--vote);
+  --color-line: var(--line);
+  --color-focus: var(--focus);
+  --color-pola: var(--pola);
+  --color-obj-ink: var(--obj-ink);
+  --color-obj-muted: var(--obj-muted);
+  --color-obj-focus: var(--obj-focus);
+  --color-obj-late: var(--obj-late);
+  --color-obj-miss: var(--obj-miss);
+  --color-obj-on-miss: var(--obj-on-miss);
+  --color-obj-error: var(--obj-error);
+  --color-tape1: var(--tape1);
+  --color-tape2: var(--tape2);
+  --color-ph1: var(--ph1);
+  --color-ph2: var(--ph2);
+  --color-dot: var(--dot);
+  --color-deco: var(--deco);
+  --color-shadow-object: var(--shadow-object);
+  --color-shadow-sticker: var(--shadow-sticker);
+  --color-camera-surface: var(--camera-surface);
+  --color-camera-ink: var(--camera-ink);
+  --color-camera-control: var(--camera-control);
+  --color-scrim: var(--scrim);
+
+  /* Elevation (DESIGN.md Elevation & Depth): hard offsets only, never blurred. */
+  --shadow-ink-lg: 3px 4px 0 var(--line); /* Check in, Camera button */
+  --shadow-ink: 2px 3px 0 var(--line); /* secondary buttons, group switcher */
+  --shadow-obj-lg: 3px 4px 0 var(--obj-ink); /* primary-on-object */
+  --shadow-obj: 2px 3px 0 var(--obj-ink); /* button-on-object */
+  --shadow-score: 3px 4px 0 var(--shadow-sticker); /* score sticker */
+  --shadow-polaroid: 4px 6px 0 var(--shadow-object);
+  --shadow-sticky: 3px 5px 0 var(--shadow-object);
+  --shadow-paper-sm: 2px 3px 0 var(--shadow-object); /* mini polaroid, title sticky */
+  --shadow-none: 0 0 0 transparent;
+}
+
+/* ---------- Static tokens: type, radii, spacing ---------- */
+@theme static {
+  --font-*: initial;
+  --font-display: 'Baloo 2', 'Baloo 2 Fallback', system-ui, sans-serif;
+  --font-body: 'Nunito', 'Nunito Fallback', system-ui, sans-serif;
+  --font-hand: 'Gochi Hand', 'Gochi Hand Fallback', cursive;
+
+  /* Typography ramp, all rem so it follows the root size (browser text size / iOS Dynamic Type). */
+  --text-*: initial;
+  /* Scales with text size up to 6rem at the default root (96px), then stops. A rem cap would grow
+     with the root too, so the cap is the px equivalent. */
+  --text-numeral-xl: min(4.5rem, 96px);
+  --text-numeral-xl--line-height: 1;
+  --text-numeral-xl--letter-spacing: -0.02em;
+  --text-numeral-xl--font-weight: 800;
+  --text-numeral-lg: 2.875rem;
+  --text-numeral-lg--line-height: 1;
+  --text-numeral-lg--letter-spacing: -0.01em;
+  --text-numeral-lg--font-weight: 800;
+  --text-numeral-md: 2.125rem;
+  --text-numeral-md--line-height: 1;
+  --text-numeral-md--font-weight: 800;
+  --text-display: 2rem;
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.01em;
+  --text-display--font-weight: 800;
+  --text-headline: 1.5rem;
+  --text-headline--line-height: 1.1;
+  --text-headline--font-weight: 800;
+  --text-title: 1.1875rem;
+  --text-title--line-height: 1.1;
+  --text-title--font-weight: 800;
+  --text-title-sm: 1.0625rem;
+  --text-title-sm--line-height: 1.15;
+  --text-title-sm--font-weight: 700;
+  --text-button-lg: 1.125rem;
+  --text-button-lg--line-height: 1;
+  --text-button-lg--font-weight: 800;
+  --text-button: 0.9375rem;
+  --text-button--line-height: 1;
+  --text-button--font-weight: 800;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-body--font-weight: 400;
+  --text-body-strong: 1rem;
+  --text-body-strong--line-height: 1.5;
+  --text-body-strong--font-weight: 700;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.4;
+  --text-body-sm--font-weight: 400;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.35;
+  --text-meta--font-weight: 600;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.3;
+  --text-label--letter-spacing: 0.06em;
+  --text-label--font-weight: 800;
+  --text-nav-label: 0.75rem;
+  --text-nav-label--line-height: 1.1;
+  --text-nav-label--font-weight: 700;
+  --text-hand-lg: 1.375rem;
+  --text-hand-lg--line-height: 1.15;
+  --text-hand-lg--font-weight: 400;
+  --text-hand-md: 1.25rem;
+  --text-hand-md--line-height: 1.2;
+  --text-hand-md--font-weight: 400;
+  --text-hand-sm: 1.125rem;
+  --text-hand-sm--line-height: 1.15;
+  --text-hand-sm--font-weight: 400;
+
+  /* Radii: wobbly, hand-cut. */
+  --radius-*: initial;
+  --radius-wob-lg: 26px 18px 28px 14px / 18px 28px 14px 26px;
+  --radius-wob: 18px 12px 20px 10px / 12px 20px 10px 18px;
+  --radius-wob-sm: 14px 10px 16px 8px;
+  --radius-wob-xs: 9px 6px 10px 5px;
+  --radius-blob: 50% 46% 52% 44%;
+  --radius-sticky: 2px 2px 14px 2px;
+  --radius-sheet: 22px 22px 0 0;
+  --radius-frame: 16px;
+  --radius-thumb: 10px;
+  --radius-photo: 0px;
+  --radius-full: 9999px;
+
+  /* Spacing (4px base plus named layout values). */
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-gutter: 16px;
+  --spacing-stack: 14px;
+  --spacing-feed-gap: 22px;
+  --spacing-target-min: 44px;
+  --spacing-nav-item-min: 48px;
+  --spacing-nav-height: 64px;
+  --spacing-camera-lift: 30px;
+  --spacing-row-min: 52px;
+  --spacing-vote-gap: 12px;
+  --spacing-dot-grid: 18px;
+  --spacing-content-max: 480px;
+  --spacing-icon-sm: 20px;
+  --spacing-icon-md: 24px;
+  --spacing-icon-lg: 32px;
+  --spacing-icon-row: 44px;
+  --spacing-icon-empty: 64px;
+  --spacing-camera-button: 64px;
+}

@@ -1,0 +1,58 @@
+name: Supabase push
+description: >-
+  Apply auth config, pending migrations and Edge Functions to one hosted Supabase project. Reads
+  SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD and SUPABASE_PROJECT_REF, plus the auth secrets
+  AUTH_SITE_URL, AUTH_SMTP_SENDER, AUTH_SMTP_PASS, AUTH_GOOGLE_CLIENT_ID and AUTH_GOOGLE_SECRET, from
+  the job env (set them from the job's GitHub environment secrets). Idempotent: with nothing pending
+  it changes nothing.
+
+runs:
+  using: composite
+  steps:
+    - uses: supabase/setup-cli@v1
+      with:
+        # Same pinned CLI as ci.yml. Never `latest`.
+        version: 3.1.0
+    - name: Link project
+      shell: bash
+      run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+    - name: Check auth secrets
+      shell: bash
+      run: |
+        missing=""
+        for name in AUTH_SITE_URL AUTH_SMTP_SENDER AUTH_SMTP_PASS AUTH_GOOGLE_CLIENT_ID AUTH_GOOGLE_SECRET; do
+          if [ -z "${!name}" ]; then missing="$missing $name"; fi
+        done
+        if [ -n "$missing" ]; then
+          echo "::error::Missing GitHub environment secrets:$missing. Add them to this environment before deploying (see CLAUDE.md, Where secrets live)."
+          exit 1
+        fi
+    # supabase/config.toml keeps SMTP and Google off and site_url on localhost for the local stack.
+    # The CLI's SUPABASE_<SECTION>_<KEY> env overrides switch them to the hosted values here; the
+    # env() values in config.toml (AUTH_SMTP_*, AUTH_GOOGLE_*) come from the job env.
+    # `config push` only touches settings config.toml declares. The diff is printed first so the
+    # run log shows exactly what changed on the hosted project.
+    - name: Show auth config diff
+      shell: bash
+      env:
+        SUPABASE_AUTH_EMAIL_SMTP_ENABLED: 'true'
+        SUPABASE_AUTH_EXTERNAL_GOOGLE_ENABLED: 'true'
+      run: SUPABASE_AUTH_SITE_URL="$AUTH_SITE_URL" supabase config diff
+    - name: Push config
+      shell: bash
+      env:
+        SUPABASE_AUTH_EMAIL_SMTP_ENABLED: 'true'
+        SUPABASE_AUTH_EXTERNAL_GOOGLE_ENABLED: 'true'
+      run: SUPABASE_AUTH_SITE_URL="$AUTH_SITE_URL" supabase config push --yes
+    # CLI 3.x targets the LOCAL database by default; --remote targets the linked project.
+    - name: Push migrations
+      shell: bash
+      run: supabase db push --remote --password "$SUPABASE_DB_PASSWORD" --yes
+    - name: Deploy Edge Functions (if any)
+      shell: bash
+      run: |
+        if ls -d supabase/functions/*/ >/dev/null 2>&1; then
+          supabase functions deploy --use-api
+        else
+          echo "No Edge Functions yet."
+        fi

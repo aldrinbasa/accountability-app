@@ -1,0 +1,67 @@
+import {
+  BackendError,
+  backendErrorCode,
+  ERROR_COPY,
+  errorCopy,
+  isBackendError,
+  isRpcErrorCode,
+} from '@/domain/error-codes'
+
+describe('error-code table (AD-14)', () => {
+  it('maps the profile codes to copy', () => {
+    expect(errorCopy('invalid_display_name')).toBe('Pick a name your friends will recognize.')
+    expect(ERROR_COPY.invalid_time_zone).toMatch(/time zone/)
+  })
+
+  it('maps the group codes to copy', () => {
+    expect(errorCopy('invalid_group_name')).toBe('Give the group a name.')
+    expect(isRpcErrorCode('invalid_group_name')).toBe(true)
+    expect(isRpcErrorCode('profile_required')).toBe(true)
+  })
+
+  it('maps the invite and join codes to copy', () => {
+    for (const code of [
+      'not_admin',
+      'not_member',
+      'invite_not_found',
+      'invite_expired',
+      'group_full',
+    ]) {
+      expect(isRpcErrorCode(code)).toBe(true)
+    }
+    expect(errorCopy('invite_not_found')).toBe(
+      "That invite code doesn't work. Check it with whoever sent it.",
+    )
+    expect(errorCopy('group_full')).toMatch(/10 is the max/)
+  })
+
+  it('maps the leave and remove codes to copy', () => {
+    expect(isRpcErrorCode('cannot_remove_self')).toBe(true)
+    expect(errorCopy('cannot_remove_self')).toMatch(/Leave group/)
+  })
+
+  it('knows only its own codes', () => {
+    expect(isRpcErrorCode('invalid_display_name')).toBe(true)
+    expect(isRpcErrorCode('invalid_time_zone')).toBe(true)
+    expect(isRpcErrorCode('toString')).toBe(false)
+    expect(isRpcErrorCode('something_else')).toBe(false)
+    expect(isRpcErrorCode(42)).toBe(false)
+  })
+})
+
+describe('BackendError', () => {
+  it('carries its code', () => {
+    const error = new BackendError('network')
+    expect(isBackendError(error)).toBe(true)
+    expect(error.code).toBe('network')
+    expect(isBackendError(new Error('x'))).toBe(false)
+  })
+
+  it('backendErrorCode reads a BackendError code and calls anything else unknown', () => {
+    expect(backendErrorCode(new BackendError('not_admin'))).toBe('not_admin')
+    expect(backendErrorCode(new BackendError('network'))).toBe('network')
+    expect(backendErrorCode(new Error('boom'))).toBe('unknown')
+    expect(backendErrorCode('not_admin')).toBe('unknown')
+    expect(backendErrorCode(undefined)).toBe('unknown')
+  })
+})

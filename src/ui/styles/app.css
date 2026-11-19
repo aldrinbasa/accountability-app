@@ -1,0 +1,307 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import './tokens.css';
+@import './fonts.css';
+
+/* `dark:` follows the Appearance choice (<html data-theme>), not the media query alone. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---------- Typography utilities: one class per DESIGN.md typography token ---------- */
+@utility type-numeral-xl {
+  font-family: var(--font-display);
+  font-size: var(--text-numeral-xl);
+  font-weight: var(--text-numeral-xl--font-weight);
+  line-height: var(--text-numeral-xl--line-height);
+  letter-spacing: var(--text-numeral-xl--letter-spacing);
+  font-variant-numeric: tabular-nums;
+}
+@utility type-numeral-lg {
+  font-family: var(--font-display);
+  font-size: var(--text-numeral-lg);
+  font-weight: var(--text-numeral-lg--font-weight);
+  line-height: var(--text-numeral-lg--line-height);
+  letter-spacing: var(--text-numeral-lg--letter-spacing);
+  font-variant-numeric: tabular-nums;
+}
+@utility type-numeral-md {
+  font-family: var(--font-display);
+  font-size: var(--text-numeral-md);
+  font-weight: var(--text-numeral-md--font-weight);
+  line-height: var(--text-numeral-md--line-height);
+  font-variant-numeric: tabular-nums;
+}
+@utility type-display {
+  font-family: var(--font-display);
+  font-size: var(--text-display);
+  font-weight: var(--text-display--font-weight);
+  line-height: var(--text-display--line-height);
+  letter-spacing: var(--text-display--letter-spacing);
+}
+@utility type-headline {
+  font-family: var(--font-display);
+  font-size: var(--text-headline);
+  font-weight: var(--text-headline--font-weight);
+  line-height: var(--text-headline--line-height);
+}
+@utility type-title {
+  font-family: var(--font-display);
+  font-size: var(--text-title);
+  font-weight: var(--text-title--font-weight);
+  line-height: var(--text-title--line-height);
+}
+@utility type-title-sm {
+  font-family: var(--font-display);
+  font-size: var(--text-title-sm);
+  font-weight: var(--text-title-sm--font-weight);
+  line-height: var(--text-title-sm--line-height);
+}
+@utility type-button-lg {
+  font-family: var(--font-display);
+  font-size: var(--text-button-lg);
+  font-weight: var(--text-button-lg--font-weight);
+  line-height: var(--text-button-lg--line-height);
+}
+@utility type-button {
+  font-family: var(--font-body);
+  font-size: var(--text-button);
+  font-weight: var(--text-button--font-weight);
+  line-height: var(--text-button--line-height);
+}
+@utility type-body {
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  font-weight: var(--text-body--font-weight);
+  line-height: var(--text-body--line-height);
+}
+@utility type-body-strong {
+  font-family: var(--font-body);
+  font-size: var(--text-body-strong);
+  font-weight: var(--text-body-strong--font-weight);
+  line-height: var(--text-body-strong--line-height);
+}
+@utility type-body-sm {
+  font-family: var(--font-body);
+  font-size: var(--text-body-sm);
+  font-weight: var(--text-body-sm--font-weight);
+  line-height: var(--text-body-sm--line-height);
+}
+@utility type-meta {
+  font-family: var(--font-body);
+  font-size: var(--text-meta);
+  font-weight: var(--text-meta--font-weight);
+  line-height: var(--text-meta--line-height);
+}
+@utility type-label {
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: var(--text-label--font-weight);
+  line-height: var(--text-label--line-height);
+  letter-spacing: var(--text-label--letter-spacing);
+  text-transform: uppercase;
+}
+@utility type-nav-label {
+  font-family: var(--font-body);
+  font-size: var(--text-nav-label);
+  font-weight: var(--text-nav-label--font-weight);
+  line-height: var(--text-nav-label--line-height);
+}
+@utility type-hand-lg {
+  font-family: var(--font-hand);
+  font-size: var(--text-hand-lg);
+  font-weight: var(--text-hand-lg--font-weight);
+  line-height: var(--text-hand-lg--line-height);
+}
+@utility type-hand-md {
+  font-family: var(--font-hand);
+  font-size: var(--text-hand-md);
+  font-weight: var(--text-hand-md--font-weight);
+  line-height: var(--text-hand-md--line-height);
+}
+@utility type-hand-sm {
+  font-family: var(--font-hand);
+  font-size: var(--text-hand-sm);
+  font-weight: var(--text-hand-sm--font-weight);
+  line-height: var(--text-hand-sm--line-height);
+}
+
+/* ---------- Surfaces ---------- */
+
+/* Paper surface: paper fill with a 1.3px dot grid every 18px. Viewport-anchored, like the body,
+   so a sticky strip of paper (top bar) lines its dots up with the page. */
+@utility paper {
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--dot) 1.3px, transparent 1.4px);
+  background-size: var(--spacing-dot-grid) var(--spacing-dot-grid);
+  background-attachment: fixed;
+}
+
+/* Card: card fill, 2.5px line border, wob radius, 12px padding. */
+@utility card {
+  background-color: var(--card);
+  border: 2.5px solid var(--line);
+  border-radius: var(--radius-wob);
+  padding: var(--spacing-3);
+}
+
+/* Scroll containers end clear of the nav, the lifted Camera button and the bottom safe area. */
+@utility nav-clearance {
+  padding-bottom: var(--nav-clearance);
+  scroll-padding-bottom: var(--nav-clearance);
+}
+
+/* ---------- Pressed feedback (DESIGN.md Elevation): instant, so always within 100 ms ---------- */
+@utility press-offset-lg {
+  &:active {
+    transform: translate(3px, 4px);
+    box-shadow: none;
+  }
+}
+@utility press-offset {
+  &:active {
+    transform: translate(2px, 3px);
+    box-shadow: none;
+  }
+}
+/* Controls without an offset: a 12% ink overlay (obj-ink on objects). Inset spread, never blurred. */
+@utility press-overlay {
+  &:active {
+    box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--ink) 12%, transparent);
+  }
+}
+@utility press-overlay-obj {
+  &:active {
+    box-shadow: inset 0 0 0 100vmax color-mix(in srgb, var(--obj-ink) 12%, transparent);
+  }
+}
+
+@layer base {
+  html {
+    font-family: var(--font-body);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overflow-x: clip;
+    /* Android and desktop: the root follows the browser text size (no px root). */
+    /* Native feel: no grey flash on tap, no double-tap zoom anywhere (pinch zoom still works). */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* iOS: the root follows Dynamic Type through -apple-system-body, then the family is reset.
+     -webkit-touch-callout only exists on iOS/iPadOS WebKit, so macOS Safari keeps the browser size. */
+  @supports (-webkit-touch-callout: none) {
+    html {
+      font: -apple-system-body;
+      font-family: var(--font-body);
+    }
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    overflow-x: clip;
+    color: var(--ink);
+    background-color: var(--paper);
+    background-image: radial-gradient(var(--dot) 1.3px, transparent 1.4px);
+    background-size: var(--spacing-dot-grid) var(--spacing-dot-grid);
+    background-attachment: fixed;
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    font-weight: var(--text-body--font-weight);
+    line-height: var(--text-body--line-height);
+    /* App chrome is not text to select: a long press on a button or row must not select or show the
+       copy callout. Fields, and anything marked select-text (an invite code), stay selectable. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea,
+  [contenteditable='true'],
+  .select-text {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+  img {
+    -webkit-user-drag: none;
+  }
+
+  /* Focused items never hide under the bottom nav (the document is the scroller). */
+  html.has-bottom-nav {
+    scroll-padding-bottom: var(--nav-clearance);
+  }
+
+  /* Controls: pointer on desktop, no double-tap zoom delay. */
+  button,
+  a[href],
+  [role='button'],
+  [role='tab'],
+  summary,
+  label[for],
+  select {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  /* Focus ring: keyboard and switch control only (:focus-visible), never on touch. */
+  :focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 3px;
+  }
+  /* Headings and sheets take focus from the app after navigation (screen readers start there); they
+     are not controls, so they never show a ring. */
+  :is(h1, h2, h3, [role='dialog'])[tabindex='-1']:focus {
+    outline: none;
+  }
+  /* After a tap, focus the app moved (sheet open/close, returning to the opener) shows no ring.
+     input-modality.ts sets data-input; a Tab or arrow key brings every ring back. Text fields keep
+     their ring: it shows where the typing goes. */
+  html[data-input='pointer'] :focus-visible:not(input, textarea, select) {
+    outline: none;
+  }
+  /* Focus ring on object: any control on pola, sticky, sticky2, vote or a coral block. */
+  .on-object:focus-visible,
+  .on-object :focus-visible {
+    outline-color: var(--obj-focus);
+  }
+}
+
+/* iOS zooms into any field under 16px when it is focused. Text type is rem and follows Dynamic Type,
+   so at a small text size a field could drop below 16px: fields never do. Unlayered, so it wins over
+   the type-* utilities. */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem);
+}
+
+/* Phosphor Duotone: the soft layer (opacity 0.2 path) takes the tone color at ~55%. */
+.icon-duo [opacity='0.2'] {
+  fill: var(--icon-tone, var(--primary));
+  opacity: 0.55;
+}
+
+/* Reduced motion: no transitions or animations anywhere; end states appear at once. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Sonner toasts: just appear (motion budget), and sit at the toast layer of the stacking order. */
+[data-sonner-toaster] {
+  z-index: var(--z-toast) !important;
+  transition: none !important;
+}
+[data-sonner-toast],
+[data-sonner-toast] > * {
+  transition: none !important;
+  animation: none !important;
+}

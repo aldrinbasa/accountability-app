@@ -1,0 +1,303 @@
+<!--
+  Proofy sign-in email: code only (decision, Aldrin 2026-11-17).
+  A tapped link opens Safari, not the installed app, so the email carries only the 6-digit code
+  ({{ .Token }}, 15-minute expiry, `otp_expiry = 900`). The app keeps its `/signin?token_hash=`
+  handling for future use.
+  Wired in supabase/config.toml for BOTH templates, pushed to the hosted projects by CI:
+    [auth.email.template.magic_link]   returning members
+    [auth.email.template.confirmation] new members (hosted projects send "Confirm signup" to them)
+
+  Look: Proofy "Sunset Zine" (DESIGN.md). Paper background, a card with an ink outline, and the code
+  on a taped sticky note. The sticky note is a paper object, so it keeps its light colours in dark
+  mode; everything else switches through the <style> block for clients that honour
+  prefers-color-scheme. Web fonts don't load in email, so a rounded system stack stands in for
+  Baloo 2 / Nunito. Hard offset shadows only (clients that drop box-shadow just lose the offset).
+  No emoji.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="supported-color-schemes" content="light dark" />
+    <meta name="format-detection" content="telephone=no, date=no, address=no, email=no" />
+    <title>Your Proofy code</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        .p-bg {
+          background-color: #1c1230 !important;
+        }
+        .p-card {
+          background-color: #2a1c45 !important;
+          border-color: #ffebdd !important;
+          box-shadow: 5px 6px 0 #0a0612 !important;
+        }
+        .p-word {
+          color: #ffa552 !important;
+        }
+        .p-ink {
+          color: #ffebdd !important;
+        }
+        .p-muted {
+          color: #d6bfd8 !important;
+        }
+        .p-divider {
+          border-color: #5e4c78 !important;
+        }
+        .p-sticky {
+          box-shadow: 4px 5px 0 #0a0612 !important;
+        }
+      }
+    </style>
+  </head>
+  <body style="margin: 0; padding: 0; -webkit-text-size-adjust: 100%">
+    <!-- Inbox preview line. -->
+    <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all">
+      Your Proofy code is {{ .Token }}. It expires in 15 minutes.
+    </div>
+    <table
+      role="presentation"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      class="p-bg"
+      bgcolor="#F6EEE3"
+      style="margin: 0; padding: 0; background-color: #f6eee3"
+    >
+      <tr>
+        <td align="center" style="padding: 36px 16px 40px 16px">
+          <table
+            role="presentation"
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            style="max-width: 440px"
+          >
+            <!-- Wordmark -->
+            <tr>
+              <td
+                class="p-word"
+                align="left"
+                style="
+                  padding: 0 4px 16px 4px;
+                  font-family:
+                    'Arial Rounded MT Bold',
+                    ui-rounded,
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    'Segoe UI',
+                    Roboto,
+                    Helvetica,
+                    Arial,
+                    sans-serif;
+                  font-size: 26px;
+                  font-weight: 800;
+                  letter-spacing: 0.2px;
+                  color: #d0500a;
+                "
+              >
+                Proofy
+              </td>
+            </tr>
+
+            <!-- Card -->
+            <tr>
+              <td>
+                <table
+                  role="presentation"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  class="p-card"
+                  bgcolor="#FFF8EE"
+                  style="
+                    background-color: #fff8ee;
+                    border: 2.5px solid #2a1846;
+                    border-radius: 20px 16px 22px 14px;
+                    box-shadow: 5px 6px 0 #2a1846;
+                    font-family:
+                      ui-rounded,
+                      -apple-system,
+                      BlinkMacSystemFont,
+                      'Segoe UI',
+                      Roboto,
+                      Helvetica,
+                      Arial,
+                      sans-serif;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 28px 28px 8px 28px">
+                      <h1
+                        class="p-ink"
+                        style="
+                          margin: 0 0 8px 0;
+                          font-family:
+                            'Arial Rounded MT Bold',
+                            ui-rounded,
+                            -apple-system,
+                            BlinkMacSystemFont,
+                            'Segoe UI',
+                            Roboto,
+                            Helvetica,
+                            Arial,
+                            sans-serif;
+                          font-size: 26px;
+                          line-height: 1.2;
+                          font-weight: 800;
+                          color: #2a1846;
+                        "
+                      >
+                        Here's your code.
+                      </h1>
+                      <p
+                        class="p-muted"
+                        style="margin: 0; font-size: 16px; line-height: 1.5; color: #5e4c78"
+                      >
+                        Type it into Proofy to sign in.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Sticky note with the code -->
+                  <tr>
+                    <td align="center" style="padding: 28px 28px 8px 28px">
+                      <table role="presentation" cellpadding="0" cellspacing="0">
+                        <!-- Tape -->
+                        <tr>
+                          <td align="center" style="font-size: 0; line-height: 0">
+                            <table role="presentation" cellpadding="0" cellspacing="0">
+                              <tr>
+                                <td
+                                  width="88"
+                                  height="18"
+                                  bgcolor="#FF9F86"
+                                  style="
+                                    width: 88px;
+                                    height: 18px;
+                                    background-color: #ff9f86;
+                                    border-radius: 3px;
+                                    opacity: 0.9;
+                                  "
+                                >
+                                  &nbsp;
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td
+                            class="p-sticky"
+                            align="center"
+                            bgcolor="#FFD27A"
+                            style="
+                              padding: 22px 30px 18px 30px;
+                              background-color: #ffd27a;
+                              border-radius: 4px 4px 14px 4px;
+                              box-shadow: 4px 5px 0 #2a18462e;
+                            "
+                          >
+                            <div
+                              style="
+                                font-family:
+                                  ui-rounded,
+                                  -apple-system,
+                                  BlinkMacSystemFont,
+                                  'Segoe UI',
+                                  Roboto,
+                                  Helvetica,
+                                  Arial,
+                                  sans-serif;
+                                font-size: 13px;
+                                font-weight: 700;
+                                letter-spacing: 1.5px;
+                                text-transform: uppercase;
+                                color: #4a3866;
+                              "
+                            >
+                              Your code
+                            </div>
+                            <div
+                              style="
+                                margin: 6px 0 4px 0;
+                                font-family:
+                                  'SF Mono', ui-monospace, Menlo, Consolas, 'Roboto Mono',
+                                  'Courier New', monospace;
+                                font-size: 40px;
+                                line-height: 1.1;
+                                font-weight: 800;
+                                letter-spacing: 10px;
+                                color: #2a1846;
+                                font-variant-numeric: tabular-nums;
+                                white-space: nowrap;
+                              "
+                            >
+                              {{ .Token }}
+                            </div>
+                            <div
+                              style="
+                                font-family:
+                                  ui-rounded,
+                                  -apple-system,
+                                  BlinkMacSystemFont,
+                                  'Segoe UI',
+                                  Roboto,
+                                  Helvetica,
+                                  Arial,
+                                  sans-serif;
+                                font-size: 15px;
+                                font-weight: 700;
+                                color: #2a1846;
+                              "
+                            >
+                              Expires in 15 min
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding: 20px 28px 0 28px">
+                      <p
+                        class="p-muted"
+                        style="margin: 0; font-size: 15px; line-height: 1.5; color: #5e4c78"
+                      >
+                        Asked for more than one? Only the newest code works.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding: 20px 28px 26px 28px">
+                      <p
+                        class="p-muted p-divider"
+                        style="
+                          margin: 0;
+                          padding-top: 16px;
+                          border-top: 1.5px dashed #e4d6c4;
+                          font-size: 13px;
+                          line-height: 1.5;
+                          color: #5e4c78;
+                        "
+                      >
+                        Didn't ask for this? Ignore it. Nobody gets in without the code.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
