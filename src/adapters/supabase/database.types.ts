@@ -356,9 +356,24 @@ isOneToOne: false
 "delete_task":
 { Args: { "p_commitment_id": string }; Returns: undefined
                            },
+"end_commitment":
+{ Args: { "p_commitment_id": string }; Returns: {
+              "ends_after_week_start": string
+            }[]
+                           },
+"get_commitment":
+{ Args: { "p_commitment_id": string }; Returns: {
+              "activity_name": string,"can_edit": boolean,"changes_from": string,"commitment_id": string,"custom_name": string,"days": (number)[],"end_date": string,"group_id": string,"min_end_date": string,"preset_key": string,"schedule_type": string,"state": string,"target": number
+            }[]
+                           },
 "get_invite":
 { Args: { "p_code": string }; Returns: {
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
+            }[]
+                           },
+"get_my_plan":
+{ Args: { "p_group_id": string }; Returns: {
+              "activity_name": string,"can_delete": boolean,"can_edit": boolean,"commitment_id": string,"custom_name": string,"days": (number)[],"deadline": string,"end_date": string,"ends_on": string,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"state": string,"target": number
             }[]
                            },
 "get_task":
@@ -407,7 +422,12 @@ isOneToOne: false
         to: "profiles"
         isOneToOne: true
         isSetofReturn: false
-      } }
+      } },
+"update_commitment":
+{ Args: { "p_commitment_id": string,"p_days"?: (number)[],"p_end_date"?: string,"p_target"?: number }; Returns: {
+              "changes_from": string
+            }[]
+                           }
           }
           Enums: {
             [_ in never]: never
