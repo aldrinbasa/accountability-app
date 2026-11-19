@@ -1,4 +1,9 @@
-/** Today's heading is the day name, e.g. "Friday". */
-export function todayHeading(date: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en', { weekday: 'long' }).format(date)
+import { todayDayName } from '@/domain/today'
+
+/**
+ * Today's heading is the member-local day name, e.g. "Friday": from the server's `memberToday`
+ * (profile zone) once Today's summary has loaded, else the device's day name.
+ */
+export function todayHeading(memberToday?: string | null, date: Date = new Date()): string {
+  return todayDayName(memberToday, date)
 }

@@ -8,6 +8,7 @@ import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
 import { INSTALLED_KEY } from '@/data/install-state'
@@ -124,6 +125,16 @@ function fakeLastWeekTarget(target: number | null, endDate: string | null, minEn
   return days === 7 ? null : Math.max(1, Math.floor((target * days) / 7))
 }
 
+/** The default `get_today_summary`: Friday 20 Nov 2026, week 3, nothing planned. */
+export const TEST_TODAY_SUMMARY: TodaySummary = {
+  memberToday: '2026-11-20',
+  weekStart: '2026-11-16',
+  weekNumber: 3,
+  planned: 0,
+  done: 0,
+  left: 0,
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -151,6 +162,8 @@ export function createFakeBackend(
     planPreview?: Omit<PlanPreview, 'lastWeekTarget'>
     /** The member's own tasks that `getTask` knows (default none; `addTask` adds to them). */
     tasks?: TaskDetails[]
+    /** Today's rows and summary per group id (default: no rows, `TEST_TODAY_SUMMARY`). */
+    today?: Record<string, { items: TodayItem[]; summary?: TodaySummary }>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -167,6 +180,7 @@ export function createFakeBackend(
   let invitesMade = 0
   let commitmentsMade = 0
   const tasks = new Map<string, TaskDetails>((options.tasks ?? []).map((t) => [t.commitmentId, t]))
+  const today = options.today ?? {}
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -355,6 +369,14 @@ export function createFakeBackend(
       if (!task) throw new BackendError('not_found')
       if (!task.canDelete) throw new BackendError('task_locked')
       tasks.delete(commitmentId)
+    }),
+    getTodayItems: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return today[groupId]?.items ?? []
+    }),
+    getTodaySummary: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return today[groupId]?.summary ?? TEST_TODAY_SUMMARY
     }),
   }
 }

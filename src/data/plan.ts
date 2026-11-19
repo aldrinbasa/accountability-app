@@ -15,11 +15,12 @@ import type {
   PlanPreview,
   TaskDetails,
 } from '@/domain/plan'
+import type { TodayData } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { groupActivitiesKey } from '@/data/activities'
 import { useBackendContext } from '@/data/backend-context-value'
 
-/** `['today', groupId]`: Today's items for a group (Story 2.5 reads it; plan writes invalidate it). */
+/** `['today', groupId]`: Today's rows and summary for a group (plan writes invalidate it). */
 export function todayKey(groupId: string) {
   return ['today', groupId] as const
 }
@@ -46,6 +47,7 @@ export interface PlanRepository {
   getTask(commitmentId: string): Promise<TaskDetails>
   renameTask(commitmentId: string, name: string): Promise<void>
   deleteTask(commitmentId: string): Promise<void>
+  today(groupId: string): Promise<TodayData>
 }
 
 /** Plan reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
@@ -57,12 +59,34 @@ export function createPlanRepository(backend: BackendPort): PlanRepository {
     getTask: (commitmentId) => backend.getTask(commitmentId),
     renameTask: (commitmentId, name) => backend.renameTask(commitmentId, name),
     deleteTask: (commitmentId) => backend.deleteTask(commitmentId),
+    today: async (groupId) => {
+      const [items, summary] = await Promise.all([
+        backend.getTodayItems(groupId),
+        backend.getTodaySummary(groupId),
+      ])
+      return { items, summary }
+    },
   }
 }
 
 function usePlanRepository(hook: string): PlanRepository {
   const { backend } = useBackendContext(hook)
   return useMemo(() => createPlanRepository(backend), [backend])
+}
+
+/**
+ * Today for a group: `get_today_items` and `get_today_summary` together under `['today', groupId]`.
+ * Cached data shows at once and refreshes silently on app focus and when Today opens (the query
+ * client's defaults). Retries once.
+ */
+export function useToday(groupId: string) {
+  const repository = usePlanRepository('useToday')
+  return useQuery({
+    queryKey: todayKey(groupId),
+    queryFn: () => repository.today(groupId),
+    retry: 1,
+    retryDelay: 500,
+  })
 }
 
 /**

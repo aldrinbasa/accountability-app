@@ -10,6 +10,7 @@ import type {
   TaskDetails,
 } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TodayItem, TodaySummary } from '@/domain/today'
 
 /**
  * The app's one backend contract (AD-1). Story 1.3 adds the auth surface; later stories add reads,
@@ -110,4 +111,15 @@ export interface BackendPort {
   renameTask(commitmentId: string, name: string): Promise<void>
   /** `delete_task`: before the deadline day starts. Rejects with `not_found` or `task_locked`. */
   deleteTask(commitmentId: string): Promise<void>
+
+  /**
+   * `get_today_items`: the member's Today rows in a group, each placed by the server in
+   * `due_today`, `this_week` or `starts_next_week`, in display order. Rejects with `not_member`.
+   */
+  getTodayItems(groupId: string): Promise<TodayItem[]>
+  /**
+   * `get_today_summary`: the member-local today and week, the week number and this week's planned,
+   * done and left counts. Rejects with `not_member`.
+   */
+  getTodaySummary(groupId: string): Promise<TodaySummary>
 }

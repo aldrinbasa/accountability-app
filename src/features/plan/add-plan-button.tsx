@@ -8,14 +8,17 @@ import { usePlanSheet } from '@/features/plan/plan-sheet-context'
  * The Add button on Today (DESIGN.md `add-button`): a full-width ghost button reading "+ Add",
  * named "Add a commitment or task". Opens the Plan sheet (from the Plan sheet host) with Commitment
  * pre-selected; focus returns here when the sheet closes. Works in every group state, waiting groups
- * included (FR-4).
+ * included (FR-4). As the one action of the "No plan here yet." Empty state it is the primary
+ * button instead.
  */
-export function AddPlanButton() {
+export function AddPlanButton({ variant = 'ghost' }: { variant?: 'ghost' | 'primary' }) {
   const { openPlanSheet } = usePlanSheet()
+  const ghost = variant === 'ghost'
   return (
     <Button
-      variant="ghost"
-      fullWidth
+      variant={variant}
+      fullWidth={ghost}
+      className={ghost ? undefined : 'mt-2'}
       aria-label={PLAN_COPY.addLabel}
       aria-haspopup="dialog"
       data-plan-add=""

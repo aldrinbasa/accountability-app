@@ -24,6 +24,7 @@ import {
 } from '@/domain/groups'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
@@ -234,6 +235,63 @@ export function toTaskDetails(row: TaskRow): TaskDetails {
   }
 }
 
+type TodayItemRow = Database['public']['Functions']['get_today_items']['Returns'][number]
+
+/**
+ * `get_today_items` rows as domain items, in the server's order. The generated type misses the
+ * nullable columns. An unknown section, kind or schedule type is a server bug: fail loudly.
+ */
+export function toTodayItems(rows: readonly TodayItemRow[]): TodayItem[] {
+  return rows.map((row) => {
+    const scheduleType = row.schedule_type ?? null
+    if (!isTodaySection(row.section)) {
+      throw new BackendError(
+        'unknown',
+        `today item ${row.commitment_id} has section ${row.section}`,
+      )
+    }
+    if (row.kind !== 'commitment' && row.kind !== 'task') {
+      throw new BackendError('unknown', `today item ${row.commitment_id} has kind ${row.kind}`)
+    }
+    if (scheduleType !== null && !isScheduleType(scheduleType)) {
+      throw new BackendError(
+        'unknown',
+        `today item ${row.commitment_id} has schedule type ${scheduleType}`,
+      )
+    }
+    return {
+      commitmentId: row.commitment_id,
+      kind: row.kind,
+      section: row.section,
+      presetKey: row.preset_key ?? null,
+      customName: row.custom_name ?? null,
+      activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+      name: row.name ?? null,
+      scheduleType,
+      days: row.days ?? null,
+      target: row.target ?? null,
+      counted: row.counted ?? 0,
+      deadline: row.deadline ?? null,
+      startsOn: row.starts_on ?? null,
+      canDelete: row.can_delete ?? false,
+    }
+  })
+}
+
+type TodaySummaryRow = Database['public']['Functions']['get_today_summary']['Returns'][number]
+
+/** The `get_today_summary` row as a domain summary (dates stay `YYYY-MM-DD` strings). */
+export function toTodaySummary(row: TodaySummaryRow): TodaySummary {
+  return {
+    memberToday: row.member_today,
+    weekStart: row.week_start,
+    weekNumber: row.week_number,
+    planned: row.planned,
+    done: row.done,
+    left: row.left,
+  }
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -294,7 +352,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
  * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
- * (2.4).
+ * (2.4), Today (2.5).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -516,5 +574,19 @@ export const supabaseBackendAdapter: BackendPort = {
   async deleteTask(commitmentId) {
     const { error, status } = await supabase.rpc('delete_task', { p_commitment_id: commitmentId })
     if (error) throw toBackendError(error, status)
+  },
+
+  async getTodayItems(groupId) {
+    const { data, error, status } = await supabase.rpc('get_today_items', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toTodayItems(data ?? [])
+  },
+
+  async getTodaySummary(groupId) {
+    const { data, error, status } = await supabase.rpc('get_today_summary', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_today_summary returned no row')
+    return toTodaySummary(row)
   },
 }

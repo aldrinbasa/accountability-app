@@ -14,12 +14,14 @@ import {
   usePlanPreview,
   useRenameTask,
   useTask,
+  useToday,
 } from '@/data/plan'
 import {
   createFakeBackend,
   createTestQueryClient,
   TEST_GROUP,
   TEST_PLAN_PREVIEW,
+  TEST_TODAY_SUMMARY,
   withBackend,
 } from '@/test/fake-backend'
 
@@ -230,5 +232,43 @@ describe('task data (Story 2.4)', () => {
     })
     expect(code).toBe('not_found')
     for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+  })
+
+  it('useToday reads both Today functions under one key', async () => {
+    const items = [
+      {
+        commitmentId: 'c1',
+        kind: 'commitment' as const,
+        section: 'due_today' as const,
+        presetKey: 'gym',
+        customName: null,
+        activityName: 'Gym',
+        name: null,
+        scheduleType: 'fixed_days' as const,
+        days: [1, 3, 5],
+        target: 3,
+        counted: 0,
+        deadline: null,
+        startsOn: null,
+        canDelete: false,
+      },
+    ]
+    const backend = createFakeBackend(undefined, { today: { [TEST_GROUP.id]: { items } } })
+    const { queryClient, wrapper } = setup(backend)
+    const { result } = renderHook(() => useToday(TEST_GROUP.id), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual({ items, summary: TEST_TODAY_SUMMARY })
+    expect(backend.getTodayItems).toHaveBeenCalledWith(TEST_GROUP.id)
+    expect(backend.getTodaySummary).toHaveBeenCalledWith(TEST_GROUP.id)
+    expect(queryClient.getQueryData(todayKey(TEST_GROUP.id))).toEqual(result.current.data)
+  })
+
+  it('useToday fails when either read fails', async () => {
+    const backend = createFakeBackend()
+    vi.mocked(backend.getTodaySummary).mockRejectedValue(new BackendError('network'))
+    const { wrapper } = setup(backend)
+    const { result } = renderHook(() => useToday(TEST_GROUP.id), { wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 3000 })
+    expect(backendErrorCode(result.current.error)).toBe('network')
   })
 })

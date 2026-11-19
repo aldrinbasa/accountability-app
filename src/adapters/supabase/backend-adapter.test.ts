@@ -829,3 +829,118 @@ describe('tasks', () => {
     expect(await backendCodeOf(adapter.deleteTask('t1'))).toBe('network')
   })
 })
+
+describe('today', () => {
+  const TASK_ROW = {
+    commitment_id: 't1',
+    kind: 'task',
+    section: 'due_today',
+    preset_key: 'groceries',
+    custom_name: null,
+    activity_name: 'Groceries',
+    name: 'Grocery run',
+    schedule_type: null,
+    days: null,
+    target: 1,
+    counted: 0,
+    deadline: '2026-11-20',
+    starts_on: null,
+    can_delete: false,
+  }
+  const RING_ROW = {
+    commitment_id: 'c1',
+    kind: 'commitment',
+    section: 'this_week',
+    preset_key: null,
+    custom_name: 'Pottery',
+    activity_name: 'Pottery',
+    name: null,
+    schedule_type: 'times_per_week',
+    days: null,
+    target: 3,
+    counted: 0,
+    deadline: null,
+    starts_on: null,
+    can_delete: false,
+  }
+
+  it('get_today_items maps the rows in the server order, nulls kept', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [TASK_ROW, RING_ROW], error: null, status: 200 })
+    expect(await adapter.getTodayItems('g1')).toEqual([
+      {
+        commitmentId: 't1',
+        kind: 'task',
+        section: 'due_today',
+        presetKey: 'groceries',
+        customName: null,
+        activityName: 'Groceries',
+        name: 'Grocery run',
+        scheduleType: null,
+        days: null,
+        target: 1,
+        counted: 0,
+        deadline: '2026-11-20',
+        startsOn: null,
+        canDelete: false,
+      },
+      {
+        commitmentId: 'c1',
+        kind: 'commitment',
+        section: 'this_week',
+        presetKey: null,
+        customName: 'Pottery',
+        activityName: 'Pottery',
+        name: null,
+        scheduleType: 'times_per_week',
+        days: null,
+        target: 3,
+        counted: 0,
+        deadline: null,
+        startsOn: null,
+        canDelete: false,
+      },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_today_items', { p_group_id: 'g1' })
+  })
+
+  it('get_today_items fails loudly on an unknown section and maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ...TASK_ROW, section: 'later' }],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getTodayItems('g1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getTodayItems('g1'))).toBe('not_member')
+  })
+
+  it('get_today_summary maps the row; no row is an error', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          member_today: '2026-11-20',
+          week_start: '2026-11-16',
+          week_number: 4,
+          planned: 9,
+          done: 0,
+          left: 9,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getTodaySummary('g1')).toEqual({
+      memberToday: '2026-11-20',
+      weekStart: '2026-11-16',
+      weekNumber: 4,
+      planned: 9,
+      done: 0,
+      left: 9,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_today_summary', { p_group_id: 'g1' })
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.getTodaySummary('g1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getTodaySummary('g1'))).toBe('not_member')
+  })
+})

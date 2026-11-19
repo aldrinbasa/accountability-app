@@ -11,9 +11,10 @@ type View = 'closed' | 'plan' | 'delete'
 
 /**
  * Hosts the Plan sheet for one group and hands out `openPlanSheet` (`usePlanSheet`). Mounted once on
- * Today. One sheet at a time: "Delete task" in edit mode replaces the Plan sheet with its confirm
- * Sheet, and closing the confirm goes back to Today (not to the edit sheet). Focus returns to
- * whatever opened the Plan sheet, or to "+ Add" when that is gone.
+ * Today. "+ Add" opens it to add; a Today row's Overflow Sheet opens it to edit. One sheet at a
+ * time: "Delete task" in edit mode replaces the Plan sheet with its confirm Sheet, and closing the
+ * confirm goes back to Today (not to the edit sheet). Focus returns to whatever opened the Plan
+ * sheet (for a row, its Overflow button), or to "+ Add" when that is gone.
  */
 export function PlanSheetHost({ groupId, children }: { groupId: string; children: ReactNode }) {
   const [view, setView] = useState<View>('closed')
@@ -22,8 +23,9 @@ export function PlanSheetHost({ groupId, children }: { groupId: string; children
   const opener = useRef<HTMLElement | null>(null)
   const root = useRef<HTMLDivElement>(null)
 
-  const openPlanSheet = useCallback<OpenPlanSheet>((next) => {
-    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  const openPlanSheet = useCallback<OpenPlanSheet>((next, from) => {
+    opener.current =
+      from ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
     setRequest(next)
     setView('plan')
   }, [])
