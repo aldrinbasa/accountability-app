@@ -51,14 +51,14 @@ isOneToOne: false
                   ]
                 },"commitments": {
                   Row: {
-                    "created_at": string,"ends_after_week_start": string | null,"group_activity_id": string,"group_id": string,"id": string,"kind": string,"membership_id": string,"schedule_type": string | null,"sessions_through": string | null,"updated_at": string,"user_id": string
+                    "created_at": string,"deadline": string | null,"deadline_day_starts_at": string | null,"ends_after_week_start": string | null,"group_activity_id": string,"group_id": string,"id": string,"kind": string,"membership_id": string,"name": string | null,"schedule_type": string | null,"sessions_through": string | null,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id": string,"group_id": string,"id"?: string,"kind": string,"membership_id": string,"schedule_type"?: string | null,"sessions_through"?: string | null,"updated_at"?: string,"user_id": string
+                    "created_at"?: string,"deadline"?: string | null,"deadline_day_starts_at"?: string | null,"ends_after_week_start"?: string | null,"group_activity_id": string,"group_id": string,"id"?: string,"kind": string,"membership_id": string,"name"?: string | null,"schedule_type"?: string | null,"sessions_through"?: string | null,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"membership_id"?: string,"schedule_type"?: string | null,"sessions_through"?: string | null,"updated_at"?: string,"user_id"?: string
+                    "created_at"?: string,"deadline"?: string | null,"deadline_day_starts_at"?: string | null,"ends_after_week_start"?: string | null,"group_activity_id"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"membership_id"?: string,"name"?: string | null,"schedule_type"?: string | null,"sessions_through"?: string | null,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -340,6 +340,11 @@ isOneToOne: false
               "commitment_id": string,"starts_on": string
             }[]
                            },
+"add_task":
+{ Args: { "p_custom_name"?: string,"p_deadline"?: string,"p_group_activity_id"?: string,"p_group_id": string,"p_name"?: string,"p_preset_key"?: string }; Returns: {
+              "commitment_id": string
+            }[]
+                           },
 "create_group":
 { Args: { "p_name": string }; Returns: string
                            },
@@ -348,9 +353,17 @@ isOneToOne: false
               "code": string,"expires_at": string
             }[]
                            },
+"delete_task":
+{ Args: { "p_commitment_id": string }; Returns: undefined
+                           },
 "get_invite":
 { Args: { "p_code": string }; Returns: {
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
+            }[]
+                           },
+"get_task":
+{ Args: { "p_commitment_id": string }; Returns: {
+              "can_delete": boolean,"can_rename": boolean,"commitment_id": string,"custom_name": string,"deadline": string,"group_id": string,"name": string,"preset_key": string
             }[]
                            },
 "join_group":
@@ -366,6 +379,9 @@ isOneToOne: false
                            },
 "remove_member":
 { Args: { "p_group_id": string,"p_user_id": string }; Returns: undefined
+                           },
+"rename_task":
+{ Args: { "p_commitment_id": string,"p_name": string }; Returns: undefined
                            },
 "save_profile":
 { Args: { "p_display_name": string,"p_time_zone": string }; Returns: {
