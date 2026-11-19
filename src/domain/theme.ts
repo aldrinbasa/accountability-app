@@ -30,5 +30,10 @@ export const THEME_COPY = {
     ThemePreference,
     string
   >,
-  note: 'Auto follows your phone’s light or dark setting.',
+  /** Handwritten line under the picker, per choice. */
+  notes: {
+    system: 'follows your phone, day and night',
+    light: 'paper, all day',
+    dark: 'the night desk, always',
+  } satisfies Record<ThemePreference, string>,
 } as const

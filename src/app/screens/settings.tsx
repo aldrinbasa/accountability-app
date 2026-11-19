@@ -1,15 +1,21 @@
 import { useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
-import { ArrowLeft, CaretRight, SignOut } from '@phosphor-icons/react'
+import { ArrowLeft, CaretRight, DeviceMobile, Moon, SignOut, Sun } from '@phosphor-icons/react'
 import { AUTH_COPY } from '@/domain/auth-errors'
-import { THEME_COPY, THEME_PREFERENCES } from '@/domain/theme'
+import { THEME_COPY, type ThemePreference } from '@/domain/theme'
 import { useAuthActions } from '@/data/auth-session'
 import { useThemePreference } from '@/data/theme'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
-import { SegmentedSwitch } from '@/ui/segmented-switch'
+import { SliderSwitch } from '@/ui/slider-switch'
 import { showToast } from '@/ui/toast'
 import { cameFromMe } from '@/features/me/pushed-from-me'
+
+const APPEARANCE_OPTIONS = [
+  { value: 'system', label: THEME_COPY.options.system, icon: DeviceMobile },
+  { value: 'light', label: THEME_COPY.options.light, icon: Sun },
+  { value: 'dark', label: THEME_COPY.options.dark, icon: Moon },
+] as const satisfies readonly { value: ThemePreference; label: string; icon: typeof Sun }[]
 
 /**
  * Me > Settings, a pushed screen with a back button (an installed iOS app has no browser back).
@@ -49,17 +55,17 @@ export function SettingsScreen() {
       <h1 tabIndex={-1} className="type-headline">
         Settings
       </h1>
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-[10px]">
         <h2 id={appearanceId} className="type-label text-muted">
           {THEME_COPY.heading}
         </h2>
-        <SegmentedSwitch
+        <SliderSwitch
           labelledBy={appearanceId}
-          options={THEME_PREFERENCES.map((value) => ({ value, label: THEME_COPY.options[value] }))}
+          options={APPEARANCE_OPTIONS}
           value={theme}
           onChange={setTheme}
         />
-        <p className="type-meta text-muted">{THEME_COPY.note}</p>
+        <p className="ml-[6px] -rotate-1 type-hand-md text-muted">{THEME_COPY.notes[theme]}</p>
       </section>
       <ul className="card flex flex-col p-0">
         <li>

@@ -155,6 +155,7 @@ describe('Settings', () => {
     expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked()
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(localStorage.getItem('proofy.theme')).toBe('dark')
+    expect(screen.getByText('the night desk, always')).toBeInTheDocument()
 
     await user.click(screen.getByRole('radio', { name: 'Auto' }))
     expect(document.documentElement.dataset.theme).toBe('light')
