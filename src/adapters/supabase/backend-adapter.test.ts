@@ -491,3 +491,106 @@ describe('members, leave and remove', () => {
     }
   })
 })
+
+describe('activities', () => {
+  it('lists the presets ordered by sort', async () => {
+    db.query.order.mockResolvedValueOnce({
+      data: [
+        { key: 'gym', name: 'Gym', category: 'fitness', sort: 1 },
+        { key: 'study', name: 'Study', category: 'mind', sort: 6 },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.listPresetActivities()).resolves.toEqual([
+      { key: 'gym', name: 'Gym', category: 'fitness', sort: 1 },
+      { key: 'study', name: 'Study', category: 'mind', sort: 6 },
+    ])
+    expect(db.from).toHaveBeenCalledWith('preset_activities')
+    expect(db.query.order).toHaveBeenCalledWith('sort')
+  })
+
+  it('a preset with an unknown category is an error; no response → network', async () => {
+    db.query.order.mockResolvedValueOnce({
+      data: [{ key: 'gym', name: 'Gym', category: 'cardio', sort: 1 }],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.listPresetActivities())).toBe('unknown')
+    db.query.order.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.listPresetActivities())).toBe('network')
+  })
+
+  it("lists a group's activities from group_activity_options", async () => {
+    db.query.eq.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'a1',
+          group_id: 'g1',
+          preset_key: 'gym',
+          custom_name: null,
+          created_by: 'user-1',
+          locked_schedule_type: 'times_per_week',
+        },
+        {
+          id: 'a2',
+          group_id: 'g1',
+          preset_key: null,
+          custom_name: 'Pottery',
+          created_by: 'user-2',
+          locked_schedule_type: null,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.listGroupActivities('g1')).resolves.toEqual([
+      {
+        id: 'a1',
+        groupId: 'g1',
+        presetKey: 'gym',
+        customName: null,
+        createdBy: 'user-1',
+        lockedScheduleType: 'times_per_week',
+      },
+      {
+        id: 'a2',
+        groupId: 'g1',
+        presetKey: null,
+        customName: 'Pottery',
+        createdBy: 'user-2',
+        lockedScheduleType: null,
+      },
+    ])
+    expect(db.from).toHaveBeenCalledWith('group_activity_options')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g1')
+  })
+
+  it('a group activity with an unknown schedule type is an error; no response → network', async () => {
+    db.query.eq.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'a1',
+          group_id: 'g1',
+          preset_key: 'gym',
+          custom_name: null,
+          created_by: 'user-1',
+          locked_schedule_type: 'daily',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.listGroupActivities('g1'))).toBe('unknown')
+    db.query.eq.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.listGroupActivities('g1'))).toBe('network')
+  })
+})

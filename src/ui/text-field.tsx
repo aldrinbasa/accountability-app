@@ -1,5 +1,7 @@
 import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react'
+import type { Icon as PhosphorIcon } from '@phosphor-icons/react'
 import { FieldError } from '@/ui/field-error'
+import { Icon } from '@/ui/icon'
 import { cn } from '@/ui/lib/utils'
 
 export interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'disabled'> {
@@ -9,40 +11,81 @@ export interface TextFieldProps extends Omit<InputHTMLAttributes<HTMLInputElemen
   error?: ReactNode
   /** Optional control under the error message, e.g. "Send a new one". */
   errorAction?: ReactNode
+  /** Optional Phosphor icon inside the field, left of the text (decorative, `aria-hidden`). */
+  icon?: PhosphorIcon
+  /** Optional note under the field in `meta` muted type, linked with `aria-describedby`. */
+  hint?: ReactNode
 }
 
 /**
  * Text field per DESIGN.md `text-field`: label above in `label` type, card fill, 2.5px line border,
- * 44px min height, body type; error border and a linked Field error below. Callers move focus to the
+ * 44px min height, body type; an optional icon inside on the left and an optional `meta` hint below;
+ * error border and a linked Field error below. Callers move focus to the
  * field when a submit fails, so the error is read with it.
  */
 export const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextField(
-  { label, error, errorAction, id, className, ...props },
+  {
+    label,
+    error,
+    errorAction,
+    icon,
+    hint,
+    id,
+    className,
+    'aria-describedby': describedBy,
+    ...props
+  },
   ref,
 ) {
   const autoId = useId()
   const inputId = id ?? `field-${autoId}`
   const errorId = `${inputId}-error`
+  const hintId = `${inputId}-hint`
   const hasError = error !== undefined && error !== null && error !== false
+  const hasHint = hint !== undefined && hint !== null && hint !== false
+  const describedByIds =
+    [describedBy, hasHint ? hintId : null, hasError ? errorId : null].filter(Boolean).join(' ') ||
+    undefined
+
+  const input = (
+    <input
+      ref={ref}
+      id={inputId}
+      aria-invalid={hasError || undefined}
+      aria-describedby={describedByIds}
+      className={cn(
+        'min-h-target-min w-full rounded-wob-sm border-[2.5px] border-line bg-card px-3 py-2 text-ink type-body',
+        'placeholder:text-muted',
+        icon && 'pl-10',
+        hasError && 'border-error',
+        className,
+      )}
+      {...props}
+    />
+  )
 
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={inputId} className="type-label text-muted">
         {label}
       </label>
-      <input
-        ref={ref}
-        id={inputId}
-        aria-invalid={hasError || undefined}
-        aria-describedby={hasError ? errorId : undefined}
-        className={cn(
-          'min-h-target-min w-full rounded-wob-sm border-[2.5px] border-line bg-card px-3 py-2 text-ink type-body',
-          'placeholder:text-muted',
-          hasError && 'border-error',
-          className,
-        )}
-        {...props}
-      />
+      {icon ? (
+        <div className="relative">
+          <Icon
+            icon={icon}
+            size={20}
+            className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink"
+          />
+          {input}
+        </div>
+      ) : (
+        input
+      )}
+      {hasHint ? (
+        <p id={hintId} className="type-meta text-muted">
+          {hint}
+        </p>
+      ) : null}
       {hasError ? (
         <FieldError id={errorId} action={errorAction}>
           {error}

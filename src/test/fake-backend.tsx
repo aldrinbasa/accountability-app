@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
+import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
@@ -67,6 +68,37 @@ export const TEST_INVITE_PREVIEW: InvitePreview = {
   status: 'valid',
 }
 
+const PRESET_ROWS: [string, string, PresetActivity['category']][] = [
+  ['gym', 'Gym', 'fitness'],
+  ['run', 'Run', 'fitness'],
+  ['walk', 'Walk', 'fitness'],
+  ['yoga', 'Yoga', 'fitness'],
+  ['sports', 'Sports', 'fitness'],
+  ['study', 'Study', 'mind'],
+  ['read', 'Read', 'mind'],
+  ['meditate', 'Meditate', 'mind'],
+  ['journal', 'Journal', 'mind'],
+  ['language_practice', 'Language practice', 'mind'],
+  ['paint', 'Paint', 'creative'],
+  ['draw', 'Draw', 'creative'],
+  ['music_practice', 'Music practice', 'creative'],
+  ['write', 'Write', 'creative'],
+  ['photography', 'Photography', 'creative'],
+  ['side_business', 'Side business', 'life_work'],
+  ['cook_at_home', 'Cook at home', 'life_work'],
+  ['clean', 'Clean', 'life_work'],
+  ['groceries', 'Groceries', 'life_work'],
+  ['sleep_early', 'Sleep early', 'life_work'],
+]
+
+/** The 20 seeded presets, as `preset_activities` holds them (migration 20261119200000). */
+export const TEST_PRESETS: PresetActivity[] = PRESET_ROWS.map(([key, name, category], index) => ({
+  key,
+  name,
+  category,
+  sort: index + 1,
+}))
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -88,6 +120,8 @@ export function createFakeBackend(
     ended?: EndedMembership[]
     /** Current members per group id; default `TEST_MEMBERS` for `TEST_GROUP`. */
     members?: Record<string, GroupMember[]>
+    /** Activities per group id (default none). */
+    groupActivities?: Record<string, GroupActivity[]>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -98,6 +132,7 @@ export function createFakeBackend(
   const members: Record<string, GroupMember[]> = options.members ?? {
     [TEST_GROUP.id]: TEST_MEMBERS,
   }
+  const groupActivities: Record<string, GroupActivity[]> = options.groupActivities ?? {}
   let created = 0
   let invitesMade = 0
   const invites: Record<string, InvitePreview> = options.invites ?? {
@@ -213,6 +248,11 @@ export function createFakeBackend(
       members[groupId] = current.filter((member) => member.userId !== userId)
       groups = groups.map((g) => (g.id === groupId ? { ...g, memberCount: g.memberCount - 1 } : g))
     }),
+    listPresetActivities: vi.fn(async () => TEST_PRESETS),
+    // RLS: a non-member reads an empty list, not an error.
+    listGroupActivities: vi.fn(async (groupId: string) =>
+      groups.some((group) => group.id === groupId) ? (groupActivities[groupId] ?? []) : [],
+    ),
   }
 }
 

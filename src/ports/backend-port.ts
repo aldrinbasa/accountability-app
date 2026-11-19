@@ -1,3 +1,4 @@
+import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
@@ -66,4 +67,12 @@ export interface BackendPort {
    * `cannot_remove_self` or `not_member`.
    */
   removeMember(groupId: string, userId: string): Promise<void>
+
+  /** The 20 global preset activities, in display order (`preset_activities` by `sort`). */
+  listPresetActivities(): Promise<PresetActivity[]>
+  /**
+   * A group's activities (`group_activity_options`): its preset rows and its members' custom
+   * activities. Current members only (RLS); anyone else reads an empty list.
+   */
+  listGroupActivities(groupId: string): Promise<GroupActivity[]>
 }

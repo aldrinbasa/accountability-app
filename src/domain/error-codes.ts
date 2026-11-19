@@ -14,6 +14,7 @@ export const ERROR_COPY = {
   invite_expired: 'This invite expired. Ask the admin for a fresh one.',
   group_full: 'That group is full. 10 is the max.',
   cannot_remove_self: "You can't remove yourself. Use Leave group instead.",
+  invalid_activity: 'Pick an activity.',
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY

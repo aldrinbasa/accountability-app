@@ -5,6 +5,12 @@ import {
   type Session,
   type User,
 } from '@supabase/supabase-js'
+import {
+  isActivityCategory,
+  isScheduleType,
+  type GroupActivity,
+  type PresetActivity,
+} from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
@@ -129,6 +135,46 @@ export function toGroupMembers(rows: readonly MemberRow[]): GroupMember[] {
   }))
 }
 
+type PresetRow = Pick<Tables<'preset_activities'>, 'key' | 'name' | 'category' | 'sort'>
+
+const PRESET_COLUMNS = 'key, name, category, sort'
+
+/** Preset rows as domain presets. A row with an unknown category is a server bug: fail loudly. */
+export function toPresetActivities(rows: readonly PresetRow[]): PresetActivity[] {
+  return rows.map((row) => {
+    if (!isActivityCategory(row.category)) {
+      throw new BackendError('unknown', `preset ${row.key} has category ${row.category}`)
+    }
+    return { key: row.key, name: row.name, category: row.category, sort: row.sort }
+  })
+}
+
+type GroupActivityRow = Pick<
+  Tables<'group_activity_options'>,
+  'id' | 'group_id' | 'preset_key' | 'custom_name' | 'created_by' | 'locked_schedule_type'
+>
+
+const GROUP_ACTIVITY_COLUMNS =
+  'id, group_id, preset_key, custom_name, created_by, locked_schedule_type'
+
+/** Group activity rows as domain rows. An unknown schedule type is a server bug: fail loudly. */
+export function toGroupActivities(rows: readonly GroupActivityRow[]): GroupActivity[] {
+  return rows.map((row) => {
+    const locked = row.locked_schedule_type
+    if (locked !== null && !isScheduleType(locked)) {
+      throw new BackendError('unknown', `group activity ${row.id} has schedule type ${locked}`)
+    }
+    return {
+      id: row.id,
+      groupId: row.group_id,
+      presetKey: row.preset_key,
+      customName: row.custom_name,
+      createdBy: row.created_by,
+      lockedScheduleType: locked,
+    }
+  })
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -188,7 +234,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
- * members, leave and remove (1.8).
+ * members, leave and remove (1.8), activities (2.1).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -341,5 +387,23 @@ export const supabaseBackendAdapter: BackendPort = {
       p_user_id: userId,
     })
     if (error) throw toBackendError(error, status)
+  },
+
+  async listPresetActivities() {
+    const { data, error, status } = await supabase
+      .from('preset_activities')
+      .select(PRESET_COLUMNS)
+      .order('sort')
+    if (error) throw toBackendError(error, status)
+    return toPresetActivities(data ?? [])
+  },
+
+  async listGroupActivities(groupId) {
+    const { data, error, status } = await supabase
+      .from('group_activity_options')
+      .select(GROUP_ACTIVITY_COLUMNS)
+      .eq('group_id', groupId)
+    if (error) throw toBackendError(error, status)
+    return toGroupActivities(data ?? [])
   },
 }

@@ -40,6 +40,11 @@ describe('error-code table (AD-14)', () => {
     expect(errorCopy('cannot_remove_self')).toMatch(/Leave group/)
   })
 
+  it('maps the activity code to copy', () => {
+    expect(isRpcErrorCode('invalid_activity')).toBe(true)
+    expect(errorCopy('invalid_activity')).toBe('Pick an activity.')
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)
