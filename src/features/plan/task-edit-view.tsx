@@ -47,8 +47,9 @@ export interface TaskEditViewProps {
 
 /**
  * The Plan sheet in task edit mode (Story 2.4), from `get_task`: activity and deadline read-only,
- * Name editable with Save calling `rename_task`, and the destructive "Delete task" link only while
- * the server says `can_delete` (before the deadline day starts).
+ * Name editable with Save calling `rename_task` while the server says `can_rename` (else read-only,
+ * no Save), and the destructive "Delete task" link only while it says `can_delete` (before the
+ * deadline day starts).
  */
 export function TaskEditView({
   groupId,
@@ -110,7 +111,11 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
   const nameRef = useRef<HTMLInputElement>(null)
   const [focusTick, setFocusTick] = useState(0)
 
-  const nameError = showNameError ? taskNameError(name) : undefined
+  // The server refused the name (invalid_plan); cleared by the next edit.
+  const [serverNameError, setServerNameError] = useState(false)
+  const nameError = showNameError
+    ? (taskNameError(name) ?? (serverNameError ? TASK_COPY.pickName : undefined))
+    : undefined
 
   useEffect(() => {
     mounted.current = true
@@ -168,6 +173,7 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
       else if (code === 'not_found') setFailure('gone')
       else if (code === 'invalid_plan') {
         setShowNameError(true)
+        setServerNameError(true)
         setFocusTick((tick) => tick + 1)
       } else setFailure('failed')
     }
@@ -188,20 +194,31 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
           </p>
         </div>
 
-        <TextField
-          ref={nameRef}
-          label={TASK_COPY.name}
-          placeholder={TASK_COPY.namePlaceholder}
-          maxLength={TASK_NAME_MAX}
-          autoComplete="off"
-          aria-required="true"
-          value={name}
-          onChange={(event) => {
-            setName(event.target.value)
-            setFailure(null)
-          }}
-          error={nameError}
-        />
+        {task.canRename ? (
+          <TextField
+            ref={nameRef}
+            label={TASK_COPY.name}
+            placeholder={TASK_COPY.namePlaceholder}
+            maxLength={TASK_NAME_MAX}
+            autoComplete="off"
+            aria-required="true"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value)
+              setFailure(null)
+              setServerNameError(false)
+            }}
+            error={nameError}
+          />
+        ) : (
+          // The session has ended: the name can't change any more (rename_task would refuse).
+          <div className="flex flex-col gap-2">
+            <p className="type-label text-muted">{TASK_COPY.name}</p>
+            <p className="type-body text-ink" data-read-only="">
+              {task.name}
+            </p>
+          </div>
+        )}
 
         <div className="flex flex-col gap-2">
           <p className="type-label text-muted">{TASK_COPY.deadline}</p>
@@ -220,9 +237,17 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
             {failureText(failure)}
           </InlineRetry>
         ) : null}
-        <Button type="submit" variant="primary" fullWidth busy={busy} busyLabel={PLAN_COPY.saving}>
-          {PLAN_COPY.save}
-        </Button>
+        {task.canRename ? (
+          <Button
+            type="submit"
+            variant="primary"
+            fullWidth
+            busy={busy}
+            busyLabel={PLAN_COPY.saving}
+          >
+            {PLAN_COPY.save}
+          </Button>
+        ) : null}
         {task.canDelete ? (
           <Button
             variant="link"

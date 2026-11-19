@@ -78,11 +78,11 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
     ? deadlineOptions(preview.data.memberToday, preview.data.weekEnd)
     : []
   const defaultDeadline = preview.data?.weekEnd ?? null
-  // A picked day the server no longer offers (the day moved on) falls back to Sunday.
-  const deadline =
-    form.deadline !== null && options.some((o) => o.date === form.deadline)
-      ? form.deadline
-      : defaultDeadline
+  // A picked day the server no longer offers (the member's day moved on) is cleared, never swapped
+  // for another day: the Deadline Field error asks for a new pick.
+  const pickGone =
+    form.deadline !== null && options.length > 0 && !options.some((o) => o.date === form.deadline)
+  const deadline = form.deadline === null ? defaultDeadline : pickGone ? null : form.deadline
   const deadlineIso = options.find((o) => o.date === deadline)?.iso ?? null
   const validation = validateTask(form)
 
@@ -138,6 +138,10 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
       if (first) focusError(first)
       return
     }
+    if (pickGone) {
+      focusError('deadline')
+      return
+    }
     if (deadline === null) {
       // No days from the server yet: nothing to save against.
       setFailure(isOffline() ? 'offline' : 'failed')
@@ -190,7 +194,7 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
 
   const activityError = shown.has('activity') ? validation.activity : undefined
   const nameError = shown.has('name') ? validation.name : undefined
-  const deadlineError = serverDeadlineError ? errorCopy('invalid_deadline') : undefined
+  const deadlineError = serverDeadlineError || pickGone ? errorCopy('invalid_deadline') : undefined
 
   return (
     <form noValidate className="flex flex-col" onSubmit={save}>

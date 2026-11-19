@@ -78,24 +78,27 @@ export interface PlanSheetProps {
   groupId: string
   /** Add (Commitment pre-selected) or edit one item. Default: add. */
   request?: PlanSheetRequest
+  /** Where focus goes on close (default: what had focus when the sheet opened). */
+  returnFocusTo?: () => HTMLElement | null
   /** Edit mode's "Delete task": the caller swaps this sheet for the delete confirm. */
   onDeleteTask?: (task: DeleteTarget) => void
 }
 
 /**
  * The Plan sheet (Stories 2.2 and 2.4; DESIGN.md `plan-sheet`, mockups/key-add-plan.html). Title
- * "Add a commitment or task". In add mode an unlabeled Commitment / Task switch sits on top,
- * Commitment pre-selected; Commitment mode has Activity, Schedule, Days or Times per week, End date
- * (optional) and the start note from `plan_preview`; Task mode has Activity, Name and Deadline. In
- * edit mode (tasks for now) the switch is hidden. Save is coral and pinned to the bottom. Unsaved
- * input asks "Discard this?" on close; focus is trapped and returns to the opener. Reminders arrive
- * in Epic 6.
+ * "Add a commitment or task", or "Edit task" in task edit mode. In add mode an unlabeled
+ * Commitment / Task switch sits on top, Commitment pre-selected; Commitment mode has Activity,
+ * Schedule, Days or Times per week, End date (optional) and the start note from `plan_preview`;
+ * Task mode has Activity, Name and Deadline. In edit mode (tasks for now) the switch is hidden. Save
+ * is coral and pinned to the bottom. Unsaved input asks "Discard this?" on close; focus is trapped
+ * and returns to the opener. Reminders arrive in Epic 6.
  */
 export function PlanSheet({
   open,
   onOpenChange,
   groupId,
   request = { mode: 'add' },
+  returnFocusTo,
   onDeleteTask,
 }: PlanSheetProps) {
   const [dirty, setDirty] = useState(false)
@@ -106,7 +109,13 @@ export function PlanSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={change} title={PLAN_COPY.title} dirty={dirty}>
+    <Sheet
+      open={open}
+      onOpenChange={change}
+      title={request.mode === 'edit' ? TASK_COPY.editTitle : PLAN_COPY.title}
+      dirty={dirty}
+      returnFocusTo={returnFocusTo}
+    >
       {/* The sheet unmounts its content when closed, so every open starts from a fresh form. */}
       {request.mode === 'edit' ? (
         <TaskEditView
@@ -132,9 +141,20 @@ interface AddPlanViewProps {
   onSaved: () => void
 }
 
-/** Add mode: the Commitment / Task switch, then the form of the chosen kind. */
+/**
+ * Add mode: the Commitment / Task switch, then the form of the chosen kind. Both forms stay mounted
+ * (the other one hidden), so input survives a switch back and forth; the sheet is dirty when either
+ * form is.
+ */
 function AddPlanView({ groupId, onDirtyChange, onSaved }: AddPlanViewProps) {
   const [kind, setKind] = useState<PlanKind>('commitment')
+  const [commitmentDirty, setCommitmentDirty] = useState(false)
+  const [taskDirty, setTaskDirty] = useState(false)
+
+  useEffect(() => {
+    onDirtyChange(commitmentDirty || taskDirty)
+  }, [commitmentDirty, taskDirty, onDirtyChange])
+
   return (
     <div className="flex flex-col gap-5">
       <SegmentedSwitch
@@ -143,11 +163,16 @@ function AddPlanView({ groupId, onDirtyChange, onSaved }: AddPlanViewProps) {
         onChange={setKind}
         label={TASK_COPY.kindLabel}
       />
-      {kind === 'commitment' ? (
-        <CommitmentFormView groupId={groupId} onDirtyChange={onDirtyChange} onSaved={onSaved} />
-      ) : (
-        <TaskFormView groupId={groupId} onDirtyChange={onDirtyChange} onSaved={onSaved} />
-      )}
+      <div hidden={kind !== 'commitment'}>
+        <CommitmentFormView
+          groupId={groupId}
+          onDirtyChange={setCommitmentDirty}
+          onSaved={onSaved}
+        />
+      </div>
+      <div hidden={kind !== 'task'}>
+        <TaskFormView groupId={groupId} onDirtyChange={setTaskDirty} onSaved={onSaved} />
+      </div>
     </div>
   )
 }

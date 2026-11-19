@@ -106,6 +106,12 @@ export function useAddCommitment(groupId: string) {
   })
 }
 
+/** The task changed under the member (its day started, or it is gone): Today and the plan are stale. */
+function isStaleTaskError(error: unknown): boolean {
+  const code = backendErrorCode(error)
+  return code === 'task_locked' || code === 'not_found'
+}
+
 /** Invalidates what every task write changes: Today's items and the member's plan. */
 function invalidatePlan(queryClient: QueryClient, groupId: string) {
   void queryClient.invalidateQueries({ queryKey: todayKey(groupId) })
@@ -149,7 +155,7 @@ export function useAddTask(groupId: string) {
   })
 }
 
-/** `rename_task`. Invalidates today and the plan on success, and the plan on `task_locked`. */
+/** `rename_task`. Invalidates today and the plan on success, `task_locked` and `not_found`. */
 export function useRenameTask(groupId: string) {
   const repository = usePlanRepository('useRenameTask')
   const queryClient = useQueryClient()
@@ -158,16 +164,14 @@ export function useRenameTask(groupId: string) {
       repository.renameTask(commitmentId, name),
     onSuccess: () => invalidatePlan(queryClient, groupId),
     onError: (error) => {
-      if (backendErrorCode(error) === 'task_locked') {
-        void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
-      }
+      if (isStaleTaskError(error)) invalidatePlan(queryClient, groupId)
     },
   })
 }
 
 /**
- * `delete_task`. Invalidates today and the plan on success. A `task_locked` answer (the deadline day
- * has started) refetches the plan too, so nothing keeps offering the delete.
+ * `delete_task`. Invalidates today and the plan on success. A `task_locked` (the deadline day has
+ * started) or `not_found` answer refetches them too, so nothing keeps offering the delete.
  */
 export function useDeleteTask(groupId: string) {
   const repository = usePlanRepository('useDeleteTask')
@@ -180,7 +184,7 @@ export function useDeleteTask(groupId: string) {
       invalidatePlan(queryClient, groupId)
     },
     onError: (error) => {
-      if (backendErrorCode(error) === 'task_locked') invalidatePlan(queryClient, groupId)
+      if (isStaleTaskError(error)) invalidatePlan(queryClient, groupId)
     },
   })
 }

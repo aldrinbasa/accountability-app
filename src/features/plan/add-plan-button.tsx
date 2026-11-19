@@ -18,6 +18,7 @@ export function AddPlanButton() {
       fullWidth
       aria-label={PLAN_COPY.addLabel}
       aria-haspopup="dialog"
+      data-plan-add=""
       onClick={() => openPlanSheet({ mode: 'add' })}
     >
       <Icon icon={Plus} size={24} />

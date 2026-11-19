@@ -206,4 +206,29 @@ describe('task data (Story 2.4)', () => {
     expect(code).toBe('task_locked')
     expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
   })
+
+  it('task_locked on rename and not_found on delete refetch today and the plan', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [{ ...TASK, canRename: false }] })
+    const { queryClient, wrapper } = setup(backend)
+    const keys = [todayKey(TEST_GROUP.id), planKey(TEST_GROUP.id)]
+    for (const key of keys) queryClient.setQueryData(key, [])
+    const rename = renderHook(() => useRenameTask(TEST_GROUP.id), { wrapper })
+    await act(async () => {
+      await rename.result.current
+        .mutateAsync({ commitmentId: TASK.commitmentId, name: 'Big shop' })
+        .catch(() => undefined)
+    })
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+
+    for (const key of keys) queryClient.setQueryData(key, [])
+    const remove = renderHook(() => useDeleteTask(TEST_GROUP.id), { wrapper })
+    let code: unknown
+    await act(async () => {
+      await remove.result.current.mutateAsync('missing').catch((error: unknown) => {
+        code = backendErrorCode(error)
+      })
+    })
+    expect(code).toBe('not_found')
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+  })
 })

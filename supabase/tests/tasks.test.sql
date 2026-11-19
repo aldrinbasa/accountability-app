@@ -15,7 +15,7 @@
 begin;
 -- Timestamps compare as text in UTC.
 set local timezone = 'UTC';
-select plan(77);
+select plan(81);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -455,6 +455,24 @@ select is(
   (select gw.lock_at from public.group_weeks gw
    where gw.group_id = current_setting('test.g1')::uuid and gw.week_start = '2026-11-23'),
   '2026-12-03 00:00:00+00'::timestamptz, 'the member''s week is ensured for the group, locking in group time');
+
+-- ===== An owner who left the group (Sun 22 Nov 11:30 UTC) =====
+select tests.authenticate_as('bob');
+select public.leave_group(current_setting('test.g1')::uuid);
+select throws_ok(
+  format($$ select public.delete_task(%L) $$, current_setting('test.bob')),
+  'P0001', 'not_found', 'delete_task after the owner left raises not_found');
+select throws_ok(
+  format($$ select public.rename_task(%L, 'Gone') $$, current_setting('test.bob')),
+  'P0001', 'not_found', 'rename_task after the owner left raises not_found');
+select throws_ok(
+  format($$ select * from public.get_task(%L) $$, current_setting('test.bob')),
+  'P0001', 'not_found', 'get_task after the owner left raises not_found');
+reset role;
+select is(
+  (select c.name || ' ' || (select count(*) from public.sessions s where s.commitment_id = c.id)::text
+   from public.commitments c where c.id = current_setting('test.bob')::uuid),
+  'Park 1', 'the left member''s task and its session are unchanged');
 
 -- ===== anon =====
 select tests.clear_authentication();

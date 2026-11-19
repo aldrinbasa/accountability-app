@@ -28,10 +28,11 @@ export interface SheetProps {
   /** The sheet holds unsaved input: closing asks "Discard this?" first. */
   dirty?: boolean
   /**
-   * Where focus returns on close, when the opener is not what has focus as the sheet opens (a sheet
-   * that replaces another one). Default: the element focused when the sheet opened.
+   * Where focus returns on close, asked at close time: for a sheet that replaces another one (the
+   * opener is not what has focus as it opens), or an opener that may be gone by then. Default: the
+   * element focused when the sheet opened.
    */
-  returnFocusTo?: HTMLElement | null
+  returnFocusTo?: () => HTMLElement | null
   className?: string
 }
 
@@ -173,7 +174,7 @@ export function Sheet({
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             // No Dialog.Trigger here, so remember the opener ourselves to return focus to it.
-            returnFocusRef.current = returnFocusTo ?? (document.activeElement as HTMLElement | null)
+            returnFocusRef.current = document.activeElement as HTMLElement | null
             const target =
               bodyRef.current?.querySelector<HTMLElement>('[data-autofocus]') ??
               bodyRef.current?.querySelector<HTMLElement>(FOCUSABLE)
@@ -181,7 +182,7 @@ export function Sheet({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            const opener = returnFocusRef.current
+            const opener = returnFocusTo ? returnFocusTo() : returnFocusRef.current
             returnFocusRef.current = null
             if (opener?.isConnected) opener.focus()
           }}

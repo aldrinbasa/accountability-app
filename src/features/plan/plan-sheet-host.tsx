@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 import { DeleteTaskSheet, type DeleteTarget } from '@/features/plan/delete-task-sheet'
 import { PlanSheet } from '@/features/plan/plan-sheet'
 import {
@@ -12,29 +12,42 @@ type View = 'closed' | 'plan' | 'delete'
 /**
  * Hosts the Plan sheet for one group and hands out `openPlanSheet` (`usePlanSheet`). Mounted once on
  * Today. One sheet at a time: "Delete task" in edit mode replaces the Plan sheet with its confirm
- * Sheet, and closing the confirm goes back to Today (not to the edit sheet), with focus on whatever
- * opened the Plan sheet.
+ * Sheet, and closing the confirm goes back to Today (not to the edit sheet). Focus returns to
+ * whatever opened the Plan sheet, or to "+ Add" when that is gone.
  */
 export function PlanSheetHost({ groupId, children }: { groupId: string; children: ReactNode }) {
   const [view, setView] = useState<View>('closed')
   const [request, setRequest] = useState<PlanSheetRequest>({ mode: 'add' })
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
-  const [opener, setOpener] = useState<HTMLElement | null>(null)
+  const opener = useRef<HTMLElement | null>(null)
+  const root = useRef<HTMLDivElement>(null)
 
   const openPlanSheet = useCallback<OpenPlanSheet>((next) => {
-    setOpener(document.activeElement instanceof HTMLElement ? document.activeElement : null)
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setRequest(next)
     setView('plan')
   }, [])
 
+  /** The opener, or "+ Add" when the opener is gone (e.g. its row was deleted). */
+  const returnFocusTo = useCallback(
+    () =>
+      opener.current?.isConnected
+        ? opener.current
+        : (root.current?.querySelector<HTMLElement>('[data-plan-add]') ?? null),
+    [],
+  )
+
   return (
     <PlanSheetContext.Provider value={openPlanSheet}>
-      {children}
+      <div ref={root} className="contents">
+        {children}
+      </div>
       <PlanSheet
         open={view === 'plan'}
         onOpenChange={(open) => setView(open ? 'plan' : 'closed')}
         groupId={groupId}
         request={request}
+        returnFocusTo={returnFocusTo}
         onDeleteTask={(target) => {
           setDeleteTarget(target)
           setView('delete')
@@ -47,7 +60,7 @@ export function PlanSheetHost({ groupId, children }: { groupId: string; children
           onOpenChange={(open) => setView(open ? 'delete' : 'closed')}
           groupId={groupId}
           task={deleteTarget}
-          returnFocusTo={opener}
+          returnFocusTo={returnFocusTo}
         />
       ) : null}
     </PlanSheetContext.Provider>

@@ -8,14 +8,17 @@ export interface SegmentedOption<T extends string> {
   label: string
 }
 
-export interface SegmentedSwitchProps<T extends string> {
+/**
+ * The group's name: the id of its visible label, or (only when it has no visible label, like the
+ * Plan sheet's kind switch) an accessible name. Exactly one, so the radio group is always named.
+ */
+export type SegmentedSwitchName =
+  { labelledBy: string; label?: never } | { label: string; labelledBy?: never }
+
+export type SegmentedSwitchProps<T extends string> = SegmentedSwitchName & {
   options: readonly SegmentedOption<T>[]
   value: T
   onChange: (value: T) => void
-  /** Id of the visible label for the group. */
-  labelledBy?: string
-  /** The group's accessible name when it has no visible label (the Plan sheet's kind switch). */
-  label?: string
   /**
    * Locked: only the selected segment shows, with a lock icon, and `lockedNote` sits under the
    * track (DESIGN.md `segmented-switch` locked state). Arrow keys do nothing.

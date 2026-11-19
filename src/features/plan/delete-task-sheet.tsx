@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { backendErrorCode, errorCopy } from '@/domain/error-codes'
 import { deleteTaskTitle, PLAN_COPY, TASK_COPY } from '@/domain/plan'
 import { isOffline } from '@/data/connectivity'
@@ -35,7 +35,7 @@ export interface DeleteTaskSheetProps {
   groupId: string
   task: DeleteTarget
   /** Where focus goes on close (the Plan sheet's opener; this sheet replaced the Plan sheet). */
-  returnFocusTo?: HTMLElement | null
+  returnFocusTo?: () => HTMLElement | null
 }
 
 /**
@@ -56,6 +56,17 @@ export function DeleteTaskSheet({
   const [busy, setBusy] = useState(false)
   // The guard itself: Retry and the button can race within one render.
   const busyRef = useRef(false)
+  // Whether this confirm is still open; a delete that settles after it closed is ignored.
+  const openRef = useRef(open)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
+  // Every open starts without the last open's failure.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setFailure(null)
+  }
 
   function change(next: boolean) {
     if (!next) setFailure(null)
@@ -75,10 +86,12 @@ export function DeleteTaskSheet({
       await deleteTask.mutateAsync(task.commitmentId)
       busyRef.current = false
       setBusy(false)
-      change(false)
+      // Closed meanwhile (maybe another sheet is open now): leave it alone.
+      if (openRef.current) change(false)
     } catch (error) {
       busyRef.current = false
       setBusy(false)
+      if (!openRef.current) return
       const code = backendErrorCode(error)
       if (code === 'network') setFailure('offline')
       else if (code === 'task_locked') setFailure('locked')

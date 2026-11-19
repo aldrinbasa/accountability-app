@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { AppShell } from '@/app/shell/app-shell'
@@ -45,6 +45,8 @@ describe('bottom nav', () => {
     const user = userEvent.setup()
     const router = renderAt('/today')
     await screen.findByRole('heading', { level: 1 })
+    // Today writes the focused group into the URL (a replace); let that settle before the push.
+    await waitFor(() => expect(router.state.location.search).toContain('g='))
 
     await user.click(tab('Feed'))
     expect(router.state.location.pathname).toBe('/feed')
@@ -60,7 +62,8 @@ describe('bottom nav', () => {
     expect(router.state.historyAction).toBe('REPLACE')
 
     await user.click(tab('Today'))
-    expect(router.state.location.pathname).toBe('/today')
+    // Going back to Today is a history pop, which settles asynchronously.
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
     expect(router.state.historyAction).toBe('POP')
   })
 

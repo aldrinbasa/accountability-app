@@ -311,6 +311,8 @@ export const TASK_NAME_MAX = 40
 export const TASK_COPY = {
   /** The switch has no visible label; this is only its accessible name. */
   kindLabel: 'Commitment or task',
+  /** The Plan sheet's title in task edit mode. */
+  editTitle: 'Edit task',
   name: 'Name',
   namePlaceholder: 'Grocery run',
   deadline: 'Deadline',

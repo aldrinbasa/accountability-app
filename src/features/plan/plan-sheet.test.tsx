@@ -1,9 +1,15 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { GroupActivity } from '@/domain/activities'
 import { BackendError } from '@/domain/error-codes'
 import type { TaskDetails } from '@/domain/plan'
-import { createFakeBackend, renderRoutes, TEST_GROUP, withBackend } from '@/test/fake-backend'
+import {
+  createFakeBackend,
+  renderRoutes,
+  TEST_GROUP,
+  TEST_PLAN_PREVIEW,
+  withBackend,
+} from '@/test/fake-backend'
 import { usePlanSheet } from '@/features/plan/plan-sheet-context'
 import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
 
@@ -372,8 +378,9 @@ describe('Plan sheet (add a task)', () => {
     expect(within(deadline).getByText('Today')).toBeInTheDocument()
     expect(within(dialog).getByText('Counts this week, starting now.')).toBeInTheDocument()
     expect(within(dialog).queryByRole('radiogroup', { name: 'Schedule' })).not.toBeInTheDocument()
-    expect(within(dialog).queryByLabelText('End date (optional)')).not.toBeInTheDocument()
-    expect(within(dialog).queryByText(/Starts next Monday/)).not.toBeInTheDocument()
+    // The Commitment form stays mounted (input survives a switch) but hidden.
+    expect(within(dialog).getByLabelText('End date (optional)')).not.toBeVisible()
+    expect(within(dialog).getByText(/Starts next Monday/)).not.toBeVisible()
   })
 
   it('on a Sunday only "Today" shows', async () => {
@@ -485,6 +492,53 @@ describe('Plan sheet (add a task)', () => {
     await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Sunday' })).toHaveFocus())
   })
 
+  it('switching Task, Commitment, Task keeps the typed name; either form makes the sheet dirty', async () => {
+    const { user, dialog } = await openTaskMode()
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Grocery run')
+    await user.click(within(dialog).getByRole('radio', { name: 'Commitment' }))
+    expect(within(dialog).queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('radiogroup', { name: 'Schedule' })).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('radio', { name: 'Task' }))
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveValue('Grocery run')
+    await user.click(within(dialog).getByRole('radio', { name: 'Commitment' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+    expect(within(dialog).getByText('Discard this?')).toBeInTheDocument()
+  })
+
+  it("a picked day that leaves the server's days is cleared with the Deadline error, not swapped", async () => {
+    const backend = createFakeBackend()
+    const { user, dialog, queryClient } = await openTaskMode(backend)
+    await user.click(within(dialog).getByRole('radio', { name: 'Groceries' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Grocery run')
+    await user.click(within(dialog).getByRole('radio', { name: 'Thursday' }))
+    // The member's day rolls over to Friday.
+    vi.mocked(backend.planPreview).mockResolvedValue({
+      ...TEST_PLAN_PREVIEW,
+      memberToday: '2026-11-20',
+    })
+    await act(async () => {
+      await queryClient.invalidateQueries()
+    })
+    const deadline = within(dialog).getByRole('radiogroup', { name: 'Deadline' })
+    await waitFor(() =>
+      expect(within(deadline).queryByRole('radio', { name: 'Thursday' })).not.toBeInTheDocument(),
+    )
+    expect(within(deadline).queryAllByRole('radio', { checked: true })).toHaveLength(0)
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Pick a deadline from today to Sunday.',
+    )
+    await user.click(save(dialog))
+    expect(backend.addTask).not.toHaveBeenCalled()
+    await user.click(within(deadline).getByRole('radio', { name: 'Saturday' }))
+    expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument()
+    await user.click(save(dialog))
+    await waitFor(() =>
+      expect(backend.addTask).toHaveBeenCalledWith(
+        expect.objectContaining({ deadline: '2026-11-21' }),
+      ),
+    )
+  })
+
   it('closing with a typed name asks "Discard this?"; an untouched Task mode does not', async () => {
     const { user, dialog } = await openTaskMode()
     await user.click(within(dialog).getByRole('button', { name: 'Close' }))
@@ -521,8 +575,7 @@ async function openEdit(
   )
   const opener = screen.getByRole('button', { name: 'Edit' })
   await user.click(opener)
-  const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
-  await within(dialog).findByRole('textbox', { name: 'Name' })
+  const dialog = await screen.findByRole('dialog', { name: 'Edit task' })
   await within(dialog).findByText('Groceries')
   return { user, dialog, backend, opener }
 }
@@ -564,14 +617,59 @@ describe('Plan sheet (task edit mode)', () => {
   })
 
   it('task_locked on rename shows its copy without Retry', async () => {
-    const { user, dialog } = await openEdit({ ...TASK, canDelete: false, canRename: false })
-    const name = within(dialog).getByRole('textbox', { name: 'Name' })
-    await user.type(name, '!')
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.renameTask).mockRejectedValueOnce(new BackendError('task_locked'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), '!')
     await user.click(save(dialog))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       "This task's deadline has passed. It can't change now.",
     )
     expect(within(dialog).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('after the session ended (can_rename false) the name is read-only and there is no Save', async () => {
+    const { dialog } = await openEdit({ ...TASK, canDelete: false, canRename: false })
+    expect(within(dialog).queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Grocery run')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Delete task' })).not.toBeInTheDocument()
+  })
+
+  it('invalid_plan on rename focuses Name with its error', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.renameTask).mockRejectedValueOnce(new BackendError('invalid_plan'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    const name = within(dialog).getByRole('textbox', { name: 'Name' })
+    await user.type(name, '!')
+    name.blur()
+    await user.click(save(dialog))
+    await waitFor(() => expect(name).toHaveFocus())
+    expect(name).toHaveAccessibleDescription('Give the task a short name.')
+  })
+
+  it('a failed load shows "Couldn\'t load this task. Tap Retry." and Retry refetches', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    // The read retries once by itself before showing the failure.
+    vi.mocked(backend.getTask)
+      .mockRejectedValueOnce(new BackendError('unknown'))
+      .mockRejectedValueOnce(new BackendError('unknown'))
+    const user = userEvent.setup()
+    render(
+      withBackend(
+        backend,
+        <PlanSheetHost groupId={TEST_GROUP.id}>
+          <EditOpener commitmentId={TASK.commitmentId} />
+        </PlanSheetHost>,
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit task' })
+    expect(
+      await within(dialog).findByText("Couldn't load this task. Tap Retry.", {}, { timeout: 3000 }),
+    ).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    expect(await within(dialog).findByRole('textbox', { name: 'Name' })).toHaveValue('Grocery run')
   })
 
   it('"Delete task" replaces the sheet with the confirm; Delete task deletes and returns to Today', async () => {
@@ -612,6 +710,32 @@ describe('Plan sheet (task edit mode)', () => {
     expect(screen.getByRole('dialog', { name: 'Delete Grocery run?' })).toBeInTheDocument()
   })
 
+  it('not_found on delete: "That\'s not on your plan anymore." without Retry', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.deleteTask).mockRejectedValueOnce(new BackendError('not_found'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Grocery run?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
+    expect(await within(confirm).findByRole('alert')).toHaveTextContent(
+      "That's not on your plan anymore.",
+    )
+    expect(within(confirm).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('a failed delete shows the generic copy; Retry sends again', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.deleteTask).mockRejectedValueOnce(new BackendError('unknown'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Grocery run?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
+    expect(await within(confirm).findByRole('alert')).toHaveTextContent(FAILED)
+    await user.click(within(confirm).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.deleteTask).toHaveBeenCalledTimes(2)
+  })
+
   it('offline on delete: the Plan sheet offline copy with Retry', async () => {
     const { user, dialog, backend } = await openEdit()
     await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
@@ -637,7 +761,7 @@ describe('Plan sheet (task edit mode)', () => {
       ),
     )
     await user.click(screen.getByRole('button', { name: 'Edit' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
+    const dialog = await screen.findByRole('dialog', { name: 'Edit task' })
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       "That's not on your plan anymore.",
     )
