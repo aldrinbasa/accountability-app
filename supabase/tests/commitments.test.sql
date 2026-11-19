@@ -24,8 +24,8 @@ select has_table('public', 'commitments', 'public.commitments exists');
 select has_table('public', 'commitment_versions', 'public.commitment_versions exists');
 select columns_are('public', 'commitments',
   array['id', 'group_id', 'membership_id', 'user_id', 'kind', 'group_activity_id', 'schedule_type',
-        'ends_after_week_start', 'created_at', 'updated_at'],
-  'commitments has the story''s columns');
+        'ends_after_week_start', 'created_at', 'updated_at', 'sessions_through'],
+  'commitments has the story''s columns (and Story 2.3''s sessions_through)');
 select columns_are('public', 'commitment_versions',
   array['id', 'commitment_id', 'group_id', 'effective_week_start', 'days', 'target', 'end_date',
         'created_at', 'updated_at'],
