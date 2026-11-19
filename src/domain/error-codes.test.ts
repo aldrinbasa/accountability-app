@@ -1,5 +1,6 @@
 import {
   BackendError,
+  backendErrorCode,
   ERROR_COPY,
   errorCopy,
   isBackendError,
@@ -54,5 +55,13 @@ describe('BackendError', () => {
     expect(isBackendError(error)).toBe(true)
     expect(error.code).toBe('network')
     expect(isBackendError(new Error('x'))).toBe(false)
+  })
+
+  it('backendErrorCode reads a BackendError code and calls anything else unknown', () => {
+    expect(backendErrorCode(new BackendError('not_admin'))).toBe('not_admin')
+    expect(backendErrorCode(new BackendError('network'))).toBe('network')
+    expect(backendErrorCode(new Error('boom'))).toBe('unknown')
+    expect(backendErrorCode('not_admin')).toBe('unknown')
+    expect(backendErrorCode(undefined)).toBe('unknown')
   })
 })

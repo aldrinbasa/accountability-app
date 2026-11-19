@@ -10,6 +10,7 @@ import {
   savePendingNext,
   savePendingSignIn,
 } from '@/data/pending-signin'
+import { isOffline } from '@/data/connectivity'
 import { Button } from '@/ui/button'
 import { FieldError } from '@/ui/field-error'
 import { TextField } from '@/ui/text-field'
@@ -41,10 +42,6 @@ function readIncoming(search: string): Incoming | null {
 interface EmailError {
   message: string
   offerResend: boolean
-}
-
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
 }
 
 /**

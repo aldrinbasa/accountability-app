@@ -36,7 +36,7 @@ function GoogleMark() {
 
 /**
  * "Continue with Google" in Google's own branded style: the light theme in light mode, the dark
- * theme in dark mode (follows `prefers-color-scheme`), 44px minimum. A plain OAuth redirect, no
+ * theme in dark mode (follows the app theme, `data-theme`, through the `dark:` variant), 44px minimum. A plain OAuth redirect, no
  * Google Identity Services script. Colours are Google's, not Proofy tokens, by design.
  */
 export function GoogleButton({

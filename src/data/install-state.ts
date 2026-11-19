@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import { detectPlatform, isInstalled, type InstallPlatform } from '@/domain/install'
+import { readDevice, resetDeviceMemory, writeDevice } from '@/data/device-storage'
 
 /**
  * Device-only install state (AD-12). Stored flags live in localStorage; every access tolerates a
@@ -8,38 +9,7 @@ import { detectPlatform, isInstalled, type InstallPlatform } from '@/domain/inst
 export const INSTALLED_KEY = 'proofy.installed'
 export const GUIDE_DISMISSED_KEY = 'proofy.installGuideDismissed'
 export const HINT_DISMISSED_AT_KEY = 'proofy.installHintDismissedAt'
-
-/** Values written while localStorage refused them. Read before localStorage. */
-const memory = new Map<string, string>()
-
-function read(key: string): string | null {
-  const held = memory.get(key)
-  if (held !== undefined) return held
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function remove(key: string): void {
-  memory.delete(key)
-  try {
-    localStorage.removeItem(key)
-  } catch {
-    // Storage blocked: the memory copy is gone, which is all this session can do.
-  }
-}
-
-function write(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value)
-    memory.delete(key)
-  } catch {
-    // Storage blocked (private mode, quota): keep it for this session only.
-    memory.set(key, value)
-  }
-}
+const INSTALL_KEYS = [INSTALLED_KEY, GUIDE_DISMISSED_KEY, HINT_DISMISSED_AT_KEY]
 
 /** The browser's `beforeinstallprompt` event, kept for later. Single-use: `prompt()` works once. */
 export interface DeferredInstallPrompt {
@@ -62,7 +32,7 @@ function notify(): void {
 export function captureInstallPrompt(event: DeferredInstallPrompt): void {
   deferredPrompt = event
   installedThisSession = false
-  remove(INSTALLED_KEY)
+  writeDevice(INSTALLED_KEY, null)
   notify()
 }
 
@@ -70,19 +40,19 @@ export function captureInstallPrompt(event: DeferredInstallPrompt): void {
 export function markInstalled(): void {
   installedThisSession = true
   deferredPrompt = null
-  write(INSTALLED_KEY, '1')
+  writeDevice(INSTALLED_KEY, '1')
   notify()
 }
 
 /** "Continue without installing": the guide no longer shows right after sign-in on this device. */
 export function dismissInstallGuide(): void {
-  write(GUIDE_DISMISSED_KEY, '1')
+  writeDevice(GUIDE_DISMISSED_KEY, '1')
   notify()
 }
 
 /** "Not now" on the Today Hint: hidden for a week from `now`. */
 export function dismissInstallHint(now: Date = new Date()): void {
-  write(HINT_DISMISSED_AT_KEY, now.toISOString())
+  writeDevice(HINT_DISMISSED_AT_KEY, now.toISOString())
   notify()
 }
 
@@ -133,11 +103,11 @@ function computeState(): InstallState {
     installed: isInstalled({
       standalone: matchesStandalone(),
       navigatorStandalone: nav.standalone === true,
-      storedInstalled: installedThisSession || read(INSTALLED_KEY) !== null,
+      storedInstalled: installedThisSession || readDevice(INSTALLED_KEY) !== null,
     }),
     canPrompt: deferredPrompt !== null,
-    guideDismissed: read(GUIDE_DISMISSED_KEY) !== null,
-    hintDismissedAt: read(HINT_DISMISSED_AT_KEY),
+    guideDismissed: readDevice(GUIDE_DISMISSED_KEY) !== null,
+    hintDismissedAt: readDevice(HINT_DISMISSED_AT_KEY),
   }
 }
 
@@ -176,7 +146,7 @@ export function useInstallState(): InstallState {
 export function resetInstallState(): void {
   deferredPrompt = null
   installedThisSession = false
-  memory.clear()
+  resetDeviceMemory((key) => INSTALL_KEYS.includes(key))
   cached = null
   notify()
 }

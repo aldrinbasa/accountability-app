@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { CloudSlash, Envelope } from '@phosphor-icons/react'
-import { isBackendError } from '@/domain/error-codes'
+import { backendErrorCode } from '@/domain/error-codes'
 import {
   adminLine,
   JOIN_COPY,
@@ -12,6 +12,7 @@ import {
   type InvitePreview,
 } from '@/domain/groups'
 import { useInvitePreview, useJoinGroup, useRefetchMyGroups } from '@/data/groups'
+import { isOffline } from '@/data/connectivity'
 import { Button } from '@/ui/button'
 import { EmptyState } from '@/ui/empty-state'
 import { Icon } from '@/ui/icon'
@@ -20,14 +21,6 @@ import { useOpenGroupOnToday } from '@/features/group/use-focused-group'
 
 /** What the screen shows besides the loaded invite. */
 type Override = 'expired' | 'full' | 'unknown' | 'offline' | null
-
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
-
-function errorCode(error: unknown): string {
-  return isBackendError(error) ? error.code : 'unknown'
-}
 
 /**
  * `/join/{code}` (signed in with a profile; the auth gate brings a signed-out invitee back here
@@ -50,6 +43,7 @@ export function JoinScreen() {
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
   const mounted = useRef(false)
+  const [mountedAt] = useState(() => Date.now())
 
   useEffect(() => {
     mounted.current = true
@@ -58,7 +52,10 @@ export function JoinScreen() {
     }
   }, [])
 
-  const data = preview.data
+  // A `member` preview cached before this screen opened (an earlier join) is not trusted: the member
+  // may have left or been removed since. It counts as not loaded until the refetch on mount answers.
+  const staleMember = preview.data?.status === 'member' && preview.dataUpdatedAt < mountedAt
+  const data = staleMember ? undefined : preview.data
   const memberGroupId = data?.status === 'member' ? data.groupId : null
 
   useEffect(() => {
@@ -99,7 +96,7 @@ export function JoinScreen() {
       busyRef.current = false
       if (!mounted.current) return
       setBusy(false)
-      const failure = errorCode(error)
+      const failure = backendErrorCode(error)
       if (failure === 'invite_expired') setOverride('expired')
       else if (failure === 'group_full') setOverride('full')
       else if (failure === 'invite_not_found') setOverride('unknown')
@@ -108,7 +105,7 @@ export function JoinScreen() {
     }
   }
 
-  const loadFailure = preview.isError ? errorCode(preview.error) : null
+  const loadFailure = preview.isError ? backendErrorCode(preview.error) : null
   // A query started offline is paused by TanStack Query rather than failed.
   const offline =
     override === 'offline' ||

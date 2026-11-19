@@ -12,7 +12,7 @@ name: CI
 # A failing job or step blocks every later deploy, so the app never goes live ahead of its
 # database. Migrations must be additive and backward compatible (the previous app version keeps
 # running against the new schema until the new one is live). `supabase-deploy.yml` is the manual
-# fallback for re-running a database push alone.
+# fallback that re-runs the same push (auth config, migrations, functions).
 
 on:
   push:

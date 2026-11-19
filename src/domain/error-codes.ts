@@ -43,3 +43,8 @@ export class BackendError extends Error {
 export function isBackendError(error: unknown): error is BackendError {
   return error instanceof BackendError
 }
+
+/** The code of a `BackendError`; `unknown` for anything else thrown. */
+export function backendErrorCode(error: unknown): BackendErrorCode {
+  return isBackendError(error) ? error.code : 'unknown'
+}

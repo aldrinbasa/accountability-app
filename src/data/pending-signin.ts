@@ -1,24 +1,19 @@
 import { sanitizeNext } from '@/domain/next-path'
+import { readDevice, writeDevice } from '@/data/device-storage'
 
-/** Device-only, per-tab sign-in state in sessionStorage. Every access tolerates a blocked storage. */
+/**
+ * Device-only, per-tab sign-in state in sessionStorage. Every access tolerates a blocked storage,
+ * falling back to memory for the session.
+ */
 export const NEXT_KEY = 'proofy.next'
 export const SIGNIN_KEY = 'proofy.signin'
 
 function read(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key)
-  } catch {
-    return null
-  }
+  return readDevice(key, 'session')
 }
 
 function write(key: string, value: string | null): void {
-  try {
-    if (value === null) sessionStorage.removeItem(key)
-    else sessionStorage.setItem(key, value)
-  } catch {
-    // Storage blocked (private mode, quota): sign-in still works, only the pending state is lost.
-  }
+  writeDevice(key, value, 'session')
 }
 
 /** Save the path to open after sign-in. Unsafe values (other origins, `//host`) are dropped. */

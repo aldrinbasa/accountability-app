@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { errorCopy, isBackendError } from '@/domain/error-codes'
+import { backendErrorCode, errorCopy } from '@/domain/error-codes'
 import { GROUP_COPY, GROUP_NAME_MAX, trimGroupName, validateGroupName } from '@/domain/groups'
 import { useCreateGroup } from '@/data/groups'
+import { isOffline } from '@/data/connectivity'
 import { Button } from '@/ui/button'
 import { InlineRetry } from '@/ui/inline-retry'
 import { TextField } from '@/ui/text-field'
 
 type Failure = 'offline' | 'failed'
-
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
 
 export interface CreateGroupFormProps {
   /** The group exists and `['groups', 'me']` has been refetched with it. */
@@ -86,7 +83,7 @@ export function CreateGroupForm({
       busyRef.current = false
       if (!mounted.current) return
       setBusy(false)
-      const code = isBackendError(error) ? error.code : 'unknown'
+      const code = backendErrorCode(error)
       if (code === 'invalid_group_name') failName(errorCopy(code))
       else setFailure(code === 'network' ? 'offline' : 'failed')
     }

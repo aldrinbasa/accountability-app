@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 // A real IndexedDB for the persisted query cache (idb persister).
 import 'fake-indexeddb/auto'
 import { afterEach, vi } from 'vitest'
+import { resetDeviceMemory } from '@/data/device-storage'
 
 // Some runners expose a broken global `localStorage` (Node's experimental stub, active without a
 // backing file). Install a deterministic in-memory Storage so app persistence works in tests.
@@ -72,5 +73,6 @@ if (hasWindow) {
 afterEach(() => {
   localStorage.clear()
   sessionStorage.clear()
+  resetDeviceMemory()
   if (hasWindow) installMatchMedia(false)
 })

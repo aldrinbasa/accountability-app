@@ -10,13 +10,10 @@ import {
   savePendingSignIn,
   type PendingSignIn,
 } from '@/data/pending-signin'
+import { isOffline } from '@/data/connectivity'
 import { Button } from '@/ui/button'
 import { TextField } from '@/ui/text-field'
 import { useResendCountdown } from '@/features/auth/use-resend-countdown'
-
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
 
 /**
  * `/signin/code`: one field for the 6-digit code from the email (the path that works inside an

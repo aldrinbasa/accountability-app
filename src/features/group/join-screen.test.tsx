@@ -1,10 +1,10 @@
-import { act, screen } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import { onlineManager } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { BackendError } from '@/domain/error-codes'
 import type { InvitePreview, MyGroup, MyGroupsSnapshot } from '@/domain/groups'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
-import { MY_GROUPS_KEY } from '@/data/groups'
+import { invitePreviewKey, MY_GROUPS_KEY } from '@/data/groups'
 import { NEXT_KEY } from '@/data/pending-signin'
 import { MY_PROFILE_KEY } from '@/data/profile'
 import {
@@ -297,6 +297,50 @@ describe('join screen with a stale groups cache and no observer', () => {
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
     await expectStaysOn(router, '?g=group-9')
     expect(backend.joinGroup).not.toHaveBeenCalled()
+  })
+})
+
+describe('rejoining with a code joined before, without a reload', () => {
+  async function joinThenOpenToday() {
+    const user = userEvent.setup()
+    const result = renderRoutes(['/join/K7QX2M'])
+    await user.click(await screen.findByRole('button', { name: 'Join' }))
+    await vi.waitFor(() => expect(result.router.state.location.search).toBe('?g=group-9'))
+    await screen.findByRole('button', { name: 'Group: Sunday Reset, switch group' })
+    return { user, ...result }
+  }
+
+  async function expectJoinScreen(router: { state: { location: { pathname: string } } }) {
+    expect(await screen.findByRole('button', { name: 'Join' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Sunday Reset' })).toBeInTheDocument()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(router.state.location.pathname).toBe('/join/K7QX2M')
+  }
+
+  it('after leaving: the code shows the Join screen again, not a bounce to Today', async () => {
+    const { user, router } = await joinThenOpenToday()
+    await act(() => router.navigate('/me/groups/group-9?g=group-9'))
+    await user.click(await screen.findByRole('button', { name: 'Leave group' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Leave Sunday Reset?' })
+    await user.click(within(sheet).getByRole('button', { name: 'Leave group' }))
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+
+    await act(() => router.navigate('/join/K7QX2M'))
+    await expectJoinScreen(router)
+  })
+
+  it('after being removed (the cached preview still reads member): the Join screen shows', async () => {
+    const { router, backend, queryClient } = await joinThenOpenToday()
+    expect(queryClient.getQueryData(invitePreviewKey('K7QX2M'))).toMatchObject({
+      status: 'member',
+    })
+    // The admin removes the member on the server; this device has not heard yet.
+    await backend.leaveGroup('group-9')
+
+    await act(() => router.navigate('/join/K7QX2M'))
+    await expectJoinScreen(router)
   })
 })
 

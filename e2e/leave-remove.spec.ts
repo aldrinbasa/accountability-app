@@ -92,6 +92,38 @@ test('admin removes a member who rejoins, the admin hands over, the last member 
   await expect(friend.getByRole('heading', { name: 'Start a group' })).toBeVisible()
 })
 
+// Epic 1 retro F1: a rejoin in the same session (no reload) must show the Join screen again, not
+// bounce to Today on the invite preview cached by the first join.
+test('a member who leaves can rejoin with the same code in the same session', async ({
+  page,
+  newPhone,
+}) => {
+  await signUp(page, { name: 'Cal' })
+  const groupId = await createFirstGroup(page, 'Back Crew')
+  const code = await readInviteCode(page)
+
+  const friend = await newPhone()
+  await signUp(friend, { name: 'Dot', start: `/join/${code}` })
+  await friend.getByRole('button', { name: 'Join', exact: true }).click()
+  await expect(friend).toHaveURL(new RegExp(`/today\\?g=${groupId}$`))
+
+  await openGroupSettings(friend, 'Back Crew')
+  await friend.getByRole('button', { name: 'Leave group' }).click()
+  const leaveSheet = friend.getByRole('dialog', { name: 'Leave Back Crew?' })
+  await leaveSheet.getByRole('button', { name: 'Leave group' }).click()
+  await expect(friend).toHaveURL(/\/today$/)
+  await expect(friend.getByRole('heading', { name: 'Start a group' })).toBeVisible()
+
+  // No reload: type the code on Today.
+  await friend.getByLabel('Invite code').fill(code)
+  await friend.getByRole('button', { name: 'Join with a code' }).click()
+  await expect(friend).toHaveURL(new RegExp(`/join/${code}$`))
+  await expect(friend.getByRole('heading', { level: 1, name: 'Back Crew' })).toBeVisible()
+  await friend.getByRole('button', { name: 'Join', exact: true }).click()
+  await expect(friend).toHaveURL(new RegExp(`/today\\?g=${groupId}$`))
+  await expect(switcher(friend)).toHaveAccessibleName(switcherName('Back Crew'))
+})
+
 test('leaving offline shows the cause in the sheet and keeps it open', async ({
   page,
   context,

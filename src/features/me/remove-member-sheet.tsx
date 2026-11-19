@@ -3,7 +3,7 @@ import { useRemoveMember } from '@/data/groups'
 import { Button } from '@/ui/button'
 import { InlineRetry } from '@/ui/inline-retry'
 import { Sheet } from '@/ui/sheet'
-import { useGroupChange } from '@/features/me/confirm-group-change'
+import { groupChangeFailureText, useGroupChange } from '@/features/me/confirm-group-change'
 
 export interface RemoveMemberSheetProps {
   groupId: string
@@ -40,7 +40,7 @@ export function RemoveMemberSheet({ groupId, member, onClose, onRemoved }: Remov
         <p className="type-body">{REMOVE_BODY}</p>
         {change.failure ? (
           <InlineRetry onRetry={() => void change.confirm()} retryLabel={LEAVE_COPY.retry}>
-            {change.failure === 'offline' ? LEAVE_COPY.offline : LEAVE_COPY.failed}
+            {groupChangeFailureText(change.failure)}
           </InlineRetry>
         ) : null}
         <Button

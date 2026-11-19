@@ -7,6 +7,7 @@ import {
   type Theme,
   type ThemePreference,
 } from '@/domain/theme'
+import { readDevice, resetDeviceMemory, writeDevice } from '@/data/device-storage'
 
 /**
  * The appearance preference, stored on this device only (AD-12), and its effect on the page:
@@ -16,16 +17,10 @@ import {
 
 const DARK_QUERY = '(prefers-color-scheme: dark)'
 
-let memory: { value: ThemePreference } | null = null
 const listeners = new Set<() => void>()
 
 export function getThemePreference(): ThemePreference {
-  if (memory) return memory.value
-  try {
-    return parseThemePreference(localStorage.getItem(THEME_STORAGE_KEY))
-  } catch {
-    return 'system'
-  }
+  return parseThemePreference(readDevice(THEME_STORAGE_KEY))
 }
 
 function systemPrefersDark(): boolean {
@@ -49,13 +44,7 @@ function applyPreference(preference: ThemePreference): void {
 
 /** Store and apply a preference at once; 'system' forgets the stored choice. */
 export function setThemePreference(preference: ThemePreference): void {
-  try {
-    if (preference === 'system') localStorage.removeItem(THEME_STORAGE_KEY)
-    else localStorage.setItem(THEME_STORAGE_KEY, preference)
-    memory = null
-  } catch {
-    memory = { value: preference }
-  }
+  writeDevice(THEME_STORAGE_KEY, preference === 'system' ? null : preference)
   applyPreference(preference)
   listeners.forEach((listener) => listener())
 }
@@ -92,5 +81,5 @@ export function useThemePreference(): [ThemePreference, (preference: ThemePrefer
 
 /** Tests only: forget the in-memory fallback. */
 export function resetThemeMemory(): void {
-  memory = null
+  resetDeviceMemory((key) => key === THEME_STORAGE_KEY)
 }

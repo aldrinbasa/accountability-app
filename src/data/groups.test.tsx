@@ -157,6 +157,11 @@ describe('members, leave and remove data', () => {
     queryClient.setQueryData(MY_GROUPS_KEY, { groups: [TEST_GROUP, other], ended: [] })
     queryClient.setQueryData(membersKey('group-1'), TEST_MEMBERS)
     queryClient.setQueryData(inviteKey('group-1'), TEST_INVITE)
+    queryClient.setQueryData(invitePreviewKey('K7QX2M'), {
+      ...TEST_INVITE_PREVIEW,
+      status: 'member',
+    })
+    queryClient.setQueryData(invitePreviewKey('AB12CD'), TEST_INVITE_PREVIEW)
     const { result } = renderHook(() => useLeaveGroup('group-1'), { wrapper })
 
     await result.current.mutateAsync()
@@ -167,6 +172,9 @@ describe('members, leave and remove data', () => {
     expect(remainingGroups(queryClient, 'group-1').map((g) => g.id)).toEqual(['group-2'])
     expect(queryClient.getQueryData(membersKey('group-1'))).toBeUndefined()
     expect(queryClient.getQueryData(inviteKey('group-1'))).toBeUndefined()
+    // Every cached invite preview goes, so a rejoin with a code joined before is not bounced.
+    expect(queryClient.getQueryData(invitePreviewKey('K7QX2M'))).toBeUndefined()
+    expect(queryClient.getQueryData(invitePreviewKey('AB12CD'))).toBeUndefined()
   })
 
   it('useLeaveGroup treats not_member as already left and rejects other failures', async () => {

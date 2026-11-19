@@ -126,6 +126,19 @@ describe('remove a member', () => {
     expect(backend.removeMember).toHaveBeenCalledTimes(2)
   })
 
+  it('a known backend code shows its own copy (not_admin: "Only the group\'s admin can do that.")', async () => {
+    const user = userEvent.setup()
+    const { backend } = await openSettings()
+    vi.mocked(backend.removeMember).mockRejectedValueOnce(new BackendError('not_admin'))
+    await user.click(await screen.findByRole('button', { name: 'Remove Sam' }))
+    const sheet = await screen.findByRole('dialog', { name: 'Remove Sam?' })
+    await user.click(within(sheet).getByRole('button', { name: 'Remove' }))
+    expect(await within(sheet).findByRole('alert')).toHaveTextContent(
+      "Only the group's admin can do that.",
+    )
+    expect(within(sheet).getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+
   it('offline: the offline Inline retry, without calling the server', async () => {
     const user = userEvent.setup()
     const { backend } = await openSettings()

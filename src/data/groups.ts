@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { isBackendError } from '@/domain/error-codes'
+import { backendErrorCode } from '@/domain/error-codes'
 import {
   trimGroupName,
   type EndedMembership,
@@ -32,9 +32,12 @@ export function inviteKey(groupId: string) {
   return ['invite', groupId] as const
 }
 
+/** `['invite', 'code']`: the prefix of every invite preview. */
+export const INVITE_PREVIEWS_KEY = ['invite', 'code'] as const
+
 /** `['invite', 'code', code]`: what an invite code leads to (the join screen). */
 export function invitePreviewKey(code: string) {
-  return ['invite', 'code', code] as const
+  return [...INVITE_PREVIEWS_KEY, code] as const
 }
 
 export interface GroupRepository {
@@ -168,7 +171,7 @@ export function useInvitePreview(code: string) {
  * `join_group`. Resolves with the group id once `['groups', 'me']` has been refetched with it, so the
  * caller can focus the group straight away. The refetch runs even with no mounted observer: /join
  * sits outside the shell, and Today must not open on a stale list. The code's cached preview then
- * reads `member`.
+ * reads `member` (the join screen trusts that only while it stays open; a leave drops it).
  */
 export function useJoinGroup() {
   const repository = useGroupRepository('useJoinGroup')
@@ -229,7 +232,7 @@ async function unlessEndedAlready(run: () => Promise<void>): Promise<void> {
   try {
     await run()
   } catch (error) {
-    if (isBackendError(error) && error.code === 'not_member') return
+    if (backendErrorCode(error) === 'not_member') return
     throw error
   }
 }
@@ -250,6 +253,8 @@ export function useLeaveGroup(groupId: string, onLeft?: () => void) {
       await fetchMyGroups(queryClient, repository)
       queryClient.removeQueries({ queryKey: membersKey(groupId) })
       queryClient.removeQueries({ queryKey: inviteKey(groupId) })
+      // A preview marked `member` by an earlier join would bounce a rejoin to Today.
+      queryClient.removeQueries({ queryKey: INVITE_PREVIEWS_KEY })
     },
   })
 }

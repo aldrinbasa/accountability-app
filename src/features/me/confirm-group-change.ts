@@ -1,11 +1,30 @@
 import { useRef, useState } from 'react'
-import { isBackendError } from '@/domain/error-codes'
+import {
+  backendErrorCode,
+  errorCopy,
+  isRpcErrorCode,
+  type RpcErrorCode,
+} from '@/domain/error-codes'
+import { LEAVE_COPY } from '@/domain/groups'
+import { isOffline } from '@/data/connectivity'
 
-/** Why a leave or remove did not go through: offline (no signal) or any other failure. */
-export type GroupChangeFailure = 'offline' | 'failed'
+/**
+ * Why a leave or remove did not go through: offline (no signal), a known backend code (e.g.
+ * `not_admin`, shown with its own copy), or any other failure.
+ */
+export type GroupChangeFailure = 'offline' | 'failed' | RpcErrorCode
 
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
+/** The Inline retry copy for a failure: the offline line, the code's own copy, or the generic line. */
+export function groupChangeFailureText(failure: GroupChangeFailure): string {
+  if (failure === 'offline') return LEAVE_COPY.offline
+  if (failure === 'failed') return LEAVE_COPY.failed
+  return errorCopy(failure)
+}
+
+function failureOf(error: unknown): GroupChangeFailure {
+  const code = backendErrorCode(error)
+  if (code === 'network') return 'offline'
+  return isRpcErrorCode(code) ? code : 'failed'
 }
 
 /**
@@ -34,7 +53,7 @@ export function useGroupChange(run: () => Promise<void>, onDone: () => void) {
     } catch (error) {
       busyRef.current = false
       setBusy(false)
-      setFailure(isBackendError(error) && error.code === 'network' ? 'offline' : 'failed')
+      setFailure(failureOf(error))
     }
   }
 

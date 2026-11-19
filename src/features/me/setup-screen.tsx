@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Camera } from '@phosphor-icons/react'
-import { errorCopy, isBackendError } from '@/domain/error-codes'
+import { backendErrorCode, errorCopy } from '@/domain/error-codes'
 import {
   DISPLAY_NAME_MAX,
   FALLBACK_TIME_ZONE,
@@ -11,6 +11,7 @@ import {
 } from '@/domain/profile'
 import { useAuthSession } from '@/data/auth-session'
 import { deviceTimeZone, useSaveProfile } from '@/data/profile'
+import { isOffline } from '@/data/connectivity'
 import { Avatar } from '@/ui/avatar'
 import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
@@ -26,10 +27,6 @@ const SETUP_COPY = {
   photoLater: 'add a photo later',
   photoSoon: 'Photos come with the camera. Soon.',
 } as const
-
-function isOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false
-}
 
 /**
  * `/setup`: the display name friends see. Prefilled from the Google given name (cut to 24). Saves
@@ -99,7 +96,7 @@ export function SetupScreen() {
       } catch (error) {
         // A zone the browser knows but Postgres does not would lock the member out: save with UTC
         // instead (Story 2.7 lets them pick a zone later).
-        const badZone = isBackendError(error) && error.code === 'invalid_time_zone'
+        const badZone = backendErrorCode(error) === 'invalid_time_zone'
         if (!badZone || zone === FALLBACK_TIME_ZONE) throw error
         await saveProfile.mutateAsync({ displayName: value, timeZone: FALLBACK_TIME_ZONE })
       }
@@ -107,7 +104,7 @@ export function SetupScreen() {
     } catch (error) {
       busyRef.current = false
       setBusy(false)
-      const code = isBackendError(error) ? error.code : 'unknown'
+      const code = backendErrorCode(error)
       if (code === 'invalid_display_name') {
         failName(errorCopy(code))
       } else if (code === 'network') {
