@@ -16,6 +16,7 @@ import type {
   TaskDetails,
 } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
 
 /**
@@ -51,6 +52,12 @@ export interface BackendPort {
    * name (the zone is kept). Resolves with the stored profile.
    */
   saveProfile(displayName: string, timeZone: string): Promise<Profile>
+  /**
+   * `set_time_zone`: the caller's zone (no `groupId`) or a group's zone (admin only), from the next
+   * Monday; the current zone clears a waiting change. Resolves with the row's zones after the change.
+   * Rejects with `invalid_time_zone`, `profile_required`, `not_member` or `not_admin`.
+   */
+  setTimeZone(timeZone: string, groupId?: string): Promise<TimeZoneState>
 
   /**
    * The signed-in member's current groups, each with its member count, plus the groups they are no

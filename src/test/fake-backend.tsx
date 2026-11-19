@@ -9,6 +9,7 @@ import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } fro
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
@@ -22,6 +23,8 @@ export const TEST_PROFILE: Profile = {
   displayName: 'Jo',
   avatarPath: null,
   timeZone: 'Asia/Manila',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
 }
 
 /** The default group: active (3 members), the test user is its admin. */
@@ -29,6 +32,8 @@ export const TEST_GROUP: MyGroup = {
   id: 'group-1',
   name: 'Gym Rats',
   timeZone: 'Asia/Manila',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
   role: 'admin',
   joinedAt: '2026-11-01T10:00:00.000Z',
   memberCount: 3,
@@ -241,6 +246,8 @@ export function createFakeBackend(
         displayName,
         avatarPath: profile?.avatarPath ?? null,
         timeZone: profile?.timeZone ?? timeZone,
+        pendingTimeZone: profile?.pendingTimeZone ?? null,
+        pendingWeekStart: profile?.pendingWeekStart ?? null,
       }
       return profile
     }),
@@ -254,6 +261,8 @@ export function createFakeBackend(
           id,
           name: name.trim(),
           timeZone: profile?.timeZone ?? 'UTC',
+          pendingTimeZone: null,
+          pendingWeekStart: null,
           role: 'admin',
           joinedAt: new Date().toISOString(),
           memberCount: 1,
@@ -284,6 +293,8 @@ export function createFakeBackend(
             id: invite.groupId,
             name: invite.groupName,
             timeZone: 'UTC',
+            pendingTimeZone: null,
+            pendingWeekStart: null,
             role: 'member',
             joinedAt: new Date().toISOString(),
             memberCount: invite.memberCount + 1,
@@ -452,6 +463,34 @@ export function createFakeBackend(
         canEdit: false,
       })
       return { endsAfterWeekStart: started ? planPreview.weekStart : '2026-11-09' }
+    }),
+    setTimeZone: vi.fn(async (timeZone: string, groupId?: string) => {
+      // The server's rule: the current zone clears a waiting change; another zone waits from the
+      // next Monday (the waiting change's Monday when there is one).
+      const next = <T extends TimeZoneState>(row: T): T =>
+        timeZone === row.timeZone
+          ? { ...row, pendingTimeZone: null, pendingWeekStart: null }
+          : {
+              ...row,
+              pendingTimeZone: timeZone,
+              pendingWeekStart: row.pendingWeekStart ?? planPreview.startsOn,
+            }
+      const state = (row: TimeZoneState): TimeZoneState => ({
+        timeZone: row.timeZone,
+        pendingTimeZone: row.pendingTimeZone,
+        pendingWeekStart: row.pendingWeekStart,
+      })
+      if (groupId === undefined) {
+        if (!profile) throw new BackendError('profile_required')
+        profile = next(profile)
+        return state(profile)
+      }
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      if (group.role !== 'admin') throw new BackendError('not_admin')
+      const updated = next(group)
+      groups = groups.map((g) => (g.id === groupId ? updated : g))
+      return state(updated)
     }),
   }
 }

@@ -32,6 +32,7 @@ import {
 } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TimeZoneState } from '@/domain/time-zones'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
@@ -59,9 +60,13 @@ function toAuthUser(user: User): AuthUser {
   return { id: user.id, email: user.email ?? null, ...(givenName ? { givenName } : {}) }
 }
 
-type ProfileRow = Pick<Tables<'profiles'>, 'id' | 'display_name' | 'avatar_path' | 'time_zone'>
+type ProfileRow = Pick<
+  Tables<'profiles'>,
+  'id' | 'display_name' | 'avatar_path' | 'time_zone' | 'pending_time_zone' | 'pending_week_start'
+>
 
-const PROFILE_COLUMNS = 'id, display_name, avatar_path, time_zone'
+const PROFILE_COLUMNS =
+  'id, display_name, avatar_path, time_zone, pending_time_zone, pending_week_start'
 
 function toProfile(row: ProfileRow): Profile {
   return {
@@ -69,6 +74,21 @@ function toProfile(row: ProfileRow): Profile {
     displayName: row.display_name,
     avatarPath: row.avatar_path,
     timeZone: row.time_zone,
+    pendingTimeZone: row.pending_time_zone,
+    pendingWeekStart: row.pending_week_start,
+  }
+}
+
+type TimeZoneRow = Pick<
+  Tables<'profiles'>,
+  'time_zone' | 'pending_time_zone' | 'pending_week_start'
+>
+
+export function toTimeZoneState(row: TimeZoneRow): TimeZoneState {
+  return {
+    timeZone: row.time_zone,
+    pendingTimeZone: row.pending_time_zone,
+    pendingWeekStart: row.pending_week_start,
   }
 }
 
@@ -76,7 +96,10 @@ type MembershipRow = Pick<
   Tables<'memberships'>,
   'id' | 'user_id' | 'role' | 'joined_at' | 'ended_at' | 'end_reason'
 >
-type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
+type GroupRow = Pick<
+  Tables<'groups'>,
+  'id' | 'name' | 'time_zone' | 'pending_time_zone' | 'pending_week_start'
+> & {
   memberships: MembershipRow[]
 }
 
@@ -85,7 +108,7 @@ type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
  * each the member's own rows plus, while they are a current member, everyone's current rows.
  */
 const GROUP_COLUMNS =
-  'id, name, time_zone, memberships(id, user_id, role, joined_at, ended_at, end_reason)'
+  'id, name, time_zone, pending_time_zone, pending_week_start, memberships(id, user_id, role, joined_at, ended_at, end_reason)'
 
 function toRole(role: string): GroupRole {
   return role === 'admin' ? 'admin' : 'member'
@@ -120,6 +143,8 @@ export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroupsS
       id: row.id,
       name: row.name,
       timeZone: row.time_zone,
+      pendingTimeZone: row.pending_time_zone,
+      pendingWeekStart: row.pending_week_start,
       role: toRole(mine.role),
       joinedAt: mine.joined_at,
       memberCount: current.length,
@@ -525,6 +550,17 @@ export const supabaseBackendAdapter: BackendPort = {
     if (error) throw toBackendError(error, status)
     if (!data) throw new BackendError('unknown', 'save_profile returned no row')
     return toProfile(data)
+  },
+
+  async setTimeZone(timeZone, groupId) {
+    const { data, error, status } = await supabase.rpc('set_time_zone', {
+      p_time_zone: timeZone,
+      ...(groupId === undefined ? {} : { p_group_id: groupId }),
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'set_time_zone returned no row')
+    return toTimeZoneState(row)
   },
 
   async listMyGroups() {

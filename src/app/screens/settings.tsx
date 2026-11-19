@@ -3,13 +3,17 @@ import { useLocation, useNavigate } from 'react-router'
 import { ArrowLeft, CaretRight, DeviceMobile, Moon, SignOut, Sun } from '@phosphor-icons/react'
 import { AUTH_COPY } from '@/domain/auth-errors'
 import { THEME_COPY, type ThemePreference } from '@/domain/theme'
+import { TIME_ZONE_COPY } from '@/domain/time-zones'
 import { useAuthActions } from '@/data/auth-session'
+import { useMyProfile, useSetMyTimeZone } from '@/data/profile'
 import { useThemePreference } from '@/data/theme'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
 import { SliderSwitch } from '@/ui/slider-switch'
 import { showToast } from '@/ui/toast'
 import { cameFromMe } from '@/features/me/pushed-from-me'
+import { saveZone } from '@/features/me/save-zone'
+import { TimeZoneRow, TimeZoneSheet } from '@/features/me/time-zone-sheet'
 
 const APPEARANCE_OPTIONS = [
   { value: 'system', label: THEME_COPY.options.system, icon: DeviceMobile },
@@ -20,7 +24,8 @@ const APPEARANCE_OPTIONS = [
 /**
  * Me > Settings, a pushed screen with a back button (an installed iOS app has no browser back).
  * Story 1.3 brought Sign out; Appearance (Auto / Light / Dark, this device only) came with the Epic 1
- * polish. Toggles, reminders, time zone and delete account come later.
+ * polish; Story 2.7 the Time zone row and picker (changes start next week, saved optimistically).
+ * Toggles, reminders and delete account come later.
  * Sign-out ends the session; the app then clears the query cache and the gate opens /signin.
  */
 export function SettingsScreen() {
@@ -30,6 +35,9 @@ export function SettingsScreen() {
   const [signingOut, setSigningOut] = useState(false)
   const [theme, setTheme] = useThemePreference()
   const appearanceId = useId()
+  const profile = useMyProfile().data
+  const setTimeZone = useSetMyTimeZone()
+  const [pickingZone, setPickingZone] = useState(false)
 
   function back() {
     if (cameFromMe(location.state)) void navigate(-1)
@@ -67,6 +75,27 @@ export function SettingsScreen() {
         />
         <p className="ml-[6px] -rotate-1 type-hand-md text-muted">{THEME_COPY.notes[theme]}</p>
       </section>
+      {profile ? (
+        <>
+          <ul className="card flex flex-col p-0">
+            <li>
+              <TimeZoneRow
+                label={TIME_ZONE_COPY.label}
+                zones={profile}
+                onOpen={() => setPickingZone(true)}
+              />
+            </li>
+          </ul>
+          <TimeZoneSheet
+            open={pickingZone}
+            onOpenChange={setPickingZone}
+            title={TIME_ZONE_COPY.label}
+            note={TIME_ZONE_COPY.memberNote}
+            zones={profile}
+            onChoose={(zone) => saveZone((z) => setTimeZone.mutateAsync(z), zone)}
+          />
+        </>
+      ) : null}
       <ul className="card flex flex-col p-0">
         <li>
           <button

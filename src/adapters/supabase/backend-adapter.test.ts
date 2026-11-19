@@ -153,8 +153,22 @@ async function backendCodeOf(promise: Promise<unknown>): Promise<BackendErrorCod
   throw new Error('expected a rejection')
 }
 
-const ROW = { id: 'user-1', display_name: 'Jo', avatar_path: null, time_zone: 'Asia/Manila' }
-const PROFILE = { id: 'user-1', displayName: 'Jo', avatarPath: null, timeZone: 'Asia/Manila' }
+const ROW = {
+  id: 'user-1',
+  display_name: 'Jo',
+  avatar_path: null,
+  time_zone: 'Asia/Manila',
+  pending_time_zone: 'Europe/London',
+  pending_week_start: '2026-11-23',
+}
+const PROFILE = {
+  id: 'user-1',
+  displayName: 'Jo',
+  avatarPath: null,
+  timeZone: 'Asia/Manila',
+  pendingTimeZone: 'Europe/London',
+  pendingWeekStart: '2026-11-23',
+}
 const pgError = (message: string) => ({ message, code: 'P0001', details: '', hint: '' })
 
 describe('profiles', () => {
@@ -163,6 +177,9 @@ describe('profiles', () => {
     db.query.maybeSingle.mockResolvedValue({ data: ROW, error: null, status: 200 })
     await expect(adapter.getMyProfile()).resolves.toEqual(PROFILE)
     expect(db.from).toHaveBeenCalledWith('profiles')
+    expect(db.query.select).toHaveBeenCalledWith(
+      'id, display_name, avatar_path, time_zone, pending_time_zone, pending_week_start',
+    )
     expect(db.query.eq).toHaveBeenCalledWith('id', 'user-1')
   })
 
@@ -228,6 +245,52 @@ describe('profiles', () => {
     })
     expect(await backendCodeOf(adapter.saveProfile('Jo', 'UTC'))).toBe('network')
   })
+  it('set_time_zone sends the zone (and the group only when given) and maps the returned row', async () => {
+    const row = {
+      time_zone: 'Europe/London',
+      pending_time_zone: 'America/New_York',
+      pending_week_start: '2026-11-23',
+    }
+    const state = {
+      timeZone: 'Europe/London',
+      pendingTimeZone: 'America/New_York',
+      pendingWeekStart: '2026-11-23',
+    }
+    db.rpc.mockResolvedValueOnce({ data: [row], error: null, status: 200 })
+    await expect(adapter.setTimeZone('America/New_York')).resolves.toEqual(state)
+    expect(db.rpc).toHaveBeenLastCalledWith('set_time_zone', { p_time_zone: 'America/New_York' })
+    db.rpc.mockResolvedValueOnce({ data: [row], error: null, status: 200 })
+    await expect(adapter.setTimeZone('America/New_York', 'g1')).resolves.toEqual(state)
+    expect(db.rpc).toHaveBeenLastCalledWith('set_time_zone', {
+      p_time_zone: 'America/New_York',
+      p_group_id: 'g1',
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ time_zone: 'Europe/London', pending_time_zone: null, pending_week_start: null }],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.setTimeZone('Europe/London')).resolves.toEqual({
+      timeZone: 'Europe/London',
+      pendingTimeZone: null,
+      pendingWeekStart: null,
+    })
+  })
+
+  it('set_time_zone maps its error codes, no response and an empty result', async () => {
+    for (const code of ['invalid_time_zone', 'profile_required', 'not_member', 'not_admin']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.setTimeZone('Mars/Base', 'g1'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.setTimeZone('UTC'))).toBe('network')
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.setTimeZone('UTC'))).toBe('unknown')
+  })
 })
 
 describe('groups', () => {
@@ -255,6 +318,8 @@ describe('groups', () => {
             id: 'g1',
             name: 'Gym Rats',
             time_zone: 'Asia/Manila',
+            pending_time_zone: 'Europe/London',
+            pending_week_start: '2026-11-23',
             memberships: [
               member('user-1', 'admin'),
               member('user-2', 'member'),
@@ -266,6 +331,8 @@ describe('groups', () => {
             id: 'g2',
             name: 'Old crew',
             time_zone: 'UTC',
+            pending_time_zone: null,
+            pending_week_start: null,
             memberships: [
               member('user-1', 'member', '2026-11-03T00:00:00+00:00', 'left', 'm-old'),
               member('user-1', 'member', '2026-11-05T00:00:00+00:00', 'removed', 'm-last'),
@@ -276,6 +343,8 @@ describe('groups', () => {
             id: 'g3',
             name: 'Back again',
             time_zone: 'UTC',
+            pending_time_zone: null,
+            pending_week_start: null,
             memberships: [
               member('user-1', 'member', '2026-11-03T00:00:00+00:00'),
               member('user-1', 'member'),
@@ -292,6 +361,8 @@ describe('groups', () => {
           id: 'g1',
           name: 'Gym Rats',
           timeZone: 'Asia/Manila',
+          pendingTimeZone: 'Europe/London',
+          pendingWeekStart: '2026-11-23',
           role: 'admin',
           joinedAt: '2026-11-01T10:00:00+00:00',
           memberCount: 2,
@@ -300,6 +371,8 @@ describe('groups', () => {
           id: 'g3',
           name: 'Back again',
           timeZone: 'UTC',
+          pendingTimeZone: null,
+          pendingWeekStart: null,
           role: 'member',
           joinedAt: '2026-11-01T10:00:00+00:00',
           memberCount: 1,

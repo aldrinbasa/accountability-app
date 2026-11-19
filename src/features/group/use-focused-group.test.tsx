@@ -5,7 +5,16 @@ import { createFakeBackend, renderRoutes } from '@/test/fake-backend'
 import { searchWithGroup } from '@/features/group/use-focused-group'
 
 function group(id: string, name: string, joinedAt: string, memberCount = 2): MyGroup {
-  return { id, name, timeZone: 'UTC', role: 'member', joinedAt, memberCount }
+  return {
+    id,
+    name,
+    timeZone: 'UTC',
+    pendingTimeZone: null,
+    pendingWeekStart: null,
+    role: 'member',
+    joinedAt,
+    memberCount,
+  }
 }
 
 const A = group('a', 'Alpha', '2026-11-01T10:00:00Z')

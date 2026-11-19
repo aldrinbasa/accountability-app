@@ -11,6 +11,7 @@ import {
   type MyGroupsSnapshot,
 } from '@/domain/groups'
 import type { Profile } from '@/domain/profile'
+import { chooseZone, type TimeZoneState } from '@/domain/time-zones'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
 import { setLastSeenCount } from '@/data/group-notices'
@@ -49,6 +50,7 @@ export interface GroupRepository {
   members(groupId: string): Promise<GroupMember[]>
   leave(groupId: string): Promise<void>
   remove(groupId: string, userId: string): Promise<void>
+  setTimeZone(groupId: string, timeZone: string): Promise<TimeZoneState>
 }
 
 /** Group reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
@@ -62,6 +64,7 @@ export function createGroupRepository(backend: BackendPort): GroupRepository {
     members: (groupId) => backend.listMembers(groupId),
     leave: (groupId) => backend.leaveGroup(groupId),
     remove: (groupId, userId) => backend.removeMember(groupId, userId),
+    setTimeZone: (groupId, timeZone) => backend.setTimeZone(timeZone, groupId),
   }
 }
 
@@ -113,6 +116,8 @@ export function useCreateGroup() {
         id: groupId,
         name: trimGroupName(name),
         timeZone: profile?.timeZone ?? deviceTimeZone(),
+        pendingTimeZone: null,
+        pendingWeekStart: null,
         role: 'admin',
         joinedAt: new Date().toISOString(),
         memberCount: 1,
@@ -293,6 +298,60 @@ export function useRemoveMember(groupId: string) {
         .getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)
         ?.groups.find((g) => g.id === groupId)
       if (group) setLastSeenCount(groupId, group.memberCount)
+    },
+  })
+}
+
+function updateGroup(
+  snapshot: MyGroupsSnapshot | undefined,
+  groupId: string,
+  change: (group: MyGroup) => MyGroup,
+): MyGroupsSnapshot | undefined {
+  if (!snapshot) return snapshot
+  return {
+    ...snapshot,
+    groups: snapshot.groups.map((group) => (group.id === groupId ? change(group) : group)),
+  }
+}
+
+/**
+ * `set_time_zone` for a group's zone (admin). Optimistic: the group in `['groups', 'me']` shows the
+ * choice at once and goes back to what it was if the call fails; success writes the server's zones.
+ */
+export function useSetGroupTimeZone(groupId: string) {
+  const repository = useGroupRepository('useSetGroupTimeZone')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (timeZone: string) => repository.setTimeZone(groupId, timeZone),
+    onMutate: async (timeZone) => {
+      await queryClient.cancelQueries({ queryKey: MY_GROUPS_KEY })
+      const previous = queryClient
+        .getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)
+        ?.groups.find((group) => group.id === groupId)
+      if (previous) {
+        queryClient.setQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY, (snapshot) =>
+          updateGroup(snapshot, groupId, (group) => chooseZone(group, timeZone)),
+        )
+      }
+      return { previous }
+    },
+    onError: (_error, _timeZone, context) => {
+      const previous = context?.previous
+      if (!previous) return
+      queryClient.setQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY, (snapshot) =>
+        updateGroup(snapshot, groupId, (group) => ({
+          ...group,
+          timeZone: previous.timeZone,
+          pendingTimeZone: previous.pendingTimeZone,
+          pendingWeekStart: previous.pendingWeekStart,
+        })),
+      )
+    },
+    onSuccess: async (state) => {
+      await queryClient.cancelQueries({ queryKey: MY_GROUPS_KEY })
+      queryClient.setQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY, (snapshot) =>
+        updateGroup(snapshot, groupId, (group) => ({ ...group, ...state })),
+      )
     },
   })
 }

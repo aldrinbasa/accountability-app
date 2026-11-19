@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FALLBACK_TIME_ZONE, type Profile } from '@/domain/profile'
+import { chooseZone, type TimeZoneState } from '@/domain/time-zones'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
 
@@ -10,6 +11,7 @@ export const MY_PROFILE_KEY = ['profile', 'me'] as const
 export interface ProfileRepository {
   getMine(): Promise<Profile | null>
   save(displayName: string, timeZone: string): Promise<Profile>
+  setTimeZone(timeZone: string): Promise<TimeZoneState>
 }
 
 /** Profile reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
@@ -17,6 +19,7 @@ export function createProfileRepository(backend: BackendPort): ProfileRepository
   return {
     getMine: () => backend.getMyProfile(),
     save: (displayName, timeZone) => backend.saveProfile(displayName, timeZone),
+    setTimeZone: (timeZone) => backend.setTimeZone(timeZone),
   }
 }
 
@@ -55,6 +58,37 @@ export function useSaveProfile() {
       // A focus refetch started before the save could land after it and write `null` back.
       await queryClient.cancelQueries({ queryKey: MY_PROFILE_KEY })
       queryClient.setQueryData(MY_PROFILE_KEY, profile)
+    },
+  })
+}
+
+/**
+ * `set_time_zone` for the member's own zone. Optimistic: `['profile', 'me']` shows the choice at once
+ * and goes back to what it was if the call fails; success writes the server's zones (with the start
+ * Monday of a waiting change).
+ */
+export function useSetMyTimeZone() {
+  const repository = useProfileRepository('useSetMyTimeZone')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (timeZone: string) => repository.setTimeZone(timeZone),
+    onMutate: async (timeZone) => {
+      await queryClient.cancelQueries({ queryKey: MY_PROFILE_KEY })
+      const previous = queryClient.getQueryData<Profile | null>(MY_PROFILE_KEY)
+      if (previous)
+        queryClient.setQueryData<Profile>(MY_PROFILE_KEY, chooseZone(previous, timeZone))
+      return { previous }
+    },
+    onError: (_error, _timeZone, context) => {
+      if (context?.previous !== undefined) {
+        queryClient.setQueryData(MY_PROFILE_KEY, context.previous)
+      }
+    },
+    onSuccess: async (state) => {
+      await queryClient.cancelQueries({ queryKey: MY_PROFILE_KEY })
+      queryClient.setQueryData<Profile | null>(MY_PROFILE_KEY, (profile) =>
+        profile ? { ...profile, ...state } : profile,
+      )
     },
   })
 }
