@@ -6,7 +6,8 @@
 -- Cast: alice (Europe/London) creates "Crew" (group zone Europe/London); bob (Pacific/Auckland),
 -- carol (Europe/London) and nina (America/New_York) join with alice's invite. carol leaves before
 -- her first week; nina leaves late, after her sessions exist. erin (UTC) is alone in "Solo" (a
--- waiting group). dave (UTC) is in no group.
+-- waiting group). dave (UTC) is in no group. olga (America/New_York) is alone
+-- in "Quiet", a group with no commitments.
 -- Commitments are written directly (as the table owner) so each case picks its own first week;
 -- add_commitment is covered by commitments.test.sql. Steps are called directly under
 -- tests.freeze_time, in date order: Mar 2026 (London spring-forward), Oct 2026 (London and
@@ -17,7 +18,7 @@
 -- transaction's rows, and once this transaction holds the tick lock (after the busy case) every
 -- cron run returns at once, so it never moves the heartbeat under these assertions.
 begin;
-select plan(83);
+select plan(92);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -25,6 +26,7 @@ select tests.create_supabase_user('carol');
 select tests.create_supabase_user('nina');
 select tests.create_supabase_user('erin');
 select tests.create_supabase_user('dave');
+select tests.create_supabase_user('olga');
 
 -- ===== Shape =====
 select has_table('public', 'sessions', 'public.sessions exists');
@@ -137,6 +139,9 @@ select public.save_profile('Dave', 'UTC');
 select tests.authenticate_as('erin');
 select public.save_profile('Erin', 'UTC');
 select pg_catalog.set_config('test.g2', public.create_group('Solo')::text, true);
+select tests.authenticate_as('olga');
+select public.save_profile('Olga', 'America/New_York');
+select pg_catalog.set_config('test.g3', public.create_group('Quiet')::text, true);
 
 select tests.authenticate_as('alice');
 select pg_catalog.set_config('test.g1', public.create_group('Crew')::text, true);
@@ -290,6 +295,8 @@ select pg_catalog.set_config('test.b8',
   pg_temp.add_plan('carol', 'g1', 'draw', array[1]::smallint[], null, '2026-11-16')::text, true);
 select pg_catalog.set_config('test.b9',
   pg_temp.add_plan('erin', 'g2', 'clean', null, 1::smallint, '2026-11-16')::text, true);
+select pg_catalog.set_config('test.b10',
+  pg_temp.add_plan('alice', 'g1', 'sleep_early', array[1, 3, 5]::smallint[], null, '2026-11-16', '2026-11-18')::text, true);
 -- A task (kind 'task', no version): the tick never generates for it (Story 2.4 creates its session).
 insert into public.group_activities (group_id, preset_key, created_by)
 values (current_setting('test.g1')::uuid, 'groceries', tests.get_supabase_uid('alice'));
@@ -364,6 +371,20 @@ select is(
     || '/' || (select string_agg(coalesce(c.sessions_through::text, '-'), ',' order by c.id) from public.commitments c),
   current_setting('test.counts'),
   'a second run creates nothing new and moves no marker');
+
+select is(pg_temp.slots('b10', '2026-11-16'),
+  '1[2026-11-16 00:00,2026-11-17 00:00) 3[2026-11-18 00:00,2026-11-19 00:00)',
+  'fixed days Mon Wed Fri ending Wednesday: only slots 1 and 3 that week');
+
+-- "Quiet" (New York, no commitments) gets its group week at its own Monday 00:00 (05:00 UTC).
+select tests.freeze_time('2026-11-16 04:59:00+00');
+select private.tick_step_1_sessions();
+select is(pg_temp.lock_at('g3', '2026-11-16'), null,
+  'a group with no commitments has no week row one minute before its Monday');
+select tests.freeze_time('2026-11-16 05:00:00+00');
+select private.tick_step_1_sessions();
+select is(pg_temp.lock_at('g3', '2026-11-16'), '2026-11-26 05:00:00+00'::timestamptz,
+  'at its Monday 00:00 it gets the row, locking Thursday 00:00 New York time');
 
 -- A run on Saturday, then a 3-day pause until Tuesday 24 Nov.
 select tests.freeze_time('2026-11-21 12:00:00+00');
@@ -455,45 +476,38 @@ reset role;
 -- Mon 30 Nov 00:30 London: alice's week 30 Nov is due.
 select tests.freeze_time('2026-11-30 00:30:00+00');
 
--- Another session holds the tick lock (a second connection through dblink, when the stack has it).
--- The connection goes over the same network address pg_prove used, so the password is checked.
+-- Another session holds the tick lock: a second connection through dblink, over the same network
+-- address pg_prove used (so the password is checked). The lock is released and the connection
+-- closed even if tick() raises.
 do $$
 declare
-  v_schema text;
   v_conn text;
+  v_error text;
 begin
-  if not exists (select 1 from pg_catalog.pg_available_extensions e where e.name = 'dblink') then
-    perform pg_catalog.set_config('test.busy_mode', 'no_dblink', true);
-    return;
-  end if;
   create extension if not exists dblink with schema extensions;
-  select n.nspname into v_schema
-  from pg_catalog.pg_extension x join pg_catalog.pg_namespace n on n.oid = x.extnamespace
-  where x.extname = 'dblink';
   v_conn := pg_catalog.format('host=%s port=%s dbname=%s user=postgres password=postgres',
     coalesce(pg_catalog.host(pg_catalog.inet_server_addr()), '127.0.0.1'),
     coalesce(pg_catalog.inet_server_port(), 5432),
     pg_catalog.current_database());
-  execute pg_catalog.format('select %I.dblink_connect(%L, %L)', v_schema, 'proofy_busy', v_conn);
-  execute pg_catalog.format('select %I.dblink_exec(%L, %L)', v_schema, 'proofy_busy',
-    'select pg_catalog.pg_advisory_lock(pg_catalog.hashtext(''proofy.tick''))');
-  perform private.tick();
-  execute pg_catalog.format('select %I.dblink_exec(%L, %L)', v_schema, 'proofy_busy',
-    'select pg_catalog.pg_advisory_unlock(pg_catalog.hashtext(''proofy.tick''))');
-  execute pg_catalog.format('select %I.dblink_disconnect(%L)', v_schema, 'proofy_busy');
-  perform pg_catalog.set_config('test.busy_mode', 'dblink', true);
+  perform extensions.dblink_connect('proofy_busy', v_conn);
+  perform * from extensions.dblink('proofy_busy',
+    'select pg_catalog.pg_advisory_lock(pg_catalog.hashtext(''proofy.tick''))::text') as t(v text);
+  begin
+    perform private.tick();
+  exception when others then
+    v_error := sqlerrm;
+  end;
+  perform * from extensions.dblink('proofy_busy',
+    'select pg_catalog.pg_advisory_unlock(pg_catalog.hashtext(''proofy.tick''))::text') as t(v text);
+  perform extensions.dblink_disconnect('proofy_busy');
+  if v_error is not null then
+    raise exception 'tick() raised while another session held the lock: %', v_error;
+  end if;
 end;
 $$;
-select diag('busy case ran in mode: ' || current_setting('test.busy_mode'));
 select ok(
-  case current_setting('test.busy_mode')
-    when 'dblink' then
-      pg_temp.slots('b1', '2026-11-30') = '-'
-      and (select h.last_run_at from public.heartbeat h) is distinct from '2026-11-30 00:30:00+00'::timestamptz
-    else
-      (select p.prosrc like '%if not pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtext(''proofy.tick'')) then%return;%'
-       from pg_catalog.pg_proc p where p.oid = 'private.tick()'::regprocedure)
-  end,
+  pg_temp.slots('b1', '2026-11-30') = '-'
+  and (select h.last_run_at from public.heartbeat h) is distinct from '2026-11-30 00:30:00+00'::timestamptz,
   'while another session holds the tick lock, tick() returns at once: no step runs, no heartbeat'
 );
 
@@ -512,29 +526,53 @@ select private.tick();
 select is((select h.last_run_at from public.heartbeat h), '2026-11-30 00:31:00+00'::timestamptz,
   'last_run_at moves on every run');
 
--- Step 1 runs before step 8: a probe step 1 records the heartbeat it saw.
+-- One failing commitment: bob's profile zone is broken (written as the table owner), so his week
+-- fails. alice's commitment in the same run still gets its sessions; step 1 is recorded as failed.
+select tests.freeze_time('2026-12-07 00:30:00+00');
+update public.profiles set time_zone = 'Not/A_Zone' where id = tests.get_supabase_uid('bob');
+select lives_ok($$ select private.tick() $$, 'a failing commitment does not fail the tick');
+select is(pg_temp.slots('b7', '2026-12-07'), '-', 'the failing commitment gets nothing');
+select is(
+  (select count(*)::integer from public.sessions s
+   where s.commitment_id = current_setting('test.b1')::uuid and s.week_start = '2026-12-07'),
+  3, 'another commitment in the same run still gets its sessions');
+select ok(
+  (select h.last_run_at = '2026-12-07 00:30:00+00'::timestamptz
+          and h.last_error_step = 1
+          and h.last_error like 'commitment ' || current_setting('test.b7') || ': %'
+          and h.last_error_at = '2026-12-07 00:30:00+00'::timestamptz
+   from public.heartbeat h),
+  'the heartbeat names step 1 and the failing commitment'
+);
+update public.profiles set time_zone = 'Pacific/Auckland' where id = tests.get_supabase_uid('bob');
+
+-- Step 1 runs before step 8: a probe step 1 records the heartbeat it saw. The real step 1 (with
+-- the test search_path) is kept to restore later.
+select pg_catalog.set_config('test.step1_def',
+  pg_catalog.pg_get_functiondef('private.tick_step_1_sessions()'::regprocedure), true);
 create temp table tick_probe (seen_last_run_at timestamptz);
 create or replace function private.tick_step_1_sessions()
-returns void
+returns text
 language plpgsql
 set search_path = ''
 as $$
 begin
   insert into pg_temp.tick_probe (seen_last_run_at) select h.last_run_at from public.heartbeat h;
+  return null;
 end;
 $$;
-select tests.freeze_time('2026-11-30 00:32:00+00');
+select tests.freeze_time('2026-12-07 00:32:00+00');
 select private.tick();
 select is(
   (select p.seen_last_run_at::text || ' then ' || (select h.last_run_at::text from public.heartbeat h)
    from pg_temp.tick_probe p),
-  '2026-11-30 00:31:00+00'::timestamptz::text || ' then ' || '2026-11-30 00:32:00+00'::timestamptz::text,
+  '2026-12-07 00:30:00+00'::timestamptz::text || ' then ' || '2026-12-07 00:32:00+00'::timestamptz::text,
   'step 1 runs before step 8 writes the heartbeat'
 );
 
 -- A failing step 1: its own writes roll back, it is recorded, and step 8 still runs.
 create or replace function private.tick_step_1_sessions()
-returns void
+returns text
 language plpgsql
 set search_path = ''
 as $$
@@ -543,28 +581,51 @@ begin
   raise exception 'step one broke';
 end;
 $$;
-select tests.freeze_time('2026-11-30 00:33:00+00');
+select tests.freeze_time('2026-12-07 00:33:00+00');
 select lives_ok($$ select private.tick() $$, 'a failing step does not fail the tick');
 select ok(
-  (select h.last_run_at = '2026-11-30 00:33:00+00'::timestamptz
+  (select h.last_run_at = '2026-12-07 00:33:00+00'::timestamptz
           and h.last_error_step = 1
           and h.last_error = 'step one broke'
-          and h.last_error_at = '2026-11-30 00:33:00+00'::timestamptz
+          and h.last_error_at = '2026-12-07 00:33:00+00'::timestamptz
    from public.heartbeat h),
   'the heartbeat records step 1, SQLERRM and the time, and step 8 still wrote last_run_at'
 );
 select is((select count(*)::integer from pg_temp.tick_probe), 1, 'the failing step''s own writes rolled back');
 
+-- The real step 1 back: a later clean run moves last_run_at and keeps the earlier failure.
+do $$ begin execute current_setting('test.step1_def'); end; $$;
+select tests.freeze_time('2026-12-07 00:40:00+00');
+select private.tick();
+select ok(
+  (select h.last_run_at = '2026-12-07 00:40:00+00'::timestamptz
+          and h.last_error_step = 1
+          and h.last_error = 'step one broke'
+          and h.last_error_at = '2026-12-07 00:33:00+00'::timestamptz
+   from public.heartbeat h),
+  'a later clean run moves last_run_at and leaves the last failure in the error columns'
+);
+
+-- A missing heartbeat row is recreated by step 8.
+delete from public.heartbeat;
+select tests.freeze_time('2026-12-07 00:41:00+00');
+select private.tick();
+select ok(
+  (select count(*) = 1 and bool_and(h.last_run_at = '2026-12-07 00:41:00+00'::timestamptz)
+   from public.heartbeat h),
+  'step 8 recreates a missing heartbeat row'
+);
+
 -- ===== ensure_group_week and group_time_zone =====
-select private.ensure_group_week(current_setting('test.g1')::uuid, '2026-12-07');
-select is(pg_temp.lock_at('g1', '2026-12-07'), '2026-12-17 00:00:00+00'::timestamptz,
+select private.ensure_group_week(current_setting('test.g1')::uuid, '2026-12-21');
+select is(pg_temp.lock_at('g1', '2026-12-21'), '2026-12-31 00:00:00+00'::timestamptz,
   'ensure_group_week sets lock_at to Thursday 00:00 after the week in the group zone');
 update public.groups set time_zone = 'America/New_York' where id = current_setting('test.g1')::uuid;
-select private.ensure_group_week(current_setting('test.g1')::uuid, '2026-12-07');
-select private.ensure_group_week(current_setting('test.g1')::uuid, '2026-12-14');
+select private.ensure_group_week(current_setting('test.g1')::uuid, '2026-12-21');
+select private.ensure_group_week(current_setting('test.g1')::uuid, '2026-12-28');
 select ok(
-  pg_temp.lock_at('g1', '2026-12-07') = '2026-12-17 00:00:00+00'::timestamptz
-  and pg_temp.lock_at('g1', '2026-12-14') = '2026-12-24 05:00:00+00'::timestamptz,
+  pg_temp.lock_at('g1', '2026-12-21') = '2026-12-31 00:00:00+00'::timestamptz
+  and pg_temp.lock_at('g1', '2026-12-28') = '2027-01-07 05:00:00+00'::timestamptz,
   'ensure_group_week leaves an existing row alone and reads the group zone through group_time_zone'
 );
 

@@ -132,8 +132,11 @@ $$;
 --       gets it. Weeks after ends_after_week_start or after the end date get no rows.
 --    Idempotent: the marker plus the unique (commitment_id, week_start, slot) and on conflict do
 --    nothing, so a rerun creates nothing new.
+--    Part a) and each commitment run in their own exception block, so one failure (a deadlock, a
+--    constraint, a bad zone) rolls back only its own work and the rest still commits. Returns the
+--    first error as text (naming the commitment), or null when everything went through.
 create or replace function private.tick_step_1_sessions()
-returns void
+returns text
 language plpgsql
 set search_path = ''
 as $$
@@ -146,22 +149,27 @@ declare
   v_version public.commitment_versions;
   v_last_day date;
   v_count smallint;
+  v_error text;
 begin
   -- a) Group weeks.
-  perform private.ensure_group_week(x.group_id, x.week_start)
-  from (
-    select
-      g.id as group_id,
-      private.week_start_of(
-        now(),
-        private.group_time_zone(g.id, private.week_start_of(now(), private.group_time_zone(g.id, null)))
-      ) as week_start
-    from public.groups g
-  ) x
-  where not exists (
-    select 1 from public.group_weeks gw
-    where gw.group_id = x.group_id and gw.week_start = x.week_start
-  );
+  begin
+    perform private.ensure_group_week(x.group_id, x.week_start)
+    from (
+      select
+        g.id as group_id,
+        private.week_start_of(
+          now(),
+          private.group_time_zone(g.id, private.week_start_of(now(), private.group_time_zone(g.id, null)))
+        ) as week_start
+      from public.groups g
+    ) x
+    where not exists (
+      select 1 from public.group_weeks gw
+      where gw.group_id = x.group_id and gw.week_start = x.week_start
+    );
+  exception when others then
+    v_error := 'group weeks: ' || sqlerrm;
+  end;
 
   -- b) Sessions. The prefilter only drops commitments with nothing due anywhere yet: no member's
   --    current week can be later than the week in the zone furthest ahead (UTC+14). Commitments past
@@ -195,79 +203,87 @@ begin
       and (l.latest_end_date is null or coalesce(c.sessions_through + 7, f.first_week) <= l.latest_end_date)
     order by c.id
   loop
-    v_week := v_c.next_week;
-    v_last := null;
+    begin
+      v_week := v_c.next_week;
+      v_last := null;
 
-    loop
-      v_tz := private.member_time_zone(v_c.user_id, v_week);
-      -- Not yet the member's Monday 00:00 for this week.
-      exit when v_tz is null or private.local_start(v_week, v_tz) > now();
-      -- Ended: nothing from here on.
-      exit when v_c.ends_after_week_start is not null and v_week > v_c.ends_after_week_start;
+      loop
+        v_tz := private.member_time_zone(v_c.user_id, v_week);
+        -- Not yet the member's Monday 00:00 for this week.
+        exit when v_tz is null or private.local_start(v_week, v_tz) > now();
+        -- Ended: nothing from here on.
+        exit when v_c.ends_after_week_start is not null and v_week > v_c.ends_after_week_start;
 
-      -- The version with the latest effective_week_start <= this week (all nulls when none).
-      select cv.* into v_version
-      from public.commitment_versions cv
-      where cv.commitment_id = v_c.id
-        and cv.effective_week_start <= v_week
-      order by cv.effective_week_start desc
-      limit 1;
+        -- The version with the latest effective_week_start <= this week (all nulls when none).
+        select cv.* into v_version
+        from public.commitment_versions cv
+        where cv.commitment_id = v_c.id
+          and cv.effective_week_start <= v_week
+        order by cv.effective_week_start desc
+        limit 1;
 
-      select gw.lock_at into v_lock_at
-      from public.group_weeks gw
-      where gw.group_id = v_c.group_id and gw.week_start = v_week;
-      if not found then
-        v_lock_at := private.local_start(v_week + 10, private.group_time_zone(v_c.group_id, v_week));
-      end if;
-
-      if v_lock_at > now()
-         and v_version.id is not null
-         and (v_version.end_date is null or v_version.end_date >= v_week) then
-        perform private.ensure_group_week(v_c.group_id, v_week);
-
-        -- The last day of this week with a session (the end date when it falls inside the week).
-        v_last_day := least(v_week + 6, coalesce(v_version.end_date, v_week + 6));
-
-        if v_version.days is not null then
-          insert into public.sessions
-            (group_id, membership_id, user_id, commitment_id, week_start, slot, starts_at, ends_at)
-          select
-            v_c.group_id, v_c.membership_id, v_c.user_id, v_c.id, v_week, d.weekday,
-            private.local_start(v_week + (d.weekday::integer - 1), v_tz),
-            private.local_start(v_week + d.weekday::integer, v_tz)
-          from pg_catalog.unnest(v_version.days) as d(weekday)
-          where v_week + (d.weekday::integer - 1) <= v_last_day
-          on conflict (commitment_id, week_start, slot) do nothing;
-        else
-          -- A week cut short by the end date gets the pro-rated target (the only place the tick
-          -- computes it); every row covers the days up to the end date.
-          if v_last_day < v_week + 6 then
-            v_count := private.prorated_target(v_version.target, (v_last_day - v_week + 1)::smallint);
-          else
-            v_count := v_version.target;
-          end if;
-
-          insert into public.sessions
-            (group_id, membership_id, user_id, commitment_id, week_start, slot, starts_at, ends_at)
-          select
-            v_c.group_id, v_c.membership_id, v_c.user_id, v_c.id, v_week, s.slot::smallint,
-            private.local_start(v_week, v_tz),
-            private.local_start(v_last_day + 1, v_tz)
-          from pg_catalog.generate_series(1, v_count::integer) as s(slot)
-          on conflict (commitment_id, week_start, slot) do nothing;
+        select gw.lock_at into v_lock_at
+        from public.group_weeks gw
+        where gw.group_id = v_c.group_id and gw.week_start = v_week;
+        if not found then
+          v_lock_at := private.local_start(v_week + 10, private.group_time_zone(v_c.group_id, v_week));
         end if;
+
+        if v_lock_at > now()
+           and v_version.id is not null
+           and (v_version.end_date is null or v_version.end_date >= v_week) then
+          perform private.ensure_group_week(v_c.group_id, v_week);
+
+          -- The last day of this week with a session (the end date when it falls inside the week).
+          v_last_day := least(v_week + 6, coalesce(v_version.end_date, v_week + 6));
+
+          if v_version.days is not null then
+            insert into public.sessions
+              (group_id, membership_id, user_id, commitment_id, week_start, slot, starts_at, ends_at)
+            select
+              v_c.group_id, v_c.membership_id, v_c.user_id, v_c.id, v_week, d.weekday,
+              private.local_start(v_week + (d.weekday::integer - 1), v_tz),
+              private.local_start(v_week + d.weekday::integer, v_tz)
+            from pg_catalog.unnest(v_version.days) as d(weekday)
+            where v_week + (d.weekday::integer - 1) <= v_last_day
+            on conflict (commitment_id, week_start, slot) do nothing;
+          else
+            -- A week cut short by the end date gets the pro-rated target (the only place the tick
+            -- computes it); every row covers the days up to the end date.
+            if v_last_day < v_week + 6 then
+              v_count := private.prorated_target(v_version.target, (v_last_day - v_week + 1)::smallint);
+            else
+              v_count := v_version.target;
+            end if;
+
+            insert into public.sessions
+              (group_id, membership_id, user_id, commitment_id, week_start, slot, starts_at, ends_at)
+            select
+              v_c.group_id, v_c.membership_id, v_c.user_id, v_c.id, v_week, s.slot::smallint,
+              private.local_start(v_week, v_tz),
+              private.local_start(v_last_day + 1, v_tz)
+            from pg_catalog.generate_series(1, v_count::integer) as s(slot)
+            on conflict (commitment_id, week_start, slot) do nothing;
+          end if;
+        end if;
+
+        v_last := v_week;
+        v_week := v_week + 7;
+      end loop;
+
+      if v_last is not null then
+        update public.commitments
+        set sessions_through = v_last
+        where id = v_c.id;
       end if;
-
-      v_last := v_week;
-      v_week := v_week + 7;
-    end loop;
-
-    if v_last is not null then
-      update public.commitments
-      set sessions_through = v_last
-      where id = v_c.id;
-    end if;
+    exception when others then
+      if v_error is null then
+        v_error := 'commitment ' || v_c.id::text || ': ' || sqlerrm;
+      end if;
+    end;
   end loop;
+
+  return v_error;
 end;
 $$;
 
@@ -283,12 +299,16 @@ returns void
 language sql
 set search_path = ''
 as $$
-  update public.heartbeat h
-  set last_run_at = now(),
+  -- An upsert, so a missing row is recreated rather than silently skipped.
+  insert into public.heartbeat as h (id, last_run_at, last_error_step, last_error, last_error_at)
+  values (true, now(), p_error_step,
+          case when p_error_step is null then null else p_error end,
+          case when p_error_step is null then null else p_error_at end)
+  on conflict (id) do update
+  set last_run_at = excluded.last_run_at,
       last_error_step = case when p_error_step is null then h.last_error_step else p_error_step end,
       last_error = case when p_error_step is null then h.last_error else p_error end,
-      last_error_at = case when p_error_step is null then h.last_error_at else p_error_at end
-  where h.id;
+      last_error_at = case when p_error_step is null then h.last_error_at else p_error_at end;
 $$;
 
 -- 7. The tick (AD-7). One run at a time: returns at once if another tick holds the lock. Steps run
@@ -305,14 +325,21 @@ declare
   v_error_step smallint;
   v_error text;
   v_error_at timestamptz;
+  v_step_error text;
 begin
   if not pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtext('proofy.tick')) then
     return;
   end if;
 
-  -- Step 1: group weeks and sessions.
+  -- Step 1: group weeks and sessions. A returned error counts as a failure, like a raised one.
   begin
-    perform private.tick_step_1_sessions();
+    v_step_error := private.tick_step_1_sessions();
+    if v_step_error is not null then
+      v_failed_before_lock := true;
+      v_error_step := 1;
+      v_error := v_step_error;
+      v_error_at := now();
+    end if;
   exception when others then
     v_failed_before_lock := true;
     v_error_step := 1;
