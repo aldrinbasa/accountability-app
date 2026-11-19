@@ -63,6 +63,10 @@ export function PlanSheetHost({ groupId, children }: { groupId: string; children
           groupId={groupId}
           task={deleteTarget}
           returnFocusTo={returnFocusTo}
+          // The deleted row (and its Overflow, the opener) is about to go: focus "+ Add" instead.
+          onDeleted={() => {
+            opener.current = null
+          }}
         />
       ) : null}
     </PlanSheetContext.Provider>

@@ -10,6 +10,7 @@ import {
   TEST_PLAN_PREVIEW,
   withBackend,
 } from '@/test/fake-backend'
+import { AddPlanButton } from '@/features/plan/add-plan-button'
 import { usePlanSheet } from '@/features/plan/plan-sheet-context'
 import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
 
@@ -570,6 +571,7 @@ async function openEdit(
       backend,
       <PlanSheetHost groupId={TEST_GROUP.id}>
         <EditOpener commitmentId={task.commitmentId} />
+        <AddPlanButton />
       </PlanSheetHost>,
     ),
   )
@@ -684,7 +686,11 @@ describe('Plan sheet (task edit mode)', () => {
     await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(backend.deleteTask).toHaveBeenCalledWith('task-1')
-    await waitFor(() => expect(opener).toHaveFocus())
+    // The deleted task's row (the opener) is about to go: focus lands on "+ Add".
+    expect(opener).not.toHaveFocus()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveFocus(),
+    )
   })
 
   it('closing the confirm cancels and returns to Today, not to the edit sheet', async () => {

@@ -9,7 +9,7 @@ export interface EmptyStateAction {
   onClick: () => void
 }
 
-export interface EmptyStateProps {
+interface EmptyStateBaseProps {
   /** Phosphor doodle, drawn at 64px Duotone. */
   icon: PhosphorIcon
   /** The handwritten line (`hand-lg`). */
@@ -19,12 +19,19 @@ export interface EmptyStateProps {
    * says everything (e.g. "You're not in Sunday Reset anymore.").
    */
   body?: string
-  /** At most one primary action. */
-  action?: EmptyStateAction
-  /** A ready-made action element in place of `action` (e.g. a button that opens a sheet). */
-  actionSlot?: ReactNode
   className?: string
 }
+
+/** At most one action: a primary button (`action`) or a ready-made element (`actionSlot`). */
+export type EmptyStateProps = EmptyStateBaseProps &
+  (
+    | { action?: EmptyStateAction; actionSlot?: never }
+    | {
+        action?: never
+        /** A ready-made action element (e.g. a button that opens a sheet). */
+        actionSlot?: ReactNode
+      }
+  )
 
 /** Empty state (DESIGN.md `empty-state`): centered doodle, a hand line, a meaning sentence, one action. */
 export function EmptyState({ icon, line, body, action, actionSlot, className }: EmptyStateProps) {

@@ -101,6 +101,15 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   const handedOff = useRef(false)
 
   const data = query.data
+  // A refetch removed the row whose actions are open (deleted elsewhere, its week moved on): close.
+  if (
+    actionsOpen &&
+    actions !== null &&
+    data !== undefined &&
+    !data.items.some((item) => item.commitmentId === actions.item.commitmentId)
+  ) {
+    setActionsOpen(false)
+  }
   if (!data) {
     if (query.isError) {
       return (
@@ -142,7 +151,11 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
 
   return (
     <>
-      <Section title={TODAY_COPY.dueToday} count={leftThisWeek(data.summary.left)}>
+      <Section
+        title={TODAY_COPY.dueToday}
+        // Nothing planned this week (e.g. a first week with only next week's plan): no count.
+        count={data.summary.planned > 0 ? leftThisWeek(data.summary.left) : undefined}
+      >
         {empty === 'nothing_due' ? (
           <EmptyState icon={Couch} line={TODAY_COPY.nothingDue} />
         ) : (
@@ -165,7 +178,13 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
           open={actionsOpen}
           onOpenChange={setActionsOpen}
           title={itemTitle(actions.item)}
-          returnFocusTo={() => (handedOff.current ? null : actions.opener)}
+          returnFocusTo={() => {
+            if (handedOff.current) return null
+            // The row may be gone by now: fall back to "+ Add".
+            return actions.opener.isConnected
+              ? actions.opener
+              : document.querySelector<HTMLElement>('[data-plan-add]')
+          }}
           onEdit={() => {
             handedOff.current = true
             setActionsOpen(false)

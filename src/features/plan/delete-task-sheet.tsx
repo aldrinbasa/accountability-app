@@ -36,6 +36,8 @@ export interface DeleteTaskSheetProps {
   task: DeleteTarget
   /** Where focus goes on close (the Plan sheet's opener; this sheet replaced the Plan sheet). */
   returnFocusTo?: () => HTMLElement | null
+  /** The delete went through (called before the sheet closes, so focus can go elsewhere). */
+  onDeleted?: () => void
 }
 
 /**
@@ -50,6 +52,7 @@ export function DeleteTaskSheet({
   groupId,
   task,
   returnFocusTo,
+  onDeleted,
 }: DeleteTaskSheetProps) {
   const deleteTask = useDeleteTask(groupId)
   const [failure, setFailure] = useState<DeleteFailure | null>(null)
@@ -86,6 +89,7 @@ export function DeleteTaskSheet({
       await deleteTask.mutateAsync(task.commitmentId)
       busyRef.current = false
       setBusy(false)
+      onDeleted?.()
       // Closed meanwhile (maybe another sheet is open now): leave it alone.
       if (openRef.current) change(false)
     } catch (error) {

@@ -237,6 +237,9 @@ describe('Today with a plan', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Nothing due today. The couch is suspicious.')).toBeInTheDocument()
     expect(screen.queryByText(/of the grind/)).not.toBeInTheDocument()
+    // Nothing planned this week: the Due today heading has no "0 left this week" count.
+    expect(screen.getByRole('heading', { level: 2, name: 'Due today' })).toBeInTheDocument()
+    expect(screen.queryByText(/left this week/)).not.toBeInTheDocument()
   })
 
   it('a task Overflow opens a Sheet with Edit, which opens the task edit mode', async () => {
@@ -252,6 +255,51 @@ describe('Today with a plan', () => {
     // Closing the edit sheet returns focus to the row's Overflow.
     await user.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(more).toHaveFocus())
+  })
+
+  it('deleting a task from its row: the row goes and "+ Add" gets focus', async () => {
+    const user = userEvent.setup()
+    const backend = withToday([RUN, TASK_SUNDAY])
+    let items = [RUN, TASK_SUNDAY]
+    vi.mocked(backend.getTodayItems).mockImplementation(async () => items)
+    vi.mocked(backend.deleteTask).mockImplementation(async () => {
+      items = [RUN]
+    })
+    renderRoutes(['/today'], backend)
+    await user.click(await screen.findByRole('button', { name: 'More actions for Garage' }))
+    await user.click(
+      within(await screen.findByRole('dialog', { name: 'Garage' })).getByRole('button', {
+        name: 'Edit',
+      }),
+    )
+    const edit = await screen.findByRole('dialog', { name: 'Edit task' })
+    await user.click(await within(edit).findByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Garage?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { level: 3, name: 'Garage' })).not.toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveFocus(),
+    )
+  })
+
+  it('a refetch that removes the open row closes its actions Sheet; focus goes to "+ Add"', async () => {
+    const user = userEvent.setup()
+    const backend = withToday([RUN, TASK_SUNDAY])
+    const { queryClient } = renderRoutes(['/today'], backend)
+    await user.click(await screen.findByRole('button', { name: 'More actions for Garage' }))
+    await screen.findByRole('dialog', { name: 'Garage' })
+
+    vi.mocked(backend.getTodayItems).mockResolvedValue([RUN])
+    await queryClient.invalidateQueries({ queryKey: ['today', TEST_GROUP.id] })
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Garage' })).not.toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveFocus(),
+    )
   })
 
   it('closing the row actions Sheet returns focus to the Overflow', async () => {

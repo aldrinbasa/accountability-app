@@ -8,14 +8,15 @@
 -- Week under test: Mon 16 Nov to Sun 22 Nov 2026 (GMT in London, so London time = UTC).
 -- Commitments are added on Tue 10 Nov (they start Mon 16 Nov), then tick step 1 writes the week's
 -- sessions on Mon 16 Nov. alice: Gym fixed days Mon Wed Fri, Run 3 times per week, Yoga 2 times
--- per week, tasks "Yesterday" (deadline Tue 17), "Grocery run" (Wed 18) and "Garage" (Sun 22), and
--- Read 4 times per week added on Wed 18 (starts Mon 23 Nov). bob: Walk fixed days Tue, added on
+-- per week, Meditate 5 times per week ending Thu 19 Nov (a pro-rated week: 2 sessions ending at
+-- Thursday's end), tasks "Yesterday" (deadline Tue 17), "Grocery run" (Wed 18), "Zoo trip" (Fri 20)
+-- and "Garage" (Sun 22), and Read 4 times per week added on Wed 18 (starts Mon 23 Nov). bob: Walk fixed days Tue, added on
 -- Wed 18 (starts next week, no sessions this week). carol: Study fixed days Thu.
 -- The routines under test call now() unqualified; as the owner their search_path is pointed at
 -- test_overrides so tests.freeze_time moves their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(26);
+select plan(28);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -100,6 +101,21 @@ select tests.authenticate_as('carol');
 select * from public.add_commitment(current_setting('test.g1')::uuid, p_preset_key => 'study',
   p_schedule_type => 'fixed_days', p_days => array[4]);
 
+-- Meditate, written directly (add_commitment never allows an end date inside the first week):
+-- 5 times per week from Mon 16 Nov, ending Thu 19 Nov, so this week owes floor(5 x 4 / 7) = 2.
+select tests.authenticate_as('alice');
+reset role;
+with c as (
+  insert into public.commitments (group_id, membership_id, user_id, kind, group_activity_id, schedule_type)
+  select m.group_id, m.id, m.user_id, 'commitment',
+         (private.resolve_group_activity(m.group_id, 'meditate', null, null)).id, 'times_per_week'
+  from public.memberships m
+  where m.group_id = current_setting('test.g1')::uuid and m.user_id = tests.get_supabase_uid('alice')
+  returning id, group_id
+)
+insert into public.commitment_versions (commitment_id, group_id, effective_week_start, target, end_date)
+select c.id, c.group_id, '2026-11-16', 5, '2026-11-19' from c;
+
 -- Mon 16 Nov 00:30 (08:30 in Manila): the tick writes the week's sessions.
 select tests.freeze_time('2026-11-16 00:30:00+00');
 reset role;
@@ -110,6 +126,14 @@ select tests.freeze_time('2026-11-17 10:00:00+00');
 select tests.authenticate_as('alice');
 select * from public.add_task(current_setting('test.g1')::uuid, p_preset_key => 'clean',
   p_name => 'Yesterday', p_deadline => '2026-11-17');
+select is(
+  (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
+   from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
+     as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
+          days, target, counted, deadline, starts_on, can_delete, ord)),
+  'due_today:Yesterday, this_week:Meditate, this_week:Run, this_week:Yoga',
+  'Tuesday: Meditate (2 needed, 3 days left before its Thursday end) is not at risk yet'
+);
 
 -- Wed 18 Nov: tasks due today and Sunday, and commitments that start next week.
 select tests.freeze_time('2026-11-18 10:00:00+00');
@@ -117,6 +141,8 @@ select * from public.add_task(current_setting('test.g1')::uuid, p_preset_key => 
   p_name => 'Grocery run', p_deadline => '2026-11-18');
 select * from public.add_task(current_setting('test.g1')::uuid, p_preset_key => 'clean',
   p_name => 'Garage', p_deadline => '2026-11-22');
+select * from public.add_task(current_setting('test.g1')::uuid, p_preset_key => 'clean',
+  p_name => 'Zoo trip', p_deadline => '2026-11-20');
 select * from public.add_commitment(current_setting('test.g1')::uuid, p_preset_key => 'read',
   p_schedule_type => 'times_per_week', p_target => 4);
 select tests.authenticate_as('bob');
@@ -130,8 +156,8 @@ select is(
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
           days, target, counted, deadline, starts_on, can_delete, ord)),
-  'due_today:Gym, due_today:Grocery run, this_week:Run, this_week:Yoga, this_week:Garage, starts_next_week:Read',
-  'Wednesday: Gym and the task due today are due; Run, Yoga and the Sunday task this week; Read next week; yesterday''s task is gone'
+  'due_today:Gym, due_today:Meditate, due_today:Grocery run, this_week:Run, this_week:Yoga, this_week:Zoo trip, this_week:Garage, starts_next_week:Read',
+  'Wednesday: Gym, Meditate (2 needed, 2 days left before its end) and the task due today are due; tasks later this week by deadline (Zoo trip before Garage, though Garage sorts first by name); Read next week; yesterday''s task is gone'
 );
 select is(
   (select t.kind || ' ' || t.schedule_type || ' ' || t.days::text || ' ' || t.target::text || ' '
@@ -171,8 +197,8 @@ select is(
   (select s.member_today::text || ' ' || s.week_start::text || ' ' || s.week_number::text || ' '
           || s.planned::text || ' ' || s.done::text || ' ' || s."left"::text
    from public.get_today_summary(current_setting('test.g1')::uuid) s),
-  '2026-11-18 2026-11-16 4 11 0 11',
-  'summary: member today, week start, week 4 for a member who joined three weeks earlier, 11 sessions planned, none done'
+  '2026-11-18 2026-11-16 4 14 0 12',
+  'summary: member today, week start, week 4 for a member who joined three weeks earlier, 14 sessions planned, none done, 12 left (Monday''s Gym and yesterday''s task are over)'
 );
 
 -- bob: joined mid-week, only a plan for next week.
@@ -217,7 +243,7 @@ select is(
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
           days, target, counted, deadline, starts_on, can_delete, ord)),
-  'due_today:Gym, due_today:Grocery run, this_week:Run, this_week:Yoga, this_week:Garage, starts_next_week:Read',
+  'due_today:Gym, due_today:Meditate, due_today:Grocery run, this_week:Run, this_week:Yoga, this_week:Zoo trip, this_week:Garage, starts_next_week:Read',
   'at the same moment a London member still sees Wednesday'
 );
 
@@ -228,8 +254,8 @@ select is(
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
           days, target, counted, deadline, starts_on, can_delete, ord)),
-  'this_week:Run, this_week:Yoga, this_week:Garage, starts_next_week:Read',
-  'Thursday: no Gym (not a Gym day), the passed task is gone, Run (3 needed, 4 days left) stays this week'
+  'due_today:Meditate, this_week:Run, this_week:Yoga, this_week:Zoo trip, this_week:Garage, starts_next_week:Read',
+  'Thursday: no Gym (not a Gym day), the passed task is gone, Meditate is due on its last day, Run (3 needed, 4 days left) stays this week'
 );
 
 -- ===== Friday 20 Nov 10:00 (alice): the at-risk move =====
@@ -239,8 +265,14 @@ select is(
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
           days, target, counted, deadline, starts_on, can_delete, ord)),
-  'due_today:Gym, due_today:Run, this_week:Yoga, this_week:Garage, starts_next_week:Read',
-  'Friday: Run (target 3, 0 counted, 3 days left) moves to due today; Yoga (target 2) stays this week'
+  'due_today:Gym, due_today:Run, due_today:Zoo trip, this_week:Yoga, this_week:Garage, starts_next_week:Read',
+  'Friday: Run (target 3, 0 counted, 3 days left) moves to due today; Yoga (target 2) stays this week; Meditate''s last session has ended and is gone'
+);
+select is(
+  (select s.planned::text || ' ' || s."left"::text
+   from public.get_today_summary(current_setting('test.g1')::uuid) s),
+  '14 8',
+  'Friday: left counts only open sessions (Gym Fri, Run 3, Yoga 2, Zoo trip, Garage), not past ones'
 );
 
 -- ===== Sunday 22 Nov 10:00 (alice) =====
