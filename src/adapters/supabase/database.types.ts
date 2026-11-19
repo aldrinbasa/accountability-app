@@ -23,7 +23,77 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "group_activities": {
+            "commitment_versions": {
+                  Row: {
+                    "commitment_id": string,"created_at": string,"days": (number)[] | null,"effective_week_start": string,"end_date": string | null,"group_id": string,"id": string,"target": number | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "commitment_id": string,"created_at"?: string,"days"?: (number)[] | null,"effective_week_start": string,"end_date"?: string | null,"group_id": string,"id"?: string,"target"?: number | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "commitment_id"?: string,"created_at"?: string,"days"?: (number)[] | null,"effective_week_start"?: string,"end_date"?: string | null,"group_id"?: string,"id"?: string,"target"?: number | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "commitment_versions_commitment_id_fkey"
+      columns: ["commitment_id"]
+isOneToOne: false
+      referencedRelation: "commitments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "commitment_versions_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"commitments": {
+                  Row: {
+                    "created_at": string,"ends_after_week_start": string | null,"group_activity_id": string,"group_id": string,"id": string,"kind": string,"membership_id": string,"schedule_type": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id": string,"group_id": string,"id"?: string,"kind": string,"membership_id": string,"schedule_type"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"membership_id"?: string,"schedule_type"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "commitments_group_activity_id_fkey"
+      columns: ["group_activity_id"]
+isOneToOne: false
+      referencedRelation: "group_activities"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "commitments_group_activity_id_fkey"
+      columns: ["group_activity_id"]
+isOneToOne: false
+      referencedRelation: "group_activity_options"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "commitments_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "commitments_membership_id_fkey"
+      columns: ["membership_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "commitments_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"group_activities": {
                   Row: {
                     "created_at": string,"created_by": string,"custom_name": string | null,"group_id": string,"id": string,"preset_key": string | null,"schedule_type": string | null,"updated_at": string
                   }
@@ -193,7 +263,12 @@ isOneToOne: false
                 }
           }
           Functions: {
-            "create_group":
+            "add_commitment":
+{ Args: { "p_custom_name"?: string,"p_days"?: (number)[],"p_end_date"?: string,"p_group_activity_id"?: string,"p_group_id": string,"p_preset_key"?: string,"p_schedule_type"?: string,"p_target"?: number }; Returns: {
+              "commitment_id": string,"starts_on": string
+            }[]
+                           },
+"create_group":
 { Args: { "p_name": string }; Returns: string
                            },
 "create_invite":
@@ -211,6 +286,11 @@ isOneToOne: false
                            },
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
+                           },
+"plan_preview":
+{ Args: { "p_end_date"?: string,"p_group_id": string,"p_target"?: number }; Returns: {
+              "last_week_target": number,"member_today": string,"min_end_date": string,"starts_on": string,"week_end": string,"week_start": string
+            }[]
                            },
 "remove_member":
 { Args: { "p_group_id": string,"p_user_id": string }; Returns: undefined
