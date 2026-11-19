@@ -260,6 +260,11 @@
   html:not([data-input='keyboard']) :focus-visible {
     outline: none;
   }
+  /* The Date field's native input is transparent over its box, so the box shows the ring. */
+  html[data-input='keyboard'] [data-date-box]:has(input:focus-visible) {
+    outline: 3px solid var(--focus);
+    outline-offset: 3px;
+  }
   /* Focus ring on object: any control on pola, sticky, sticky2, vote or a coral block. */
   .on-object:focus-visible,
   .on-object :focus-visible {

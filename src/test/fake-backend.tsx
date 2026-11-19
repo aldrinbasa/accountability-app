@@ -6,6 +6,7 @@ import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
+import type { AddCommitmentInput, PlanPreview } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
@@ -99,6 +100,30 @@ export const TEST_PRESETS: PresetActivity[] = PRESET_ROWS.map(([key, name, categ
   sort: index + 1,
 }))
 
+/**
+ * The default `plan_preview`: a Wednesday in the week of Mon 16 Nov 2026, so a new commitment starts
+ * Mon 23 Nov and the earliest end date is Sun 29 Nov.
+ */
+export const TEST_PLAN_PREVIEW: PlanPreview = {
+  memberToday: '2026-11-18',
+  weekStart: '2026-11-16',
+  weekEnd: '2026-11-22',
+  startsOn: '2026-11-23',
+  minEndDate: '2026-11-29',
+  lastWeekTarget: null,
+}
+
+/**
+ * The fake's pro-rated last week: ISO weekday of the end date (Monday = 1) as the days of that week.
+ * Test-only stand-in for the server's rule.
+ */
+function fakeLastWeekTarget(target: number | null, endDate: string | null, minEndDate: string) {
+  if (target === null || endDate === null || endDate < minEndDate) return null
+  const day = new Date(`${endDate}T00:00:00Z`).getUTCDay()
+  const days = day === 0 ? 7 : day
+  return days === 7 ? null : Math.max(1, Math.floor((target * days) / 7))
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -122,6 +147,8 @@ export function createFakeBackend(
     members?: Record<string, GroupMember[]>
     /** Activities per group id (default none). */
     groupActivities?: Record<string, GroupActivity[]>
+    /** The `plan_preview` dates (default `TEST_PLAN_PREVIEW`). */
+    planPreview?: Omit<PlanPreview, 'lastWeekTarget'>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -133,8 +160,10 @@ export function createFakeBackend(
     [TEST_GROUP.id]: TEST_MEMBERS,
   }
   const groupActivities: Record<string, GroupActivity[]> = options.groupActivities ?? {}
+  const planPreview = options.planPreview ?? TEST_PLAN_PREVIEW
   let created = 0
   let invitesMade = 0
+  let commitmentsMade = 0
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -253,6 +282,31 @@ export function createFakeBackend(
     listGroupActivities: vi.fn(async (groupId: string) =>
       groups.some((group) => group.id === groupId) ? (groupActivities[groupId] ?? []) : [],
     ),
+    planPreview: vi.fn(async (groupId: string, target: number | null, endDate: string | null) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return {
+        ...planPreview,
+        lastWeekTarget: fakeLastWeekTarget(target, endDate, planPreview.minEndDate),
+      }
+    }),
+    // Enforces membership, the end date and the schedule-type lock of the group's activities.
+    addCommitment: vi.fn(async (input: AddCommitmentInput) => {
+      if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
+      if (input.endDate !== null && input.endDate < planPreview.minEndDate) {
+        throw new BackendError('invalid_end_date')
+      }
+      const { activity } = input
+      const row = (groupActivities[input.groupId] ?? []).find((r) =>
+        activity.kind === 'preset'
+          ? r.presetKey === activity.presetKey
+          : activity.kind === 'group' && r.id === activity.groupActivityId,
+      )
+      if (row?.lockedScheduleType && row.lockedScheduleType !== input.scheduleType) {
+        throw new BackendError('schedule_type_locked')
+      }
+      commitmentsMade += 1
+      return { commitmentId: `commitment-${commitmentsMade}`, startsOn: planPreview.startsOn }
+    }),
   }
 }
 

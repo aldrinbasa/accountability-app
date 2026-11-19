@@ -1,6 +1,7 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
+import type { AddCommitmentInput, AddCommitmentResult, PlanPreview } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 
 /**
@@ -75,4 +76,16 @@ export interface BackendPort {
    * activities. Current members only (RLS); anyone else reads an empty list.
    */
   listGroupActivities(groupId: string): Promise<GroupActivity[]>
+
+  /**
+   * `plan_preview`: the member's today, current week, a new commitment's first Monday, the earliest
+   * end date and, for a times-per-week `target` with an `endDate` that cuts the last week short, its
+   * pro-rated target. Rejects with `not_member` or `invalid_plan`.
+   */
+  planPreview(groupId: string, target: number | null, endDate: string | null): Promise<PlanPreview>
+  /**
+   * `add_commitment`: starts next Monday in the member's zone. Rejects with `not_member`,
+   * `invalid_plan`, `invalid_activity`, `invalid_end_date` or `schedule_type_locked`.
+   */
+  addCommitment(input: AddCommitmentInput): Promise<AddCommitmentResult>
 }

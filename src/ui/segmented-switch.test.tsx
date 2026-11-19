@@ -61,4 +61,36 @@ describe('SegmentedSwitch', () => {
     await userEvent.keyboard('{End}')
     expect(screen.getByRole('radio', { name: 'Dark' })).toHaveFocus()
   })
+
+  it('locked: only the allowed segment shows, with a lock icon and the linked note', async () => {
+    const onChange = vi.fn()
+    render(
+      <>
+        <span id="sched">Schedule</span>
+        <SegmentedSwitch
+          labelledBy="sched"
+          options={[
+            { value: 'fixed_days', label: 'Fixed days' },
+            { value: 'times_per_week', label: 'Times per week' },
+          ]}
+          value="times_per_week"
+          onChange={onChange}
+          locked
+          lockedNote="Gym is times per week in this group."
+        />
+      </>,
+    )
+    const group = screen.getByRole('radiogroup', { name: 'Schedule' })
+    expect(group).toHaveAccessibleDescription('Gym is times per week in this group.')
+    expect(screen.getAllByRole('radio')).toHaveLength(1)
+    const only = screen.getByRole('radio', { name: 'Times per week' })
+    expect(only).toBeChecked()
+    expect(only.querySelector('svg')).not.toBeNull()
+    expect(screen.queryByRole('radio', { name: 'Fixed days' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    only.focus()
+    await userEvent.keyboard('{ArrowLeft}')
+    await userEvent.click(only)
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

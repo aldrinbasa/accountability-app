@@ -22,10 +22,11 @@ import {
   type MyGroup,
   type MyGroupsSnapshot,
 } from '@/domain/groups'
+import type { AddCommitmentInput, PlanPreview } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
-import type { Tables } from '@/adapters/supabase/database.types'
+import type { Database, Tables } from '@/adapters/supabase/database.types'
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key]
@@ -175,6 +176,35 @@ export function toGroupActivities(rows: readonly GroupActivityRow[]): GroupActiv
   })
 }
 
+type PlanPreviewRow = Database['public']['Functions']['plan_preview']['Returns'][number]
+
+/** The `plan_preview` row as a domain preview (dates stay `YYYY-MM-DD` strings). */
+export function toPlanPreview(row: PlanPreviewRow): PlanPreview {
+  return {
+    memberToday: row.member_today,
+    weekStart: row.week_start,
+    weekEnd: row.week_end,
+    startsOn: row.starts_on,
+    minEndDate: row.min_end_date,
+    lastWeekTarget: row.last_week_target ?? null,
+  }
+}
+
+/** `add_commitment` arguments: only the fields that apply are sent (the rest default to null). */
+export function toAddCommitmentArgs(input: AddCommitmentInput) {
+  const { activity } = input
+  return {
+    p_group_id: input.groupId,
+    ...(activity.kind === 'preset' ? { p_preset_key: activity.presetKey } : {}),
+    ...(activity.kind === 'group' ? { p_group_activity_id: activity.groupActivityId } : {}),
+    ...(activity.kind === 'custom' ? { p_custom_name: activity.name } : {}),
+    p_schedule_type: input.scheduleType,
+    ...(input.days !== null ? { p_days: input.days } : {}),
+    ...(input.target !== null ? { p_target: input.target } : {}),
+    ...(input.endDate !== null ? { p_end_date: input.endDate } : {}),
+  }
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -234,7 +264,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
- * members, leave and remove (1.8), activities (2.1).
+ * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -405,5 +435,25 @@ export const supabaseBackendAdapter: BackendPort = {
       .eq('group_id', groupId)
     if (error) throw toBackendError(error, status)
     return toGroupActivities(data ?? [])
+  },
+
+  async planPreview(groupId, target, endDate) {
+    const { data, error, status } = await supabase.rpc('plan_preview', {
+      p_group_id: groupId,
+      ...(target !== null ? { p_target: target } : {}),
+      ...(endDate !== null ? { p_end_date: endDate } : {}),
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'plan_preview returned no row')
+    return toPlanPreview(row)
+  },
+
+  async addCommitment(input) {
+    const { data, error, status } = await supabase.rpc('add_commitment', toAddCommitmentArgs(input))
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'add_commitment returned no row')
+    return { commitmentId: row.commitment_id, startsOn: row.starts_on }
   },
 }

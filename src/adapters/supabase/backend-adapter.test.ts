@@ -594,3 +594,126 @@ describe('activities', () => {
     expect(await backendCodeOf(adapter.listGroupActivities('g1'))).toBe('network')
   })
 })
+
+describe('plan', () => {
+  const PREVIEW_ROW = {
+    member_today: '2026-11-18',
+    week_start: '2026-11-16',
+    week_end: '2026-11-22',
+    starts_on: '2026-11-23',
+    min_end_date: '2026-11-29',
+    last_week_target: 2,
+  }
+
+  it('plan_preview sends only the inputs it has and maps the row', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [PREVIEW_ROW], error: null, status: 200 })
+    expect(await adapter.planPreview('g1', 3, '2026-12-04')).toEqual({
+      memberToday: '2026-11-18',
+      weekStart: '2026-11-16',
+      weekEnd: '2026-11-22',
+      startsOn: '2026-11-23',
+      minEndDate: '2026-11-29',
+      lastWeekTarget: 2,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('plan_preview', {
+      p_group_id: 'g1',
+      p_target: 3,
+      p_end_date: '2026-12-04',
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ...PREVIEW_ROW, last_week_target: null }],
+      error: null,
+      status: 200,
+    })
+    expect((await adapter.planPreview('g1', null, null)).lastWeekTarget).toBeNull()
+    expect(db.rpc).toHaveBeenLastCalledWith('plan_preview', { p_group_id: 'g1' })
+  })
+
+  it('plan_preview maps its error codes; no row is an error', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.planPreview('g1', null, null))).toBe('not_member')
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.planPreview('g1', null, null))).toBe('unknown')
+  })
+
+  it('add_commitment sends the activity and only the schedule fields of its type', async () => {
+    db.rpc.mockResolvedValue({
+      data: [{ commitment_id: 'c1', starts_on: '2026-11-23' }],
+      error: null,
+      status: 200,
+    })
+    expect(
+      await adapter.addCommitment({
+        groupId: 'g1',
+        activity: { kind: 'preset', presetKey: 'gym' },
+        scheduleType: 'times_per_week',
+        days: null,
+        target: 3,
+        endDate: '2026-12-04',
+      }),
+    ).toEqual({ commitmentId: 'c1', startsOn: '2026-11-23' })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_commitment', {
+      p_group_id: 'g1',
+      p_preset_key: 'gym',
+      p_schedule_type: 'times_per_week',
+      p_target: 3,
+      p_end_date: '2026-12-04',
+    })
+    await adapter.addCommitment({
+      groupId: 'g1',
+      activity: { kind: 'group', groupActivityId: 'ga-1' },
+      scheduleType: 'fixed_days',
+      days: [1, 3],
+      target: null,
+      endDate: null,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_commitment', {
+      p_group_id: 'g1',
+      p_group_activity_id: 'ga-1',
+      p_schedule_type: 'fixed_days',
+      p_days: [1, 3],
+    })
+    await adapter.addCommitment({
+      groupId: 'g1',
+      activity: { kind: 'custom', name: 'Pottery' },
+      scheduleType: 'fixed_days',
+      days: [7],
+      target: null,
+      endDate: null,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_commitment', {
+      p_group_id: 'g1',
+      p_custom_name: 'Pottery',
+      p_schedule_type: 'fixed_days',
+      p_days: [7],
+    })
+    db.rpc.mockReset()
+  })
+
+  it('add_commitment maps its error codes; no response → network', async () => {
+    const input = {
+      groupId: 'g1',
+      activity: { kind: 'preset', presetKey: 'gym' } as const,
+      scheduleType: 'fixed_days' as const,
+      days: [1],
+      target: null,
+      endDate: null,
+    }
+    for (const code of [
+      'not_member',
+      'invalid_plan',
+      'invalid_activity',
+      'invalid_end_date',
+      'schedule_type_locked',
+    ]) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.addCommitment(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.addCommitment(input))).toBe('network')
+  })
+})

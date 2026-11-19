@@ -15,6 +15,9 @@ export const ERROR_COPY = {
   group_full: 'That group is full. 10 is the max.',
   cannot_remove_self: "You can't remove yourself. Use Leave group instead.",
   invalid_activity: 'Pick an activity.',
+  invalid_plan: 'Check the days or times per week, then try again.',
+  invalid_end_date: 'Pick a later end date.',
+  schedule_type_locked: 'This activity already has a schedule type in this group.',
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY

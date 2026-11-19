@@ -45,6 +45,14 @@ describe('error-code table (AD-14)', () => {
     expect(errorCopy('invalid_activity')).toBe('Pick an activity.')
   })
 
+  it('maps the plan codes to copy', () => {
+    for (const code of ['invalid_plan', 'invalid_end_date', 'schedule_type_locked']) {
+      expect(isRpcErrorCode(code)).toBe(true)
+    }
+    expect(errorCopy('invalid_end_date')).toBe('Pick a later end date.')
+    expect(errorCopy('schedule_type_locked')).toMatch(/schedule type/)
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)

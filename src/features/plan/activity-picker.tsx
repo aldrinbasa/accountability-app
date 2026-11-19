@@ -28,6 +28,8 @@ export interface ActivityPickerProps {
   labelledBy: string
   /** Id for the "Something else" input, so a sheet can focus it. */
   customInputId?: string
+  /** Id of a Field error for the whole picker (e.g. "Pick an activity."), on the radio group. */
+  describedBy?: string
 }
 
 /**
@@ -44,6 +46,7 @@ export function ActivityPicker({
   onChange,
   labelledBy,
   customInputId,
+  describedBy,
 }: ActivityPickerProps) {
   const sections = useMemo(
     () => buildPickerSections(presets, groupActivities),
@@ -82,7 +85,13 @@ export function ActivityPicker({
 
   return (
     <div className="flex flex-col gap-[14px]">
-      <div role="radiogroup" aria-labelledby={labelledBy} className="flex flex-col gap-[14px]">
+      <div
+        role="radiogroup"
+        aria-labelledby={labelledBy}
+        aria-describedby={describedBy}
+        aria-invalid={describedBy ? true : undefined}
+        className="flex flex-col gap-[14px]"
+      >
         {sections.map((section) => (
           <div key={section.key} className="flex flex-col gap-[6px]">
             <p className="type-label text-muted" data-picker-heading="">

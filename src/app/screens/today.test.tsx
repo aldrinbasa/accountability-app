@@ -10,10 +10,13 @@ describe('Today states', () => {
   })
   afterEach(() => vi.useRealTimers())
 
-  it('an active group: the day-name heading only, no waiting state', async () => {
+  it('an active group: the day-name heading and the Add button, no waiting state', async () => {
     renderRoutes(['/today'])
     expect(await screen.findByRole('heading', { level: 1, name: 'Friday' })).toBeInTheDocument()
     expect(screen.queryByText('Just you in here so far.')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveTextContent(
+      'Add',
+    )
   })
 
   it('a waiting group: the waiting Empty state under the heading', async () => {
@@ -23,6 +26,8 @@ describe('Today states', () => {
     )
     expect(await screen.findByRole('heading', { level: 1, name: 'Friday' })).toBeInTheDocument()
     expect(screen.getByText('Just you in here so far.')).toBeInTheDocument()
+    // Plans work in a waiting group too (FR-4): the Add button sits under the waiting state.
+    expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toBeInTheDocument()
   })
 
   it('a failed load: the Empty state with Try again, which refetches', async () => {

@@ -1,4 +1,6 @@
-import { useRef, type KeyboardEvent } from 'react'
+import { useId, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { LockSimple } from '@phosphor-icons/react'
+import { Icon } from '@/ui/icon'
 import { cn } from '@/ui/lib/utils'
 
 export interface SegmentedOption<T extends string> {
@@ -12,6 +14,15 @@ export interface SegmentedSwitchProps<T extends string> {
   onChange: (value: T) => void
   /** Id of the visible label for the group. */
   labelledBy: string
+  /**
+   * Locked: only the selected segment shows, with a lock icon, and `lockedNote` sits under the
+   * track (DESIGN.md `segmented-switch` locked state). Arrow keys do nothing.
+   */
+  locked?: boolean
+  /** The note under a locked switch in `meta` muted, linked with `aria-describedby`. */
+  lockedNote?: ReactNode
+  /** Announce the note when it appears (e.g. the server just reported the lock). */
+  announceNote?: boolean
 }
 
 /**
@@ -24,8 +35,49 @@ export function SegmentedSwitch<T extends string>({
   value,
   onChange,
   labelledBy,
+  locked = false,
+  lockedNote,
+  announceNote = false,
 }: SegmentedSwitchProps<T>) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const noteId = `${useId()}-note`
+
+  if (locked) {
+    const option = options.find((o) => o.value === value)
+    return (
+      <div className="flex flex-col gap-[6px]">
+        <div
+          role="radiogroup"
+          aria-labelledby={labelledBy}
+          aria-describedby={lockedNote ? noteId : undefined}
+          className="flex min-h-target-min gap-1 rounded-wob-sm border-[2.5px] border-line bg-paper p-[3px]"
+          data-locked=""
+        >
+          {option ? (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={true}
+              className="inline-flex min-w-0 flex-1 items-center justify-center gap-[6px] rounded-wob-xs bg-ink px-2 text-card type-button"
+            >
+              <Icon icon={LockSimple} size={20} />
+              {option.label}
+            </button>
+          ) : null}
+        </div>
+        {lockedNote ? (
+          <p
+            id={noteId}
+            role={announceNote ? 'alert' : undefined}
+            className="flex items-center gap-[6px] type-meta text-muted"
+          >
+            <Icon icon={LockSimple} size={20} />
+            <span>{lockedNote}</span>
+          </p>
+        ) : null}
+      </div>
+    )
+  }
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     let next: number | null = null
