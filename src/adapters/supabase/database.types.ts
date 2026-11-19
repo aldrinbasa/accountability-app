@@ -23,7 +23,39 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "groups": {
+            "group_activities": {
+                  Row: {
+                    "created_at": string,"created_by": string,"custom_name": string | null,"group_id": string,"id": string,"preset_key": string | null,"schedule_type": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"created_by": string,"custom_name"?: string | null,"group_id": string,"id"?: string,"preset_key"?: string | null,"schedule_type"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"created_by"?: string,"custom_name"?: string | null,"group_id"?: string,"id"?: string,"preset_key"?: string | null,"schedule_type"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "group_activities_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_activities_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_activities_preset_key_fkey"
+      columns: ["preset_key"]
+isOneToOne: false
+      referencedRelation: "preset_activities"
+      referencedColumns: ["key"]
+    }
+                  ]
+                },"groups": {
                   Row: {
                     "created_at": string,"created_by": string | null,"id": string,"name": string,"time_zone": string,"updated_at": string
                   }
@@ -95,6 +127,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"preset_activities": {
+                  Row: {
+                    "category": string,"key": string,"name": string,"sort": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "category": string,"key": string,"name": string,"sort": number
+                  }
+                  Update: {
+                    "category"?: string,"key"?: string,"name"?: string,"sort"?: number
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"profiles": {
                   Row: {
                     "avatar_path": string | null,"created_at": string,"display_name": string,"id": string,"time_zone": string,"updated_at": string
@@ -112,7 +158,39 @@ isOneToOne: false
                 }
           }
           Views: {
-            [_ in never]: never
+            "group_activity_options": {
+                  Row: {
+                    "created_by": string,"custom_name": string | null,"group_id": string,"id": string,"locked_schedule_type": string | null,"preset_key": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                           "created_by"?: string | null,"custom_name"?: string | null,"group_id"?: string | null,"id"?: string | null,"locked_schedule_type"?: never,"preset_key"?: string | null
+                         }
+                        Update: {
+                           "created_by"?: string | null,"custom_name"?: string | null,"group_id"?: string | null,"id"?: string | null,"locked_schedule_type"?: never,"preset_key"?: string | null
+                         }
+                        Relationships: [
+                    {
+      foreignKeyName: "group_activities_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_activities_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_activities_preset_key_fkey"
+      columns: ["preset_key"]
+isOneToOne: false
+      referencedRelation: "preset_activities"
+      referencedColumns: ["key"]
+    }
+                  ]
+                }
           }
           Functions: {
             "create_group":
