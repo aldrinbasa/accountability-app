@@ -24,8 +24,9 @@ select has_table('public', 'commitments', 'public.commitments exists');
 select has_table('public', 'commitment_versions', 'public.commitment_versions exists');
 select columns_are('public', 'commitments',
   array['id', 'group_id', 'membership_id', 'user_id', 'kind', 'group_activity_id', 'schedule_type',
-        'ends_after_week_start', 'created_at', 'updated_at', 'sessions_through'],
-  'commitments has the story''s columns (and Story 2.3''s sessions_through)');
+        'ends_after_week_start', 'created_at', 'updated_at', 'sessions_through', 'name', 'deadline',
+        'deadline_day_starts_at'],
+  'commitments has the story''s columns (and Story 2.3''s sessions_through, Story 2.4''s task columns)');
 select columns_are('public', 'commitment_versions',
   array['id', 'commitment_id', 'group_id', 'effective_week_start', 'days', 'target', 'end_date',
         'created_at', 'updated_at'],
@@ -418,9 +419,11 @@ select lives_ok(
 reset role;
 select pg_catalog.set_config('test.sports',
   (private.resolve_group_activity(current_setting('test.g1')::uuid, 'sports', null, null)).id::text, true);
-insert into public.commitments (group_id, membership_id, user_id, kind, group_activity_id, schedule_type)
+insert into public.commitments (group_id, membership_id, user_id, kind, group_activity_id, schedule_type,
+                                name, deadline, deadline_day_starts_at)
 values (current_setting('test.g1')::uuid, current_setting('test.alice_m')::uuid,
-        tests.get_supabase_uid('alice'), 'task', current_setting('test.sports')::uuid, null);
+        tests.get_supabase_uid('alice'), 'task', current_setting('test.sports')::uuid, null,
+        'Match', '2026-11-22', '2026-11-22 00:00:00+00');
 select tests.authenticate_as('bob');
 select is(
   (select o.locked_schedule_type from public.group_activity_options o

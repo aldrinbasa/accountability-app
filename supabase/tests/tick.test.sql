@@ -300,8 +300,10 @@ select pg_catalog.set_config('test.b10',
 -- A task (kind 'task', no version): the tick never generates for it (Story 2.4 creates its session).
 insert into public.group_activities (group_id, preset_key, created_by)
 values (current_setting('test.g1')::uuid, 'groceries', tests.get_supabase_uid('alice'));
-insert into public.commitments (group_id, membership_id, user_id, kind, group_activity_id, schedule_type)
-select current_setting('test.g1')::uuid, m.id, m.user_id, 'task', ga.id, null
+insert into public.commitments (group_id, membership_id, user_id, kind, group_activity_id, schedule_type,
+                                name, deadline, deadline_day_starts_at)
+select current_setting('test.g1')::uuid, m.id, m.user_id, 'task', ga.id, null,
+       'Grocery run', '2026-11-22', '2026-11-22 00:00:00+00'
 from public.memberships m, public.group_activities ga
 where m.group_id = current_setting('test.g1')::uuid and m.user_id = tests.get_supabase_uid('alice')
   and ga.group_id = current_setting('test.g1')::uuid and ga.preset_key = 'groceries';
