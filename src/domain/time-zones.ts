@@ -20,6 +20,8 @@ export const TIME_ZONE_COPY = {
   offline: "Couldn't save. You're offline.",
   saveFailed: "Couldn't save your time zone.",
   retry: 'Retry',
+  /** Read before a waiting zone (visually hidden). */
+  changesTo: 'changes to',
 } as const
 
 /** The city of an IANA name, from its last part: `America/New_York` → "New York". */

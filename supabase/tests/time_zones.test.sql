@@ -12,7 +12,7 @@
 -- GMT in London, EST in New York, NZDT in Auckland). The routines that read the clock get their
 -- search_path pointed at test_overrides (rolled back with everything else).
 begin;
-select plan(71);
+select plan(75);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -121,6 +121,8 @@ reset role;
 alter function public.set_time_zone(text, uuid) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_2_time_zones() set search_path = test_overrides, pg_catalog;
+alter function private.tick() set search_path = test_overrides, pg_catalog;
+alter function private.tick_step_8_heartbeat(smallint, text, timestamptz) set search_path = test_overrides, pg_catalog;
 
 -- A fixed-days commitment with one version, written directly. p_group is a setting name (g1, g2).
 create function pg_temp.add_plan(p_user text, p_group text, p_preset text, p_days smallint[], p_first date)
@@ -370,6 +372,16 @@ select tests.authenticate_as('alice');
 select public.set_time_zone('America/New_York', current_setting('test.g1')::uuid);
 reset role;
 
+-- Zone ahead whose Monday has already come: Sun 22 Nov 12:00 UTC is Mon 23 Nov 01:00 in Auckland,
+-- so carol (London) moving there starts the Monday after next, never a week already under way.
+select tests.freeze_time('2026-11-22 12:00:00+00');
+select tests.authenticate_as('carol');
+select is(
+  (select row(t.*)::text from public.set_time_zone('Pacific/Auckland') t),
+  '(Europe/London,Pacific/Auckland,2026-11-30)',
+  'a zone whose next Monday 00:00 has already passed starts the Monday after');
+reset role;
+
 -- Mon 23 Nov 00:00 London: alice's new zone (New York) has not reached Monday yet.
 select tests.freeze_time('2026-11-23 00:00:00+00');
 select private.tick_step_1_sessions();
@@ -421,6 +433,40 @@ select is(
     || '/' || (select string_agg(g.id::text || g.time_zone || g.ctid::text, ',' order by g.id) from public.groups g),
   current_setting('test.zones_snapshot'),
   'and changes nothing');
+
+-- ===== Step 2 inside private.tick() =====
+-- This transaction holds the tick lock, so the real cron job's runs return at once.
+select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('proofy.tick'));
+update public.profiles
+set pending_time_zone = 'Asia/Tokyo', pending_week_start = '2026-12-21'
+where id = tests.get_supabase_uid('dave');
+-- Mon 21 Dec 00:00 in Tokyo was Sun 20 Dec 15:00 UTC.
+select tests.freeze_time('2026-12-21 00:00:00+00');
+select private.tick();
+select ok(
+  pg_temp.profile_zone('dave') = 'Asia/Tokyo|-|-'
+  and (select h.last_run_at from public.heartbeat h) = '2026-12-21 00:00:00+00'::timestamptz,
+  'a tick run promotes a due pending zone (step 2) and writes the heartbeat');
+
+-- A failing step 2: recorded in the heartbeat, and step 8 still runs.
+create or replace function private.tick_step_2_time_zones()
+returns text
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'step two broke';
+end;
+$$;
+select tests.freeze_time('2026-12-21 00:05:00+00');
+select lives_ok($$ select private.tick() $$, 'a failing step 2 does not fail the tick');
+select ok(
+  (select h.last_error_step = 2
+          and h.last_error = 'step two broke'
+          and h.last_error_at = '2026-12-21 00:05:00+00'::timestamptz
+          and h.last_run_at = '2026-12-21 00:05:00+00'::timestamptz
+   from public.heartbeat h),
+  'the heartbeat records step 2 and its error, and last_run_at is fresh');
 
 -- A pending change already due when the member changes again counts as applied first.
 update public.profiles

@@ -98,15 +98,34 @@ export function TimeZoneSheet({
   )
 }
 
-/** The zone line and, for a waiting change, "New York · America from Mon 23 Nov". */
+/** "New York · America from Mon 23 Nov" (no date while the server has not answered yet). */
+function pendingLine(zone: string, weekStart: string | null): string {
+  return weekStart ? `${zoneLabel(zone)} ${pendingFromText(weekStart)}` : zoneLabel(zone)
+}
+
+/**
+ * What a screen reader reads for the row: "Time zone, Manila · Asia, changes to New York · America
+ * from Mon 23 Nov".
+ */
+function rowName(label: string, zones: TimeZoneState): string {
+  const current = `${label}, ${zoneLabel(zones.timeZone)}`
+  return zones.pendingTimeZone
+    ? `${current}, ${TIME_ZONE_COPY.changesTo} ${pendingLine(zones.pendingTimeZone, zones.pendingWeekStart)}`
+    : current
+}
+
+/**
+ * The zone line and, for a waiting change, "New York · America from Mon 23 Nov" (with a visually
+ * hidden "changes to" before it).
+ */
 function ZoneLines({ zones }: { zones: TimeZoneState }) {
   return (
     <>
       <span className="type-meta text-muted">{zoneLabel(zones.timeZone)}</span>
       {zones.pendingTimeZone ? (
         <span className="type-meta text-ink">
-          {zoneLabel(zones.pendingTimeZone)}
-          {zones.pendingWeekStart ? ` ${pendingFromText(zones.pendingWeekStart)}` : null}
+          <span className="sr-only">{`${TIME_ZONE_COPY.changesTo} `}</span>
+          {pendingLine(zones.pendingTimeZone, zones.pendingWeekStart)}
         </span>
       ) : null}
     </>
@@ -137,6 +156,7 @@ export function TimeZoneRow({ label, zones, onOpen }: TimeZoneRowProps) {
   return (
     <button
       type="button"
+      aria-label={rowName(label, zones)}
       onClick={onOpen}
       className="flex min-h-row-min w-full items-center gap-3 rounded-wob px-3 py-2 text-left text-ink press-overlay"
     >

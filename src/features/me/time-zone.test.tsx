@@ -35,7 +35,7 @@ describe('Me > Settings: Time zone', () => {
   it('the row shows the current zone and opens the searchable picker with the note', async () => {
     const user = userEvent.setup()
     const { row } = await openSettings()
-    expect(row).toHaveTextContent('Time zoneManila · Asia')
+    expect(row).toHaveAccessibleName('Time zone, Manila · Asia')
 
     await user.click(row)
     const dialog = await screen.findByRole('dialog', { name: 'Time zone' })
@@ -70,8 +70,8 @@ describe('Me > Settings: Time zone', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(backend.setTimeZone).toHaveBeenCalledWith('Europe/London')
     await vi.waitFor(() =>
-      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveTextContent(
-        'Time zoneManila · AsiaLondon · Europe from Mon 23 Nov',
+      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+        'Time zone, Manila · Asia, changes to London · Europe from Mon 23 Nov',
       ),
     )
   })
@@ -86,7 +86,9 @@ describe('Me > Settings: Time zone', () => {
       },
     })
     const { row } = await openSettings(backend)
-    expect(row).toHaveTextContent('London · Europe from Mon 23 Nov')
+    expect(row).toHaveAccessibleName(
+      'Time zone, Manila · Asia, changes to London · Europe from Mon 23 Nov',
+    )
 
     await user.click(row)
     const dialog = await screen.findByRole('dialog')
@@ -102,8 +104,8 @@ describe('Me > Settings: Time zone', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Manila · Asia' }))
     expect(backend.setTimeZone).toHaveBeenCalledWith('Asia/Manila')
     await vi.waitFor(() =>
-      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveTextContent(
-        /^Time zoneManila · Asia$/,
+      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+        'Time zone, Manila · Asia',
       ),
     )
   })
@@ -117,8 +119,8 @@ describe('Me > Settings: Time zone', () => {
 
     expect(await screen.findByText("Couldn't save. You're offline.")).toBeInTheDocument()
     expect(backend.setTimeZone).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveTextContent(
-      /^Time zoneManila · Asia$/,
+    expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+      'Time zone, Manila · Asia',
     )
   })
 
@@ -131,8 +133,8 @@ describe('Me > Settings: Time zone', () => {
     await pick(user, 'london', 'London · Europe')
 
     expect(await screen.findByText("Couldn't save. You're offline.")).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveTextContent(
-      /^Time zoneManila · Asia$/,
+    expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+      'Time zone, Manila · Asia',
     )
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
@@ -150,19 +152,41 @@ describe('Me > Settings: Time zone', () => {
     await pick(user, 'london', 'London · Europe')
 
     expect(await screen.findByText("Couldn't save your time zone.")).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveTextContent(
-      /^Time zoneManila · Asia$/,
+    expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+      'Time zone, Manila · Asia',
     )
 
     await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(backend.setTimeZone).toHaveBeenCalledTimes(2)
     expect(backend.setTimeZone).toHaveBeenLastCalledWith('Europe/London')
     await vi.waitFor(() =>
-      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveTextContent(
-        'London · Europe from Mon 23 Nov',
+      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+        'Time zone, Manila · Asia, changes to London · Europe from Mon 23 Nov',
       ),
     )
+    // The successful save dismisses the failure toast, so its Retry cannot run again later.
+    await vi.waitFor(() =>
+      expect(screen.queryByText("Couldn't save your time zone.")).not.toBeInTheDocument(),
+    )
   })
+
+  it.each(['invalid_time_zone', 'not_member'] as const)(
+    'a refused save (%s): the row reverts, the error toast has no Retry',
+    async (code) => {
+      const user = userEvent.setup()
+      const backend = createFakeBackend()
+      backend.setTimeZone = vi.fn().mockRejectedValue(new BackendError(code))
+      const { row } = await openSettings(backend)
+      await user.click(row)
+      await pick(user, 'london', 'London · Europe')
+
+      expect(await screen.findByText("Couldn't save your time zone.")).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+        'Time zone, Manila · Asia',
+      )
+    },
+  )
 })
 
 describe('Group settings: Group time zone', () => {
@@ -172,7 +196,7 @@ describe('Group settings: Group time zone', () => {
     const backend = createFakeBackend()
     renderRoutes(['/me/groups/group-1?g=group-1'], backend)
     const row = await screen.findByRole('button', { name: /^Group time zone/ })
-    expect(row).toHaveTextContent('Group time zoneManila · Asia')
+    expect(row).toHaveAccessibleName('Group time zone, Manila · Asia')
 
     await user.click(row)
     const dialog = await screen.findByRole('dialog', { name: 'Group time zone' })
@@ -181,8 +205,8 @@ describe('Group settings: Group time zone', () => {
 
     expect(backend.setTimeZone).toHaveBeenCalledWith('America/New_York', TEST_GROUP.id)
     await vi.waitFor(() =>
-      expect(screen.getByRole('button', { name: /^Group time zone/ })).toHaveTextContent(
-        'New York · America from Mon 23 Nov',
+      expect(screen.getByRole('button', { name: /^Group time zone/ })).toHaveAccessibleName(
+        'Group time zone, Manila · Asia, changes to New York · America from Mon 23 Nov',
       ),
     )
   })
@@ -201,7 +225,9 @@ describe('Group settings: Group time zone', () => {
     renderRoutes(['/me/groups/group-1?g=group-1'], backend)
     expect(await screen.findByText('Group time zone')).toBeInTheDocument()
     expect(screen.getByText('Manila · Asia')).toBeInTheDocument()
-    expect(screen.getByText('London · Europe from Mon 23 Nov')).toBeInTheDocument()
+    expect(screen.getByText(/London · Europe from Mon 23 Nov/)).toHaveTextContent(
+      'changes to London · Europe from Mon 23 Nov',
+    )
     expect(screen.getByText(GROUP_NOTE)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Group time zone/ })).not.toBeInTheDocument()
   })
