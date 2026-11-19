@@ -1,11 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { ActivitySelection, ScheduleType } from '@/domain/activities'
-import {
-  backendErrorCode,
-  errorCopy,
-  isRpcErrorCode,
-  type RpcErrorCode,
-} from '@/domain/error-codes'
+import { backendErrorCode, errorCopy } from '@/domain/error-codes'
 import {
   addedToast,
   COMMITMENT_ERROR_ORDER,
@@ -55,13 +50,11 @@ const WEEKDAY_OPTIONS: readonly WeekdayOption[] = WEEKDAYS.map((day) => ({
 
 type ErrorKey = keyof CommitmentErrors
 
-/** Why a save did not go through: offline, a backend code with its own copy, or anything else. */
-type SaveFailure = 'offline' | 'failed' | RpcErrorCode
+/** Why a save did not go through: offline, or anything else (codes with a field go to the field). */
+type SaveFailure = 'offline' | 'failed'
 
 function failureText(failure: SaveFailure): string {
-  if (failure === 'offline') return PLAN_COPY.offline
-  if (failure === 'failed') return PLAN_COPY.failed
-  return errorCopy(failure)
+  return failure === 'offline' ? PLAN_COPY.offline : PLAN_COPY.failed
 }
 
 const EMPTY_FORM: CommitmentForm = {
@@ -185,6 +178,10 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
   function update(patch: Partial<CommitmentForm>) {
     const next = { ...form, ...patch }
     setForm(next)
+    // An edit makes the failed request stale: Retry must not save what the form no longer shows.
+    setFailure(null)
+    lastInput.current = null
+    const keepServerEndDate = serverEndDateError && !('endDate' in patch)
     if ('endDate' in patch) setServerEndDateError(false)
     const nextKey = selectionKey(next.activity)
     const nextLocked =
@@ -195,7 +192,9 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
       minEndDate,
     )
     setShown((prev) => {
-      const kept = [...prev].filter((k) => nextErrors[k] !== undefined)
+      const kept = [...prev].filter(
+        (k) => nextErrors[k] !== undefined || (k === 'endDate' && keepServerEndDate),
+      )
       return kept.length === prev.size ? prev : new Set(kept)
     })
   }
@@ -231,11 +230,12 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
     setFailure(null)
     try {
       const result = await addCommitment.mutateAsync(input)
-      if (!mounted.current) return
-      // Stays busy while the sheet closes.
+      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
       showToast(
         addedToast(selectionName(input.activity, presets, groupActivities), result.startsOn),
       )
+      if (!mounted.current) return
+      // Stays busy while the sheet closes.
       onSaved()
     } catch (error) {
       busyRef.current = false
@@ -254,7 +254,7 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
         setShown((prev) => new Set([...prev, 'endDate']))
         focusError('endDate')
       } else {
-        setFailure(isRpcErrorCode(code) ? code : 'failed')
+        setFailure('failed')
       }
     }
   }

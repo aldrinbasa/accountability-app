@@ -50,6 +50,7 @@ export function SegmentedSwitch<T extends string>({
           role="radiogroup"
           aria-labelledby={labelledBy}
           aria-describedby={lockedNote ? noteId : undefined}
+          aria-readonly="true"
           className="flex min-h-target-min gap-1 rounded-wob-sm border-[2.5px] border-line bg-paper p-[3px]"
           data-locked=""
         >

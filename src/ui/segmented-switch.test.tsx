@@ -82,6 +82,7 @@ describe('SegmentedSwitch', () => {
     )
     const group = screen.getByRole('radiogroup', { name: 'Schedule' })
     expect(group).toHaveAccessibleDescription('Gym is times per week in this group.')
+    expect(group).toHaveAttribute('aria-readonly', 'true')
     expect(screen.getAllByRole('radio')).toHaveLength(1)
     const only = screen.getByRole('radio', { name: 'Times per week' })
     expect(only).toBeChecked()

@@ -81,6 +81,12 @@ describe('Plan sheet (add a commitment)', () => {
       'Pick an activity.',
       'Pick at least one day.',
     ])
+    const activityGroup = within(dialog).getByRole('radiogroup', { name: 'Activity' })
+    expect(activityGroup).toHaveAccessibleDescription('Pick an activity.')
+    expect(activityGroup).toHaveAttribute('aria-invalid', 'true')
+    const daysGroup = within(dialog).getByRole('group', { name: 'Days' })
+    expect(daysGroup).toHaveAccessibleDescription('Pick at least one day.')
+    expect(daysGroup).toHaveAttribute('aria-invalid', 'true')
     await waitFor(() =>
       expect(within(dialog).getAllByRole('radio', { name: 'Gym' })[0]).toHaveFocus(),
     )
@@ -263,5 +269,46 @@ describe('Plan sheet (add a commitment)', () => {
     const { user, dialog } = await openSheet()
     await user.click(within(dialog).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('invalid_end_date from the server: End date Field error, invalid, focused, no Retry', async () => {
+    const backend = createFakeBackend()
+    vi.mocked(backend.addCommitment).mockRejectedValueOnce(new BackendError('invalid_end_date'))
+    const { user, dialog } = await openSheet(backend)
+    await user.click(within(dialog).getByRole('radio', { name: 'Run' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Monday' }))
+    const endDate = within(dialog).getByLabelText('End date (optional)')
+    fireEvent.change(endDate, { target: { value: '2026-12-20' } })
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Pick a later end date.')
+    expect(endDate).toHaveAttribute('aria-invalid', 'true')
+    await waitFor(() => expect(endDate).toHaveFocus())
+    expect(within(dialog).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    // Editing another field keeps the server's end-date error while the date is unchanged.
+    await user.click(within(dialog).getByRole('button', { name: 'Tuesday' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Pick a later end date.')
+  })
+
+  it('an edit after a failed save clears the Inline retry', async () => {
+    const backend = createFakeBackend()
+    vi.mocked(backend.addCommitment).mockRejectedValueOnce(new BackendError('unknown'))
+    const { user, dialog } = await openSheet(backend)
+    await user.click(within(dialog).getByRole('radio', { name: 'Run' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Monday' }))
+    await user.click(save(dialog))
+    expect(await within(dialog).findByText(FAILED)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Friday' }))
+    expect(within(dialog).queryByText(FAILED)).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('an RPC failure without a field of its own reads as the generic failure', async () => {
+    const backend = createFakeBackend()
+    vi.mocked(backend.addCommitment).mockRejectedValueOnce(new BackendError('not_member'))
+    const { user, dialog } = await openSheet(backend)
+    await user.click(within(dialog).getByRole('radio', { name: 'Run' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Monday' }))
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(FAILED)
   })
 })

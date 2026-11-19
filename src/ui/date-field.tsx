@@ -1,4 +1,4 @@
-import { forwardRef, useId, type ReactNode } from 'react'
+import { forwardRef, useId, useRef, type ReactNode } from 'react'
 import { CalendarBlank, X } from '@phosphor-icons/react'
 import { FieldError } from '@/ui/field-error'
 import { Icon } from '@/ui/icon'
@@ -44,6 +44,7 @@ export const DateField = forwardRef<HTMLInputElement, DateFieldProps>(function D
   { label, value, displayValue, emptyText, min, onChange, clearLabel, error, hint, id },
   ref,
 ) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
   const autoId = useId()
   const inputId = id ?? `date-${autoId}`
   const errorId = `${inputId}-error`
@@ -71,7 +72,11 @@ export const DateField = forwardRef<HTMLInputElement, DateFieldProps>(function D
             {value === null ? emptyText : displayValue}
           </span>
           <input
-            ref={ref}
+            ref={(node) => {
+              inputRef.current = node
+              if (typeof ref === 'function') ref(node)
+              else if (ref) ref.current = node
+            }}
             id={inputId}
             type="date"
             value={value ?? ''}
@@ -84,7 +89,15 @@ export const DateField = forwardRef<HTMLInputElement, DateFieldProps>(function D
           />
         </div>
         {value !== null ? (
-          <IconButton icon={X} label={clearLabel} onClick={() => onChange(null)} />
+          <IconButton
+            icon={X}
+            label={clearLabel}
+            onClick={() => {
+              onChange(null)
+              // The clear button goes away with the value: keep focus in the field, not on body.
+              inputRef.current?.focus()
+            }}
+          />
         ) : null}
       </div>
       {hasHint ? (

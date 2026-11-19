@@ -41,6 +41,9 @@ describe('DateField', () => {
     await user.click(screen.getByRole('button', { name: 'Clear end date' }))
     expect(screen.getByText('No end date')).toBeInTheDocument()
     expect(screen.getByLabelText('End date (optional)')).toHaveValue('')
+    // The clear button is gone; focus moves to the date input, not to body.
+    expect(screen.queryByRole('button', { name: 'Clear end date' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('End date (optional)')).toHaveFocus()
   })
 
   it('links a field error and marks the input invalid', () => {
