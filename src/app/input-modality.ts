@@ -1,7 +1,7 @@
 /**
  * Touch feel. Marks <html data-input="pointer|keyboard"> by the last way the member interacted, so
  * app.css hides focus rings that only appear because the app moved focus after a tap (sheets opening
- * and closing, headings after navigation); a keyboard or switch user still sees every ring.
+ * and closing, headings after navigation); a keyboard user sees rings once they press Tab or an arrow key; until then (and after any tap) none show, text fields included.
  * Also registers an empty touchstart listener: without one, iOS Safari never applies `:active`, so the
  * pressed feedback on buttons would not show.
  */

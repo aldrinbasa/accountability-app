@@ -253,10 +253,11 @@
   :is(h1, h2, h3, [role='dialog'])[tabindex='-1']:focus {
     outline: none;
   }
-  /* After a tap, focus the app moved (sheet open/close, returning to the opener) shows no ring.
-     input-modality.ts sets data-input; a Tab or arrow key brings every ring back. Text fields keep
-     their ring: it shows where the typing goes. */
-  html[data-input='pointer'] :focus-visible:not(input, textarea, select) {
+  /* Rings are for keyboard and switch users only. Until a Tab or arrow key is pressed (and again
+     after any tap), nothing shows a ring: not text fields when tapped, not fields the app focuses
+     on open, not sheets or buttons focus returns to. input-modality.ts sets data-input. The caret
+     and the open keyboard already show where typing goes (Aldrin, 2026-11-19). */
+  html:not([data-input='keyboard']) :focus-visible {
     outline: none;
   }
   /* Focus ring on object: any control on pola, sticky, sticky2, vote or a coral block. */
