@@ -1,5 +1,5 @@
 import { StrictMode } from 'react'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { AuthError } from '@/domain/auth'
@@ -198,6 +198,32 @@ describe('SignInScreen: Google', () => {
     expect(backend.signInWithGoogle).toHaveBeenCalledWith(
       `${window.location.origin}/signin?next=%2Fjoin%2FAB12CD%3Fx%3D1`,
     )
+  })
+
+  it('coming back without finishing makes Google tappable again', async () => {
+    const user = userEvent.setup()
+    const { backend } = await openSignIn()
+    const button = screen.getByRole('button', { name: 'Continue with Google' })
+    await user.click(button)
+    await user.click(button)
+    // Busy: the second tap is ignored while the browser leaves for Google.
+    expect(backend.signInWithGoogle).toHaveBeenCalledTimes(1)
+
+    // Back from Google (page restored from the back-forward cache).
+    const restored = new Event('pageshow') as PageTransitionEvent
+    Object.defineProperty(restored, 'persisted', { value: true })
+    act(() => {
+      window.dispatchEvent(restored)
+    })
+    await user.click(button)
+    expect(backend.signInWithGoogle).toHaveBeenCalledTimes(2)
+
+    // Back by closing Google's sheet in the installed app: the page becomes visible again.
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await user.click(button)
+    expect(backend.signInWithGoogle).toHaveBeenCalledTimes(3)
   })
 
   it('on return, exchanges the code once and lands on next', async () => {

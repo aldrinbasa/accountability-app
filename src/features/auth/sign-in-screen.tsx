@@ -71,6 +71,25 @@ export function SignInScreen() {
     if (focusTick > 0) emailRef.current?.focus()
   }, [focusTick])
 
+  // Google stays busy while the browser leaves for Google. Coming back without finishing (back
+  // button, closing Google's sheet in the installed iOS app, a page restored from the back-forward
+  // cache) must make the button tappable again, or the next tap silently does nothing.
+  useEffect(() => {
+    const release = () => setGoogleBusy(false)
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) release()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') release()
+    }
+    window.addEventListener('pageshow', onPageShow)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('pageshow', onPageShow)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
   // Read once, strip from the URL, verify once (StrictMode-safe through verifyOnce).
   useEffect(() => {
     if (!incoming) return
