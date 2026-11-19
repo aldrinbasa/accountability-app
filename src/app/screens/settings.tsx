@@ -1,16 +1,20 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { ArrowLeft, CaretRight, SignOut } from '@phosphor-icons/react'
 import { AUTH_COPY } from '@/domain/auth-errors'
+import { THEME_COPY, THEME_PREFERENCES } from '@/domain/theme'
 import { useAuthActions } from '@/data/auth-session'
+import { useThemePreference } from '@/data/theme'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
+import { SegmentedSwitch } from '@/ui/segmented-switch'
 import { showToast } from '@/ui/toast'
 import { cameFromMe } from '@/features/me/pushed-from-me'
 
 /**
  * Me > Settings, a pushed screen with a back button (an installed iOS app has no browser back).
- * Story 1.3 brings only Sign out; toggles, reminders, time zone and delete account come later.
+ * Story 1.3 brought Sign out; Appearance (Auto / Light / Dark, this device only) came with the Epic 1
+ * polish. Toggles, reminders, time zone and delete account come later.
  * Sign-out ends the session; the app then clears the query cache and the gate opens /signin.
  */
 export function SettingsScreen() {
@@ -18,6 +22,8 @@ export function SettingsScreen() {
   const navigate = useNavigate()
   const { signOut } = useAuthActions()
   const [signingOut, setSigningOut] = useState(false)
+  const [theme, setTheme] = useThemePreference()
+  const appearanceId = useId()
 
   function back() {
     if (cameFromMe(location.state)) void navigate(-1)
@@ -43,6 +49,18 @@ export function SettingsScreen() {
       <h1 tabIndex={-1} className="type-headline">
         Settings
       </h1>
+      <section className="flex flex-col gap-2">
+        <h2 id={appearanceId} className="type-label text-muted">
+          {THEME_COPY.heading}
+        </h2>
+        <SegmentedSwitch
+          labelledBy={appearanceId}
+          options={THEME_PREFERENCES.map((value) => ({ value, label: THEME_COPY.options[value] }))}
+          value={theme}
+          onChange={setTheme}
+        />
+        <p className="type-meta text-muted">{THEME_COPY.note}</p>
+      </section>
       <ul className="card flex flex-col p-0">
         <li>
           <button

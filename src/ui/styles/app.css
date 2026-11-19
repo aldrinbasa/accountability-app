@@ -3,6 +3,9 @@
 @import './tokens.css';
 @import './fonts.css';
 
+/* `dark:` follows the Appearance choice (<html data-theme>), not the media query alone. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
 /* ---------- Typography utilities: one class per DESIGN.md typography token ---------- */
 @utility type-numeral-xl {
   font-family: var(--font-display);
@@ -178,6 +181,9 @@
     text-size-adjust: 100%;
     overflow-x: clip;
     /* Android and desktop: the root follows the browser text size (no px root). */
+    /* Native feel: no grey flash on tap, no double-tap zoom anywhere (pinch zoom still works). */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   /* iOS: the root follows Dynamic Type through -apple-system-body, then the family is reset.
@@ -202,6 +208,22 @@
     font-size: var(--text-body);
     font-weight: var(--text-body--font-weight);
     line-height: var(--text-body--line-height);
+    /* App chrome is not text to select: a long press on a button or row must not select or show the
+       copy callout. Fields, and anything marked select-text (an invite code), stay selectable. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  input,
+  textarea,
+  [contenteditable='true'],
+  .select-text {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
+  img {
+    -webkit-user-drag: none;
   }
 
   /* Focused items never hide under the bottom nav (the document is the scroller). */
@@ -226,11 +248,31 @@
     outline: 3px solid var(--focus);
     outline-offset: 3px;
   }
+  /* Headings and sheets take focus from the app after navigation (screen readers start there); they
+     are not controls, so they never show a ring. */
+  :is(h1, h2, h3, [role='dialog'])[tabindex='-1']:focus {
+    outline: none;
+  }
+  /* After a tap, focus the app moved (sheet open/close, returning to the opener) shows no ring.
+     input-modality.ts sets data-input; a Tab or arrow key brings every ring back. Text fields keep
+     their ring: it shows where the typing goes. */
+  html[data-input='pointer'] :focus-visible:not(input, textarea, select) {
+    outline: none;
+  }
   /* Focus ring on object: any control on pola, sticky, sticky2, vote or a coral block. */
   .on-object:focus-visible,
   .on-object :focus-visible {
     outline-color: var(--obj-focus);
   }
+}
+
+/* iOS zooms into any field under 16px when it is focused. Text type is rem and follows Dynamic Type,
+   so at a small text size a field could drop below 16px: fields never do. Unlayered, so it wins over
+   the type-* utilities. */
+input,
+textarea,
+select {
+  font-size: max(16px, 1rem);
 }
 
 /* Phosphor Duotone: the soft layer (opacity 0.2 path) takes the tone color at ~55%. */

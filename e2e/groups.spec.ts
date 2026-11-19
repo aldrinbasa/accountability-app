@@ -68,3 +68,29 @@ test('Me shows the name and My groups, and a group opens its settings', async ({
   await expect(page.getByRole('heading', { level: 1, name: 'Mia Squad' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Group time zone' })).toBeVisible()
 })
+
+test('Settings Appearance sets light or dark on this device and survives a reload', async ({
+  page,
+}) => {
+  await signUp(page, { name: 'Theo' })
+  await createFirstGroup(page, 'Theo Crew')
+
+  await tab(page, 'Me').click()
+  await page.getByRole('link', { name: 'Settings' }).click()
+  const appearance = page.getByRole('radiogroup', { name: 'Appearance' })
+  await expect(appearance.getByRole('radio', { name: 'Auto' })).toBeChecked()
+
+  await appearance.getByRole('radio', { name: 'Dark' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  await expect(
+    page.getByRole('radiogroup', { name: 'Appearance' }).getByRole('radio', { name: 'Dark' }),
+  ).toBeChecked()
+
+  await page
+    .getByRole('radiogroup', { name: 'Appearance' })
+    .getByRole('radio', { name: 'Light' })
+    .click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+})

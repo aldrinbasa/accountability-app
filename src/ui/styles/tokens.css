@@ -5,7 +5,8 @@
   only in DESIGN.md prose (Elevation & Depth, Layout & Spacing) and are tokenised here as --shadow-* / --z-*.
 
   Colors are semantic vars on :root, mapped into Tailwind through `@theme inline` so utilities resolve
-  through var() and flip live with `prefers-color-scheme`. There is no theme switch and no class strategy.
+  through var() and flip live with <html data-theme>. index.html sets it before the first paint from the
+  member's Appearance choice (Auto follows `prefers-color-scheme`; src/data/theme.ts keeps it live).
   Object roles (pola is the one exception) keep their light value in dark mode, so they are not overridden.
 */
 
@@ -71,39 +72,42 @@
   );
 }
 
-/* ---------- Colors: dark (follows the phone, live) ---------- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1c1230;
-    --card: #2a1c45;
-    --ink: #ffebdd;
-    --muted: #d6bfd8;
-    --primary: #ff7a5c;
-    --on-primary: #2a1846;
-    --success: #b79cff;
-    --streak: #ffa552;
-    --late: #ffc870;
-    --miss: #ff7d8a;
-    --on-miss: #2a1846;
-    --error: #a9c1ff;
-    --line: #ffebdd;
-    --focus: #5ed1d9;
-    --deco: #b79cff;
-    --tape1: #ff7a5c8c;
-    --tape2: #b79cff73;
-    --ph1: #ff7a5c;
-    --ph2: #8c5adc;
-    --dot: #ffebdd0f;
-    --shadow-object: #00000059;
-    --shadow-sticker: #0a0612;
-    --camera-surface: #160e24;
-    --camera-ink: #ffebdd;
-    --camera-control: #160e24b8;
-    --scrim: #0a06128c;
+/* ---------- Colors: dark (data-theme, set from the Appearance choice) ---------- */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
 
-    /* The one object role that changes (DESIGN.md Colors table). */
-    --pola: #f6eee3;
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #1c1230;
+  --card: #2a1c45;
+  --ink: #ffebdd;
+  --muted: #d6bfd8;
+  --primary: #ff7a5c;
+  --on-primary: #2a1846;
+  --success: #b79cff;
+  --streak: #ffa552;
+  --late: #ffc870;
+  --miss: #ff7d8a;
+  --on-miss: #2a1846;
+  --error: #a9c1ff;
+  --line: #ffebdd;
+  --focus: #5ed1d9;
+  --deco: #b79cff;
+  --tape1: #ff7a5c8c;
+  --tape2: #b79cff73;
+  --ph1: #ff7a5c;
+  --ph2: #8c5adc;
+  --dot: #ffebdd0f;
+  --shadow-object: #00000059;
+  --shadow-sticker: #0a0612;
+  --camera-surface: #160e24;
+  --camera-ink: #ffebdd;
+  --camera-control: #160e24b8;
+  --scrim: #0a06128c;
+
+  /* The one object role that changes (DESIGN.md Colors table). */
+  --pola: #f6eee3;
 }
 
 /* ---------- Tailwind mapping: colors and hard-offset shadows (flip with the scheme) ---------- */

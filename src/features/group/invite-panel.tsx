@@ -171,7 +171,9 @@ export function InvitePanel({ group }: { group: MyGroup }) {
       <p className="-mt-2 type-meta text-muted">{INVITE_COPY.meta}</p>
       <p className="type-numeral-md tracking-[0.28em] tabular-nums">
         <span className="sr-only">{`Invite code ${spelledCode(code)}`}</span>
-        <span aria-hidden="true">{code}</span>
+        <span aria-hidden="true" className="select-text">
+          {code}
+        </span>
       </p>
       <p className="-mt-1 type-meta text-muted">{inviteExpiryText(invite.expiresAt)}</p>
       <div className="grid grid-cols-2 gap-2.5">

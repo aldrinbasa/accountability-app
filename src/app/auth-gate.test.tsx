@@ -144,6 +144,23 @@ describe('Settings', () => {
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/me'))
   })
 
+  it('Settings Appearance switches the theme on this device', async () => {
+    const user = userEvent.setup()
+    renderRoutes(['/me/settings'])
+    const group = await screen.findByRole('radiogroup', { name: 'Appearance' })
+    expect(group).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'Auto' })).toBeChecked()
+
+    await user.click(screen.getByRole('radio', { name: 'Dark' }))
+    expect(screen.getByRole('radio', { name: 'Dark' })).toBeChecked()
+    expect(document.documentElement.dataset.theme).toBe('dark')
+    expect(localStorage.getItem('proofy.theme')).toBe('dark')
+
+    await user.click(screen.getByRole('radio', { name: 'Auto' }))
+    expect(document.documentElement.dataset.theme).toBe('light')
+    expect(localStorage.getItem('proofy.theme')).toBeNull()
+  })
+
   it('Sign out ends the session, clears the query cache and lands on /signin', async () => {
     const user = userEvent.setup()
     const backend = createFakeBackend()

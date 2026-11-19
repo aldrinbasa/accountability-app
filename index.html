@@ -4,8 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6EEE3" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1C1230" />
+    <meta name="theme-color" content="#F6EEE3" />
+    <script>
+      // Before the first paint: the stored appearance (src/domain/theme.ts, key proofy.theme) and,
+      // on iPhone and iPad, no zoom when a field is focused. iOS still allows pinch zoom with
+      // maximum-scale set, so text stays zoomable; other platforms keep the plain viewport.
+      ;(function () {
+        var root = document.documentElement
+        var pref = null
+        try {
+          pref = localStorage.getItem('proofy.theme')
+        } catch (e) {}
+        var dark =
+          pref === 'dark' ||
+          (pref !== 'light' &&
+            !!window.matchMedia &&
+            window.matchMedia('(prefers-color-scheme: dark)').matches)
+        root.setAttribute('data-theme', dark ? 'dark' : 'light')
+        var color = document.querySelector('meta[name="theme-color"]')
+        if (color) color.setAttribute('content', dark ? '#1C1230' : '#F6EEE3')
+        var ios =
+          /iP(hone|ad|od)/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+        var viewport = document.querySelector('meta[name="viewport"]')
+        if (ios && viewport) {
+          viewport.setAttribute('content', viewport.getAttribute('content') + ', maximum-scale=1')
+        }
+      })()
+    </script>
     <title>Proofy</title>
     <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon-180.png" />
