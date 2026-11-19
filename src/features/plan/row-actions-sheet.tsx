@@ -5,9 +5,9 @@ import { Icon } from '@/ui/icon'
 import { Sheet } from '@/ui/sheet'
 
 /**
- * The small Sheet a Today row's Overflow opens, titled with the row's name. For now it holds Edit
- * only (task rows; Story 2.6 adds commitment Edit). Edit hands over to the Plan sheet, so focus
- * then returns from the Plan sheet, not from here (`returnFocusTo`).
+ * The small Sheet a Today row's Overflow opens, titled with the row's name. It holds Edit, for task
+ * and commitment rows alike (Story 2.6). Edit hands over to the Plan sheet, so focus then returns
+ * from the Plan sheet, not from here (`returnFocusTo`).
  */
 export function RowActionsSheet({
   open,

@@ -8,6 +8,12 @@ import {
 } from '@tanstack/react-query'
 import { backendErrorCode } from '@/domain/error-codes'
 import type {
+  CommitmentDetails,
+  MyPlanItem,
+  UpdateCommitmentInput,
+  UpdateCommitmentResult,
+} from '@/domain/my-plan'
+import type {
   AddCommitmentInput,
   AddCommitmentResult,
   AddTaskInput,
@@ -40,6 +46,11 @@ export function taskKey(groupId: string, commitmentId: string) {
   return [...planKey(groupId), 'task', commitmentId] as const
 }
 
+/** `['plan', groupId, 'commitment', commitmentId]`: `get_commitment` for edit mode. */
+export function commitmentKey(groupId: string, commitmentId: string) {
+  return [...planKey(groupId), 'commitment', commitmentId] as const
+}
+
 export interface PlanRepository {
   preview(groupId: string, target: number | null, endDate: string | null): Promise<PlanPreview>
   addCommitment(input: AddCommitmentInput): Promise<AddCommitmentResult>
@@ -48,6 +59,10 @@ export interface PlanRepository {
   renameTask(commitmentId: string, name: string): Promise<void>
   deleteTask(commitmentId: string): Promise<void>
   today(groupId: string): Promise<TodayData>
+  myPlan(groupId: string): Promise<MyPlanItem[]>
+  getCommitment(commitmentId: string): Promise<CommitmentDetails>
+  updateCommitment(input: UpdateCommitmentInput): Promise<UpdateCommitmentResult>
+  endCommitment(commitmentId: string): Promise<void>
 }
 
 /** Plan reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
@@ -65,6 +80,12 @@ export function createPlanRepository(backend: BackendPort): PlanRepository {
         backend.getTodaySummary(groupId),
       ])
       return { items, summary }
+    },
+    myPlan: (groupId) => backend.getMyPlan(groupId),
+    getCommitment: (commitmentId) => backend.getCommitment(commitmentId),
+    updateCommitment: (input) => backend.updateCommitment(input),
+    endCommitment: async (commitmentId) => {
+      await backend.endCommitment(commitmentId)
     },
   }
 }
@@ -209,6 +230,79 @@ export function useDeleteTask(groupId: string) {
     },
     onError: (error) => {
       if (isStaleTaskError(error)) invalidatePlan(queryClient, groupId)
+    },
+  })
+}
+
+/**
+ * My plan for a group: `get_my_plan` under `['plan', groupId]`, so every plan write refreshes it.
+ * Rows come with the server's section, state and dates. Retries once.
+ */
+export function useMyPlan(groupId: string) {
+  const repository = usePlanRepository('useMyPlan')
+  return useQuery({
+    queryKey: planKey(groupId),
+    queryFn: () => repository.myPlan(groupId),
+    retry: 1,
+    retryDelay: 500,
+  })
+}
+
+/**
+ * `get_commitment` for the Plan sheet's edit mode: the activity, schedule type, latest version,
+ * `changes_from`, `min_end_date`, state and `can_edit`. Retries other failures than `not_found` once.
+ */
+export function useCommitment(groupId: string, commitmentId: string) {
+  const repository = usePlanRepository('useCommitment')
+  return useQuery({
+    queryKey: commitmentKey(groupId, commitmentId),
+    queryFn: () => repository.getCommitment(commitmentId),
+    retry: (count, error) => count < 1 && backendErrorCode(error) !== 'not_found',
+    retryDelay: 500,
+  })
+}
+
+/** The commitment changed under the member (ended, or gone): Today and the plan are stale. */
+function isStaleCommitmentError(error: unknown): boolean {
+  const code = backendErrorCode(error)
+  return code === 'commitment_ended' || code === 'not_found'
+}
+
+/** Invalidates what every commitment write changes: Today, the plan and the activity locks. */
+function invalidateCommitment(queryClient: QueryClient, groupId: string) {
+  invalidatePlan(queryClient, groupId)
+  void queryClient.invalidateQueries({ queryKey: groupActivitiesKey(groupId) })
+}
+
+/**
+ * `update_commitment`. Invalidates `['today', groupId]`, `['plan', groupId]` and
+ * `['groupActivities', groupId]` on success, and on `commitment_ended` / `not_found` (stale rows).
+ */
+export function useUpdateCommitment(groupId: string) {
+  const repository = usePlanRepository('useUpdateCommitment')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateCommitmentInput) => repository.updateCommitment(input),
+    onSuccess: () => invalidateCommitment(queryClient, groupId),
+    onError: (error) => {
+      if (isStaleCommitmentError(error)) invalidateCommitment(queryClient, groupId)
+    },
+  })
+}
+
+/**
+ * `end_commitment`. Invalidates `['today', groupId]`, `['plan', groupId]` and
+ * `['groupActivities', groupId]` (the type lock may be released) on success, and on
+ * `commitment_ended` / `not_found`.
+ */
+export function useEndCommitment(groupId: string) {
+  const repository = usePlanRepository('useEndCommitment')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (commitmentId: string) => repository.endCommitment(commitmentId),
+    onSuccess: () => invalidateCommitment(queryClient, groupId),
+    onError: (error) => {
+      if (isStaleCommitmentError(error)) invalidateCommitment(queryClient, groupId)
     },
   })
 }

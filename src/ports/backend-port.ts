@@ -2,6 +2,12 @@ import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
+  CommitmentDetails,
+  MyPlanItem,
+  UpdateCommitmentInput,
+  UpdateCommitmentResult,
+} from '@/domain/my-plan'
+import type {
   AddCommitmentInput,
   AddCommitmentResult,
   AddTaskInput,
@@ -122,4 +128,23 @@ export interface BackendPort {
    * done and left counts. Rejects with `not_member`.
    */
   getTodaySummary(groupId: string): Promise<TodaySummary>
+
+  /**
+   * `get_my_plan`: the member's commitments and tasks in a group, each with the server's section
+   * (`current` / `past`), state and dates, in display order. Rejects with `not_member`.
+   */
+  getMyPlan(groupId: string): Promise<MyPlanItem[]>
+  /** `get_commitment`: one of the caller's own commitments for edit mode. Rejects with `not_found`. */
+  getCommitment(commitmentId: string): Promise<CommitmentDetails>
+  /**
+   * `update_commitment`: a new version from the member's next Monday (replacing a pending one).
+   * Rejects with `not_found`, `commitment_ended`, `invalid_plan` or `invalid_end_date`.
+   */
+  updateCommitment(input: UpdateCommitmentInput): Promise<UpdateCommitmentResult>
+  /**
+   * `end_commitment`: sessions continue through this Sunday (a commitment that has not started
+   * ends at once). Resolves with the last week that has sessions' Monday. Rejects with `not_found`
+   * or `commitment_ended`.
+   */
+  endCommitment(commitmentId: string): Promise<{ endsAfterWeekStart: string }>
 }

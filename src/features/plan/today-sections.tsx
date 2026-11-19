@@ -51,12 +51,7 @@ function Rows({
   return (
     <ul className="flex flex-col gap-2">
       {items.map((item) => (
-        <DueRow
-          key={item.commitmentId}
-          item={item}
-          // Only task rows have an Overflow for now; Story 2.6 adds commitment Edit.
-          onMore={item.kind === 'task' ? (button) => onMore(item, button) : undefined}
-        />
+        <DueRow key={item.commitmentId} item={item} onMore={(button) => onMore(item, button)} />
       ))}
     </ul>
   )
@@ -88,7 +83,7 @@ function TodaySkeleton() {
  * - Nothing due today: "Nothing due today. The couch is suspicious." in the Due today section.
  * - Cold load: the Skeleton after 300 ms; a failed cold load: "Can't reach Proofy right now." with
  *   Try again. Cached data shows at once and refreshes silently.
- * Mount inside the `PlanSheetHost`: Add and a task row's Edit open its Plan sheet.
+ * Mount inside the `PlanSheetHost`: Add and a row's Edit (task or commitment) open its Plan sheet.
  */
 export function TodaySections({ groupId, waiting }: { groupId: string; waiting: boolean }) {
   const query = useToday(groupId)
@@ -188,7 +183,10 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
           onEdit={() => {
             handedOff.current = true
             setActionsOpen(false)
-            openPlanSheet({ mode: 'edit', commitmentId: actions.item.commitmentId }, actions.opener)
+            openPlanSheet(
+              { mode: 'edit', commitmentId: actions.item.commitmentId, kind: actions.item.kind },
+              actions.opener,
+            )
           }}
         />
       ) : null}

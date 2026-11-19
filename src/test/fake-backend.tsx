@@ -6,6 +6,7 @@ import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
+import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import type { TodayItem, TodaySummary } from '@/domain/today'
@@ -135,6 +136,26 @@ export const TEST_TODAY_SUMMARY: TodaySummary = {
   left: 0,
 }
 
+/**
+ * A commitment of the test user's for edit mode: Gym 3 times per week in `TEST_GROUP`, started, no
+ * end date; an edit takes effect Mon 23 Nov (earliest end date Sun 29 Nov).
+ */
+export const TEST_COMMITMENT: CommitmentDetails = {
+  commitmentId: 'c-gym',
+  groupId: TEST_GROUP.id,
+  presetKey: 'gym',
+  customName: null,
+  activityName: 'Gym',
+  scheduleType: 'times_per_week',
+  days: null,
+  target: 3,
+  endDate: null,
+  changesFrom: '2026-11-23',
+  minEndDate: '2026-11-29',
+  state: 'active',
+  canEdit: true,
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -164,6 +185,10 @@ export function createFakeBackend(
     tasks?: TaskDetails[]
     /** Today's rows and summary per group id (default: no rows, `TEST_TODAY_SUMMARY`). */
     today?: Record<string, { items: TodayItem[]; summary?: TodaySummary }>
+    /** My plan rows per group id (default: none). */
+    myPlan?: Record<string, MyPlanItem[]>
+    /** The member's own commitments that `getCommitment` knows (default none). */
+    commitments?: CommitmentDetails[]
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -181,6 +206,10 @@ export function createFakeBackend(
   let commitmentsMade = 0
   const tasks = new Map<string, TaskDetails>((options.tasks ?? []).map((t) => [t.commitmentId, t]))
   const today = options.today ?? {}
+  const myPlan = options.myPlan ?? {}
+  const commitments = new Map<string, CommitmentDetails>(
+    (options.commitments ?? []).map((c) => [c.commitmentId, c]),
+  )
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -377,6 +406,52 @@ export function createFakeBackend(
     getTodaySummary: vi.fn(async (groupId: string) => {
       if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
       return today[groupId]?.summary ?? TEST_TODAY_SUMMARY
+    }),
+    getMyPlan: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return myPlan[groupId] ?? []
+    }),
+    getCommitment: vi.fn(async (commitmentId: string) => {
+      const commitment = commitments.get(commitmentId)
+      if (!commitment) throw new BackendError('not_found')
+      return commitment
+    }),
+    // Enforces ownership, the end, the schedule type's own field and the end date.
+    updateCommitment: vi.fn(async (input: UpdateCommitmentInput) => {
+      const commitment = commitments.get(input.commitmentId)
+      if (!commitment) throw new BackendError('not_found')
+      if (!commitment.canEdit) throw new BackendError('commitment_ended')
+      const fixed = commitment.scheduleType === 'fixed_days'
+      if (
+        fixed
+          ? input.target !== null || input.days === null || input.days.length === 0
+          : input.days !== null || input.target === null || input.target < 1 || input.target > 7
+      ) {
+        throw new BackendError('invalid_plan')
+      }
+      if (input.endDate !== null && input.endDate < commitment.minEndDate) {
+        throw new BackendError('invalid_end_date')
+      }
+      commitments.set(input.commitmentId, {
+        ...commitment,
+        days: input.days,
+        target: input.target,
+        endDate: input.endDate,
+        state: commitment.state === 'starts_next_week' ? 'starts_next_week' : 'pending_change',
+      })
+      return { changesFrom: commitment.changesFrom }
+    }),
+    endCommitment: vi.fn(async (commitmentId: string) => {
+      const commitment = commitments.get(commitmentId)
+      if (!commitment) throw new BackendError('not_found')
+      if (!commitment.canEdit) throw new BackendError('commitment_ended')
+      const started = commitment.state !== 'starts_next_week'
+      commitments.set(commitmentId, {
+        ...commitment,
+        state: started ? 'ending' : 'ended',
+        canEdit: false,
+      })
+      return { endsAfterWeekStart: started ? planPreview.weekStart : '2026-11-09' }
     }),
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { ActivitySelection, ScheduleType } from '@/domain/activities'
 import { backendErrorCode, errorCopy } from '@/domain/error-codes'
+import { MY_PLAN_COPY } from '@/domain/my-plan'
 import {
   addedToast,
   COMMITMENT_ERROR_ORDER,
@@ -44,7 +45,9 @@ import { Stepper } from '@/ui/stepper'
 import { showToast } from '@/ui/toast'
 import { WeekdaySelector, type WeekdayOption } from '@/ui/weekday-selector'
 import { ActivityPicker } from '@/features/plan/activity-picker'
+import { CommitmentEditView } from '@/features/plan/commitment-edit-view'
 import type { DeleteTarget } from '@/features/plan/delete-task-sheet'
+import type { EndTarget } from '@/features/plan/end-commitment-sheet'
 import type { PlanSheetRequest } from '@/features/plan/plan-sheet-context'
 import { TaskEditView } from '@/features/plan/task-edit-view'
 import { TaskFormView } from '@/features/plan/task-form-view'
@@ -82,6 +85,15 @@ export interface PlanSheetProps {
   returnFocusTo?: () => HTMLElement | null
   /** Edit mode's "Delete task": the caller swaps this sheet for the delete confirm. */
   onDeleteTask?: (task: DeleteTarget) => void
+  /** Commitment edit mode's "End commitment": the caller swaps this sheet for the End confirm. */
+  onEndCommitment?: (commitment: EndTarget) => void
+  /** Commitment edit mode found the commitment gone, ended or ending. */
+  onCommitmentUnavailable?: () => void
+}
+
+function sheetTitle(request: PlanSheetRequest): string {
+  if (request.mode === 'add') return PLAN_COPY.title
+  return request.kind === 'task' ? TASK_COPY.editTitle : MY_PLAN_COPY.editTitle
 }
 
 /**
@@ -89,8 +101,8 @@ export interface PlanSheetProps {
  * "Add a commitment or task", or "Edit task" in task edit mode. In add mode an unlabeled
  * Commitment / Task switch sits on top, Commitment pre-selected; Commitment mode has Activity,
  * Schedule, Days or Times per week, End date (optional) and the start note from `plan_preview`;
- * Task mode has Activity, Name and Deadline. In edit mode (tasks for now) the switch is hidden. Save
- * is coral and pinned to the bottom. Unsaved input asks "Discard this?" on close; focus is trapped
+ * Task mode has Activity, Name and Deadline. In edit mode ("Edit task" or "Edit commitment", Story
+ * 2.6) the switch is hidden. Save is coral and pinned to the bottom. Unsaved input asks "Discard this?" on close; focus is trapped
  * and returns to the opener. Reminders arrive in Epic 6.
  */
 export function PlanSheet({
@@ -100,6 +112,8 @@ export function PlanSheet({
   request = { mode: 'add' },
   returnFocusTo,
   onDeleteTask,
+  onEndCommitment,
+  onCommitmentUnavailable,
 }: PlanSheetProps) {
   const [dirty, setDirty] = useState(false)
 
@@ -112,12 +126,24 @@ export function PlanSheet({
     <Sheet
       open={open}
       onOpenChange={change}
-      title={request.mode === 'edit' ? TASK_COPY.editTitle : PLAN_COPY.title}
+      title={sheetTitle(request)}
       dirty={dirty}
       returnFocusTo={returnFocusTo}
     >
       {/* The sheet unmounts its content when closed, so every open starts from a fresh form. */}
-      {request.mode === 'edit' ? (
+      {request.mode === 'edit' && request.kind === 'commitment' ? (
+        <CommitmentEditView
+          groupId={groupId}
+          commitmentId={request.commitmentId}
+          onDirtyChange={setDirty}
+          onSaved={() => change(false)}
+          onEnd={(commitment) => {
+            setDirty(false)
+            onEndCommitment?.(commitment)
+          }}
+          onUnavailable={onCommitmentUnavailable}
+        />
+      ) : request.mode === 'edit' ? (
         <TaskEditView
           groupId={groupId}
           commitmentId={request.commitmentId}

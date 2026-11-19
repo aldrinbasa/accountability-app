@@ -2,10 +2,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event'
 import type { GroupActivity } from '@/domain/activities'
 import { BackendError } from '@/domain/error-codes'
+import type { CommitmentDetails } from '@/domain/my-plan'
 import type { TaskDetails } from '@/domain/plan'
 import {
   createFakeBackend,
   renderRoutes,
+  TEST_COMMITMENT,
   TEST_GROUP,
   TEST_PLAN_PREVIEW,
   withBackend,
@@ -552,10 +554,16 @@ describe('Plan sheet (add a task)', () => {
   })
 })
 
-function EditOpener({ commitmentId }: { commitmentId: string }) {
+function EditOpener({
+  commitmentId,
+  kind = 'task',
+}: {
+  commitmentId: string
+  kind?: 'commitment' | 'task'
+}) {
   const { openPlanSheet } = usePlanSheet()
   return (
-    <button type="button" onClick={() => openPlanSheet({ mode: 'edit', commitmentId })}>
+    <button type="button" onClick={() => openPlanSheet({ mode: 'edit', commitmentId, kind })}>
       Edit
     </button>
   )
@@ -771,5 +779,230 @@ describe('Plan sheet (task edit mode)', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       "That's not on your plan anymore.",
     )
+  })
+})
+
+async function openCommitmentEdit(
+  commitment: CommitmentDetails = TEST_COMMITMENT,
+  backend = createFakeBackend(undefined, { commitments: [commitment] }),
+) {
+  const user = userEvent.setup()
+  render(
+    withBackend(
+      backend,
+      <PlanSheetHost groupId={TEST_GROUP.id}>
+        <EditOpener commitmentId={commitment.commitmentId} kind="commitment" />
+        <AddPlanButton />
+      </PlanSheetHost>,
+    ),
+  )
+  const opener = screen.getByRole('button', { name: 'Edit' })
+  await user.click(opener)
+  const dialog = await screen.findByRole('dialog', { name: 'Edit commitment' })
+  await within(dialog).findByText('Changes start Mon 23 Nov.')
+  return { user, dialog, backend, opener }
+}
+
+const STUDY_FIXED: CommitmentDetails = {
+  ...TEST_COMMITMENT,
+  commitmentId: 'c-study',
+  presetKey: 'study',
+  activityName: 'Study',
+  scheduleType: 'fixed_days',
+  days: [1, 3],
+  target: null,
+  endDate: '2026-12-20',
+}
+
+const WRAPPED_UP = "That's already wrapped up."
+
+describe('Plan sheet (commitment edit mode)', () => {
+  it('hides the switch, activity read-only, only the locked type with its note, the real start note', async () => {
+    const { dialog } = await openCommitmentEdit()
+    expect(
+      within(dialog).queryByRole('radiogroup', { name: 'Commitment or task' }),
+    ).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Activity' })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Gym')).toBeInTheDocument()
+    const schedule = within(dialog).getByRole('radiogroup', { name: 'Schedule' })
+    expect(within(schedule).getAllByRole('radio')).toHaveLength(1)
+    expect(within(schedule).getByRole('radio', { name: 'Times per week' })).toBeChecked()
+    expect(schedule).toHaveAccessibleDescription(
+      "Schedule type can't change while this commitment is active. End it and add a new one.",
+    )
+    expect(within(dialog).getByRole('group', { name: 'Times per week' })).toHaveTextContent(
+      '3 times per week',
+    )
+    expect(within(dialog).getByText('Changes start Mon 23 Nov.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'End commitment' })).toBeInTheDocument()
+  })
+
+  it('Save sends update_commitment and shows "Gym changes to 4 times per week from Mon 23 Nov."', async () => {
+    const { user, dialog, backend, opener } = await openCommitmentEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'More' }))
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.updateCommitment).toHaveBeenCalledWith({
+      commitmentId: 'c-gym',
+      days: null,
+      target: 4,
+      endDate: null,
+    })
+    expect(toast.showToast).toHaveBeenCalledWith('Gym changes to 4 times per week from Mon 23 Nov.')
+    await waitFor(() => expect(opener).toHaveFocus())
+  })
+
+  it('fixed days: days and end date start from the latest version; the toast names the days', async () => {
+    const { user, dialog, backend } = await openCommitmentEdit(STUDY_FIXED)
+    expect(within(dialog).getByText('Sun 20 Dec')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Friday' }))
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.updateCommitment).toHaveBeenCalledWith({
+      commitmentId: 'c-study',
+      days: [1, 3, 5],
+      target: null,
+      endDate: '2026-12-20',
+    })
+    expect(toast.showToast).toHaveBeenCalledWith('Study changes to Mon Wed Fri from Mon 23 Nov.')
+  })
+
+  it('no days or an early end date: Field errors, nothing sent', async () => {
+    const { user, dialog, backend } = await openCommitmentEdit(STUDY_FIXED)
+    await user.click(within(dialog).getByRole('button', { name: 'Monday, selected' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Wednesday, selected' }))
+    fireEvent.change(within(dialog).getByLabelText('End date (optional)'), {
+      target: { value: '2026-11-25' },
+    })
+    await user.click(save(dialog))
+    expect(
+      within(dialog)
+        .getAllByRole('alert')
+        .map((a) => a.textContent),
+    ).toEqual(['Pick at least one day.', 'End date has to be on or after Sun 29 Nov.'])
+    await waitFor(() =>
+      expect(within(dialog).getByRole('button', { name: 'Monday' })).toHaveFocus(),
+    )
+    expect(backend.updateCommitment).not.toHaveBeenCalled()
+  })
+
+  it('an unchanged Save just closes', async () => {
+    const { user, dialog, backend } = await openCommitmentEdit()
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.updateCommitment).not.toHaveBeenCalled()
+  })
+
+  it('offline: the Plan sheet Inline retry with inputs kept; Retry re-sends', async () => {
+    const { user, dialog, backend } = await openCommitmentEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'Fewer' }))
+    setOnline(false)
+    await user.click(save(dialog))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(OFFLINE)
+    expect(within(dialog).getByRole('group', { name: 'Times per week' })).toHaveTextContent(
+      '2 times per week',
+    )
+    expect(backend.updateCommitment).not.toHaveBeenCalled()
+    setOnline(true)
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.updateCommitment).toHaveBeenCalledWith(expect.objectContaining({ target: 2 }))
+  })
+
+  it('a failed save shows the generic copy; commitment_ended shows the wrapped-up copy without Retry', async () => {
+    const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
+    vi.mocked(backend.updateCommitment)
+      .mockRejectedValueOnce(new BackendError('unknown'))
+      .mockRejectedValueOnce(new BackendError('commitment_ended'))
+    const { user, dialog } = await openCommitmentEdit(TEST_COMMITMENT, backend)
+    await user.click(within(dialog).getByRole('button', { name: 'More' }))
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(FAILED)
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    expect(await within(dialog).findByText(WRAPPED_UP)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('invalid_end_date from the server: the End date Field error, focused', async () => {
+    const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
+    vi.mocked(backend.updateCommitment).mockRejectedValueOnce(new BackendError('invalid_end_date'))
+    const { user, dialog } = await openCommitmentEdit(TEST_COMMITMENT, backend)
+    const endDate = within(dialog).getByLabelText('End date (optional)')
+    fireEvent.change(endDate, { target: { value: '2026-12-06' } })
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'End date has to be on or after Sun 29 Nov.',
+    )
+    await waitFor(() => expect(endDate).toHaveFocus())
+  })
+
+  it('closing with a change asks "Discard this?"', async () => {
+    const { user, dialog } = await openCommitmentEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'More' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+    expect(within(dialog).getByText('Discard this?')).toBeInTheDocument()
+  })
+
+  it('an ending commitment, or a task id, closes the sheet with the wrapped-up toast', async () => {
+    const user = userEvent.setup()
+    render(
+      withBackend(
+        createFakeBackend(undefined, {
+          commitments: [{ ...TEST_COMMITMENT, state: 'ending', canEdit: false }],
+        }),
+        <PlanSheetHost groupId={TEST_GROUP.id}>
+          <EditOpener commitmentId="c-gym" kind="commitment" />
+          <EditOpener commitmentId="task-1" kind="commitment" />
+        </PlanSheetHost>,
+      ),
+    )
+    const [ending, task] = screen.getAllByRole('button', { name: 'Edit' })
+    await user.click(ending!)
+    await waitFor(() => expect(toast.showToast).toHaveBeenCalledWith(WRAPPED_UP))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    toast.showToast.mockClear()
+    // A task id opened as a commitment: get_commitment answers not_found.
+    await user.click(task!)
+    await waitFor(() => expect(toast.showToast).toHaveBeenCalledWith(WRAPPED_UP))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('"End commitment" swaps in the confirm; End ends it and returns to the screen', async () => {
+    const { user, dialog, backend, opener } = await openCommitmentEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'End commitment' }))
+    const confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(
+      within(confirm).getByText('It stops after this Sunday. Past check-ins stay in the Feed.'),
+    ).toBeInTheDocument()
+    // One coral button; the close is the cancel.
+    expect(within(confirm).getAllByRole('button')).toHaveLength(2)
+    await user.click(within(confirm).getByRole('button', { name: 'End' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.endCommitment).toHaveBeenCalledWith('c-gym')
+    await waitFor(() => expect(opener).toHaveFocus())
+  })
+
+  it('closing the End confirm cancels; offline and commitment_ended show Inline retry copy', async () => {
+    const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
+    const { user, dialog } = await openCommitmentEdit(TEST_COMMITMENT, backend)
+    await user.click(within(dialog).getByRole('button', { name: 'End commitment' }))
+    let confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.endCommitment).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const again = await screen.findByRole('dialog', { name: 'Edit commitment' })
+    await user.click(await within(again).findByRole('button', { name: 'End commitment' }))
+    confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
+    setOnline(false)
+    await user.click(within(confirm).getByRole('button', { name: 'End' }))
+    expect(within(confirm).getByRole('alert')).toHaveTextContent(OFFLINE)
+    setOnline(true)
+    vi.mocked(backend.endCommitment).mockRejectedValueOnce(new BackendError('commitment_ended'))
+    await user.click(within(confirm).getByRole('button', { name: 'Retry' }))
+    expect(await within(confirm).findByRole('alert')).toHaveTextContent(WRAPPED_UP)
+    expect(within(confirm).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
   })
 })

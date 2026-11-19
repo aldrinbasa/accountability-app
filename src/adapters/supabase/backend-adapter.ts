@@ -22,6 +22,14 @@ import {
   type MyGroup,
   type MyGroupsSnapshot,
 } from '@/domain/groups'
+import {
+  isCommitmentState,
+  isMyPlanSection,
+  isMyPlanState,
+  type CommitmentDetails,
+  type MyPlanItem,
+  type UpdateCommitmentInput,
+} from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
@@ -292,6 +300,92 @@ export function toTodaySummary(row: TodaySummaryRow): TodaySummary {
   }
 }
 
+type MyPlanRow = Database['public']['Functions']['get_my_plan']['Returns'][number]
+
+/**
+ * `get_my_plan` rows as domain items, in the server's order. The generated type misses the
+ * nullable columns. An unknown section, state, kind or schedule type is a server bug: fail loudly.
+ */
+export function toMyPlanItems(rows: readonly MyPlanRow[]): MyPlanItem[] {
+  return rows.map((row) => {
+    const scheduleType = row.schedule_type ?? null
+    if (!isMyPlanSection(row.section)) {
+      throw new BackendError('unknown', `plan item ${row.commitment_id} has section ${row.section}`)
+    }
+    if (!isMyPlanState(row.state)) {
+      throw new BackendError('unknown', `plan item ${row.commitment_id} has state ${row.state}`)
+    }
+    if (row.kind !== 'commitment' && row.kind !== 'task') {
+      throw new BackendError('unknown', `plan item ${row.commitment_id} has kind ${row.kind}`)
+    }
+    if (scheduleType !== null && !isScheduleType(scheduleType)) {
+      throw new BackendError(
+        'unknown',
+        `plan item ${row.commitment_id} has schedule type ${scheduleType}`,
+      )
+    }
+    return {
+      commitmentId: row.commitment_id,
+      kind: row.kind,
+      section: row.section,
+      state: row.state,
+      presetKey: row.preset_key ?? null,
+      customName: row.custom_name ?? null,
+      activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+      name: row.name ?? null,
+      scheduleType,
+      days: row.days ?? null,
+      target: row.target ?? null,
+      endDate: row.end_date ?? null,
+      deadline: row.deadline ?? null,
+      startsOn: row.starts_on ?? null,
+      endsOn: row.ends_on ?? null,
+      canEdit: row.can_edit ?? false,
+      canDelete: row.can_delete ?? false,
+    }
+  })
+}
+
+type CommitmentRow = Database['public']['Functions']['get_commitment']['Returns'][number]
+
+/** The `get_commitment` row as domain details. An unknown type or state is a server bug. */
+export function toCommitmentDetails(row: CommitmentRow): CommitmentDetails {
+  if (!isScheduleType(row.schedule_type)) {
+    throw new BackendError(
+      'unknown',
+      `commitment ${row.commitment_id} has schedule type ${row.schedule_type}`,
+    )
+  }
+  if (!isCommitmentState(row.state)) {
+    throw new BackendError('unknown', `commitment ${row.commitment_id} has state ${row.state}`)
+  }
+  return {
+    commitmentId: row.commitment_id,
+    groupId: row.group_id,
+    presetKey: row.preset_key ?? null,
+    customName: row.custom_name ?? null,
+    activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+    scheduleType: row.schedule_type,
+    days: row.days ?? null,
+    target: row.target ?? null,
+    endDate: row.end_date ?? null,
+    changesFrom: row.changes_from,
+    minEndDate: row.min_end_date,
+    state: row.state,
+    canEdit: row.can_edit,
+  }
+}
+
+/** `update_commitment` arguments: only the fields that apply are sent (the rest default to null). */
+export function toUpdateCommitmentArgs(input: UpdateCommitmentInput) {
+  return {
+    p_commitment_id: input.commitmentId,
+    ...(input.days !== null ? { p_days: input.days } : {}),
+    ...(input.target !== null ? { p_target: input.target } : {}),
+    ...(input.endDate !== null ? { p_end_date: input.endDate } : {}),
+  }
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -352,7 +446,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
  * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
- * (2.4), Today (2.5).
+ * (2.4), Today (2.5), My plan (2.6).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -588,5 +682,42 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'get_today_summary returned no row')
     return toTodaySummary(row)
+  },
+
+  async getMyPlan(groupId) {
+    const { data, error, status } = await supabase.rpc('get_my_plan', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toMyPlanItems(data ?? [])
+  },
+
+  async getCommitment(commitmentId) {
+    const { data, error, status } = await supabase.rpc('get_commitment', {
+      p_commitment_id: commitmentId,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_commitment returned no row')
+    return toCommitmentDetails(row)
+  },
+
+  async updateCommitment(input) {
+    const { data, error, status } = await supabase.rpc(
+      'update_commitment',
+      toUpdateCommitmentArgs(input),
+    )
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'update_commitment returned no row')
+    return { changesFrom: row.changes_from }
+  },
+
+  async endCommitment(commitmentId) {
+    const { data, error, status } = await supabase.rpc('end_commitment', {
+      p_commitment_id: commitmentId,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'end_commitment returned no row')
+    return { endsAfterWeekStart: row.ends_after_week_start }
   },
 }

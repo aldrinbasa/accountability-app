@@ -60,6 +60,11 @@ describe('error-code table (AD-14)', () => {
     expect(errorCopy('invalid_deadline')).toBe('Pick a deadline from today to Sunday.')
   })
 
+  it('maps the commitment edit and end code to copy', () => {
+    expect(isRpcErrorCode('commitment_ended')).toBe(true)
+    expect(errorCopy('commitment_ended')).toBe("That's already wrapped up.")
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)

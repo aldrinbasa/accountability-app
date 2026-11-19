@@ -4,21 +4,27 @@ import { BackendError, backendErrorCode } from '@/domain/error-codes'
 import type { AddCommitmentInput, AddTaskInput, TaskDetails } from '@/domain/plan'
 import { groupActivitiesKey } from '@/data/activities'
 import {
+  commitmentKey,
   planKey,
   planPreviewKey,
   taskKey,
   todayKey,
   useAddCommitment,
   useAddTask,
+  useCommitment,
   useDeleteTask,
+  useEndCommitment,
+  useMyPlan,
   usePlanPreview,
   useRenameTask,
   useTask,
   useToday,
+  useUpdateCommitment,
 } from '@/data/plan'
 import {
   createFakeBackend,
   createTestQueryClient,
+  TEST_COMMITMENT,
   TEST_GROUP,
   TEST_PLAN_PREVIEW,
   TEST_TODAY_SUMMARY,
@@ -270,5 +276,111 @@ describe('task data (Story 2.4)', () => {
     const { result } = renderHook(() => useToday(TEST_GROUP.id), { wrapper })
     await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 3000 })
     expect(backendErrorCode(result.current.error)).toBe('network')
+  })
+
+  it('useMyPlan reads get_my_plan under the plan key itself', async () => {
+    const items = [
+      {
+        commitmentId: 'c-gym',
+        kind: 'commitment' as const,
+        section: 'current' as const,
+        state: 'active' as const,
+        presetKey: 'gym',
+        customName: null,
+        activityName: 'Gym',
+        name: null,
+        scheduleType: 'times_per_week' as const,
+        days: null,
+        target: 3,
+        endDate: null,
+        deadline: null,
+        startsOn: null,
+        endsOn: null,
+        canEdit: true,
+        canDelete: false,
+      },
+    ]
+    const backend = createFakeBackend(undefined, { myPlan: { [TEST_GROUP.id]: items } })
+    const { queryClient, wrapper } = setup(backend)
+    const { result } = renderHook(() => useMyPlan(TEST_GROUP.id), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(items)
+    expect(backend.getMyPlan).toHaveBeenCalledWith(TEST_GROUP.id)
+    expect(queryClient.getQueryData(['plan', TEST_GROUP.id])).toEqual(items)
+  })
+
+  it('useCommitment reads get_commitment under the plan key; not_found is not retried', async () => {
+    const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
+    const { wrapper } = setup(backend)
+    expect(commitmentKey('g1', 'c1')).toEqual(['plan', 'g1', 'commitment', 'c1'])
+    const { result } = renderHook(() => useCommitment(TEST_GROUP.id, 'c-gym'), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(TEST_COMMITMENT)
+
+    const gone = renderHook(() => useCommitment(TEST_GROUP.id, 'c-none'), { wrapper })
+    await waitFor(() => expect(gone.result.current.isError).toBe(true))
+    expect(backendErrorCode(gone.result.current.error)).toBe('not_found')
+    expect(
+      vi.mocked(backend.getCommitment).mock.calls.filter(([id]) => id === 'c-none'),
+    ).toHaveLength(1)
+  })
+
+  it('useUpdateCommitment and useEndCommitment invalidate today, plan and group activities', async () => {
+    const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
+    const { queryClient, wrapper } = setup(backend)
+    const keys = [
+      todayKey(TEST_GROUP.id),
+      planKey(TEST_GROUP.id),
+      groupActivitiesKey(TEST_GROUP.id),
+    ]
+    for (const key of keys) queryClient.setQueryData(key, [])
+    const update = renderHook(() => useUpdateCommitment(TEST_GROUP.id), { wrapper })
+    const input = { commitmentId: 'c-gym', days: null, target: 4, endDate: null }
+    let answer: unknown
+    await act(async () => {
+      answer = await update.result.current.mutateAsync(input)
+    })
+    expect(backend.updateCommitment).toHaveBeenCalledWith(input)
+    expect(answer).toEqual({ changesFrom: '2026-11-23' })
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+
+    for (const key of keys) queryClient.setQueryData(key, [])
+    const end = renderHook(() => useEndCommitment(TEST_GROUP.id), { wrapper })
+    await act(async () => {
+      await end.result.current.mutateAsync('c-gym')
+    })
+    expect(backend.endCommitment).toHaveBeenCalledWith('c-gym')
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+  })
+
+  it('commitment_ended on an edit or end refetches today and the plan; invalid_plan does not', async () => {
+    const backend = createFakeBackend(undefined, {
+      commitments: [{ ...TEST_COMMITMENT, canEdit: false, state: 'ending' }],
+    })
+    const { queryClient, wrapper } = setup(backend)
+    const update = renderHook(() => useUpdateCommitment(TEST_GROUP.id), { wrapper })
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    await act(async () => {
+      await update.result.current
+        .mutateAsync({ commitmentId: 'c-gym', days: null, target: 4, endDate: null })
+        .catch(() => {})
+    })
+    expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    const end = renderHook(() => useEndCommitment(TEST_GROUP.id), { wrapper })
+    await act(async () => {
+      await end.result.current.mutateAsync('c-gym').catch(() => {})
+    })
+    expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+
+    vi.mocked(backend.updateCommitment).mockRejectedValueOnce(new BackendError('invalid_plan'))
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    await act(async () => {
+      await update.result.current
+        .mutateAsync({ commitmentId: 'c-gym', days: null, target: 4, endDate: null })
+        .catch(() => {})
+    })
+    expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(false)
   })
 })

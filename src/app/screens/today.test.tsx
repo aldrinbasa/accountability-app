@@ -6,6 +6,7 @@ import type { TodayItem, TodaySummary } from '@/domain/today'
 import {
   createFakeBackend,
   renderRoutes,
+  TEST_COMMITMENT,
   TEST_GROUP,
   TEST_TODAY_SUMMARY,
 } from '@/test/fake-backend'
@@ -205,14 +206,14 @@ describe('Today with a plan', () => {
     expect(ring).toHaveTextContent('0/3')
     expect(screen.getAllByRole('img')).toHaveLength(1)
 
-    // No Check in button until Epic 3; only task rows have an Overflow.
+    // No Check in button until Epic 3; every row has an Overflow (commitment Edit since Story 2.6).
     for (const row of document.querySelectorAll<HTMLElement>('[data-component="due-row"]')) {
       expect(within(row).queryByRole('button', { name: /Check in/ })).not.toBeInTheDocument()
     }
     expect(screen.getByRole('button', { name: 'More actions for Grocery run' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More actions for Garage' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'More actions for Gym' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'More actions for Run' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions for Gym' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions for Run' })).toBeInTheDocument()
   })
 
   it('nothing due today: the couch Empty state, This week still shows', async () => {
@@ -253,6 +254,27 @@ describe('Today with a plan', () => {
     expect(screen.queryByRole('dialog', { name: 'Garage' })).not.toBeInTheDocument()
 
     // Closing the edit sheet returns focus to the row's Overflow.
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(more).toHaveFocus())
+  })
+
+  it('a commitment Overflow opens a Sheet with Edit, which opens the commitment edit mode', async () => {
+    const user = userEvent.setup()
+    const backend = createFakeBackend(undefined, {
+      today: { [TEST_GROUP.id]: { items: [RUN, TASK_SUNDAY], summary: WEDNESDAY } },
+      commitments: [
+        { ...TEST_COMMITMENT, commitmentId: 'c-run', presetKey: 'run', activityName: 'Run' },
+      ],
+    })
+    renderRoutes(['/today'], backend)
+    const more = await screen.findByRole('button', { name: 'More actions for Run' })
+    await user.click(more)
+    const actions = await screen.findByRole('dialog', { name: 'Run' })
+    await user.click(within(actions).getByRole('button', { name: 'Edit' }))
+    const edit = await screen.findByRole('dialog', { name: 'Edit commitment' })
+    expect(await within(edit).findByText('Changes start Mon 23 Nov.')).toBeInTheDocument()
+    expect(backend.getCommitment).toHaveBeenCalledWith('c-run')
+    expect(backend.getTask).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(more).toHaveFocus())
   })

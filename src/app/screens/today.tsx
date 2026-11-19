@@ -26,7 +26,7 @@ function GroupToday({ group }: { group: MyGroup }) {
       {line ? <p className="-mt-2 type-meta text-muted">{line}</p> : null}
       <InstallNotice />
       {isWaiting(group) ? <WaitingEmptyState group={group} /> : null}
-      {/* One Plan sheet host per group: "+ Add" and a task row's Edit open it. */}
+      {/* One Plan sheet host per group: "+ Add" and a row's Edit open it. */}
       <PlanSheetHost key={group.id} groupId={group.id}>
         <TodaySections groupId={group.id} waiting={isWaiting(group)} />
       </PlanSheetHost>

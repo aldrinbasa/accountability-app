@@ -944,3 +944,200 @@ describe('today', () => {
     expect(await backendCodeOf(adapter.getTodaySummary('g1'))).toBe('not_member')
   })
 })
+
+describe('my plan', () => {
+  const PENDING_ROW = {
+    commitment_id: 'c1',
+    kind: 'commitment',
+    section: 'current',
+    state: 'pending_change',
+    preset_key: 'gym',
+    custom_name: null,
+    activity_name: 'Gym',
+    name: null,
+    schedule_type: 'times_per_week',
+    days: null,
+    target: 4,
+    end_date: null,
+    deadline: null,
+    starts_on: '2026-11-23',
+    ends_on: null,
+    can_edit: true,
+    can_delete: false,
+  }
+  const PAST_TASK_ROW = {
+    ...PENDING_ROW,
+    commitment_id: 't1',
+    kind: 'task',
+    section: 'past',
+    state: 'past',
+    preset_key: 'clean',
+    activity_name: 'Clean',
+    name: 'Garage',
+    schedule_type: null,
+    target: null,
+    deadline: '2026-11-17',
+    starts_on: null,
+    can_edit: false,
+  }
+  const COMMITMENT_ROW = {
+    commitment_id: 'c1',
+    group_id: 'g1',
+    preset_key: null,
+    custom_name: 'Pottery',
+    activity_name: 'Pottery',
+    schedule_type: 'fixed_days',
+    days: [1, 3],
+    target: null,
+    end_date: '2026-12-20',
+    changes_from: '2026-11-23',
+    min_end_date: '2026-11-29',
+    state: 'active',
+    can_edit: true,
+  }
+
+  it('get_my_plan maps the rows in the server order, nulls kept', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [PENDING_ROW, PAST_TASK_ROW], error: null, status: 200 })
+    expect(await adapter.getMyPlan('g1')).toEqual([
+      {
+        commitmentId: 'c1',
+        kind: 'commitment',
+        section: 'current',
+        state: 'pending_change',
+        presetKey: 'gym',
+        customName: null,
+        activityName: 'Gym',
+        name: null,
+        scheduleType: 'times_per_week',
+        days: null,
+        target: 4,
+        endDate: null,
+        deadline: null,
+        startsOn: '2026-11-23',
+        endsOn: null,
+        canEdit: true,
+        canDelete: false,
+      },
+      {
+        commitmentId: 't1',
+        kind: 'task',
+        section: 'past',
+        state: 'past',
+        presetKey: 'clean',
+        customName: null,
+        activityName: 'Clean',
+        name: 'Garage',
+        scheduleType: null,
+        days: null,
+        target: null,
+        endDate: null,
+        deadline: '2026-11-17',
+        startsOn: null,
+        endsOn: null,
+        canEdit: false,
+        canDelete: false,
+      },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_my_plan', { p_group_id: 'g1' })
+  })
+
+  it('get_my_plan fails loudly on an unknown section or state and maps not_member', async () => {
+    for (const bad of [{ section: 'later' }, { state: 'paused' }, { kind: 'habit' }]) {
+      db.rpc.mockResolvedValueOnce({ data: [{ ...PENDING_ROW, ...bad }], error: null, status: 200 })
+      expect(await backendCodeOf(adapter.getMyPlan('g1'))).toBe('unknown')
+    }
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getMyPlan('g1'))).toBe('not_member')
+  })
+
+  it('get_commitment maps the row and not_found; an unknown state is an error', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [COMMITMENT_ROW], error: null, status: 200 })
+    expect(await adapter.getCommitment('c1')).toEqual({
+      commitmentId: 'c1',
+      groupId: 'g1',
+      presetKey: null,
+      customName: 'Pottery',
+      activityName: 'Pottery',
+      scheduleType: 'fixed_days',
+      days: [1, 3],
+      target: null,
+      endDate: '2026-12-20',
+      changesFrom: '2026-11-23',
+      minEndDate: '2026-11-29',
+      state: 'active',
+      canEdit: true,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_commitment', { p_commitment_id: 'c1' })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ...COMMITMENT_ROW, state: 'paused' }],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getCommitment('c1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_found'), status: 400 })
+    expect(await backendCodeOf(adapter.getCommitment('c1'))).toBe('not_found')
+  })
+
+  it('update_commitment sends only the fields of the type and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ changes_from: '2026-11-23' }],
+      error: null,
+      status: 200,
+    })
+    expect(
+      await adapter.updateCommitment({
+        commitmentId: 'c1',
+        days: null,
+        target: 4,
+        endDate: null,
+      }),
+    ).toEqual({ changesFrom: '2026-11-23' })
+    expect(db.rpc).toHaveBeenLastCalledWith('update_commitment', {
+      p_commitment_id: 'c1',
+      p_target: 4,
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ changes_from: '2026-11-23' }],
+      error: null,
+      status: 200,
+    })
+    await adapter.updateCommitment({
+      commitmentId: 'c1',
+      days: [1, 3, 5],
+      target: null,
+      endDate: '2026-12-20',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('update_commitment', {
+      p_commitment_id: 'c1',
+      p_days: [1, 3, 5],
+      p_end_date: '2026-12-20',
+    })
+    const input = { commitmentId: 'c1', days: null, target: 4, endDate: null }
+    for (const code of ['not_found', 'commitment_ended', 'invalid_plan', 'invalid_end_date']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.updateCommitment(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.updateCommitment(input))).toBe('unknown')
+  })
+
+  it('end_commitment sends the id, returns the last week and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ends_after_week_start: '2026-11-16' }],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.endCommitment('c1')).toEqual({ endsAfterWeekStart: '2026-11-16' })
+    expect(db.rpc).toHaveBeenLastCalledWith('end_commitment', { p_commitment_id: 'c1' })
+    for (const code of ['not_found', 'commitment_ended']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.endCommitment('c1'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.endCommitment('c1'))).toBe('network')
+  })
+})

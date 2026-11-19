@@ -21,6 +21,7 @@ export const ERROR_COPY = {
   invalid_deadline: 'Pick a deadline from today to Sunday.',
   task_locked: "This task's deadline has passed. It can't change now.",
   not_found: "That's not on your plan anymore.",
+  commitment_ended: "That's already wrapped up.",
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY
