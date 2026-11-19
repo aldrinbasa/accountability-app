@@ -147,14 +147,14 @@ isOneToOne: false
                   ]
                 },"groups": {
                   Row: {
-                    "created_at": string,"created_by": string | null,"id": string,"name": string,"time_zone": string,"updated_at": string
+                    "created_at": string,"created_by": string | null,"id": string,"name": string,"pending_time_zone": string | null,"pending_week_start": string | null,"time_zone": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"name": string,"time_zone": string,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"name": string,"pending_time_zone"?: string | null,"pending_week_start"?: string | null,"time_zone": string,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"name"?: string,"time_zone"?: string,"updated_at"?: string
+                    "created_at"?: string,"created_by"?: string | null,"id"?: string,"name"?: string,"pending_time_zone"?: string | null,"pending_week_start"?: string | null,"time_zone"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -247,14 +247,14 @@ isOneToOne: false
                   ]
                 },"profiles": {
                   Row: {
-                    "avatar_path": string | null,"created_at": string,"display_name": string,"id": string,"time_zone": string,"updated_at": string
+                    "avatar_path": string | null,"created_at": string,"display_name": string,"id": string,"pending_time_zone": string | null,"pending_week_start": string | null,"time_zone": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "avatar_path"?: string | null,"created_at"?: string,"display_name": string,"id": string,"time_zone": string,"updated_at"?: string
+                    "avatar_path"?: string | null,"created_at"?: string,"display_name": string,"id": string,"pending_time_zone"?: string | null,"pending_week_start"?: string | null,"time_zone": string,"updated_at"?: string
                   }
                   Update: {
-                    "avatar_path"?: string | null,"created_at"?: string,"display_name"?: string,"id"?: string,"time_zone"?: string,"updated_at"?: string
+                    "avatar_path"?: string | null,"created_at"?: string,"display_name"?: string,"id"?: string,"pending_time_zone"?: string | null,"pending_week_start"?: string | null,"time_zone"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     
@@ -414,6 +414,8 @@ isOneToOne: false
 "created_at": string,
 "display_name": string,
 "id": string,
+"pending_time_zone": string | null,
+"pending_week_start": string | null,
 "time_zone": string,
 "updated_at": string
             }
@@ -423,6 +425,11 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"set_time_zone":
+{ Args: { "p_group_id"?: string,"p_time_zone": string }; Returns: {
+              "pending_time_zone": string,"pending_week_start": string,"time_zone": string
+            }[]
+                           },
 "update_commitment":
 { Args: { "p_commitment_id": string,"p_days"?: (number)[],"p_end_date"?: string,"p_target"?: number }; Returns: {
               "changes_from": string
