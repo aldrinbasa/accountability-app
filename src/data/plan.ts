@@ -1,7 +1,20 @@
 import { useMemo } from 'react'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { backendErrorCode } from '@/domain/error-codes'
-import type { AddCommitmentInput, AddCommitmentResult, PlanPreview } from '@/domain/plan'
+import type {
+  AddCommitmentInput,
+  AddCommitmentResult,
+  AddTaskInput,
+  AddTaskResult,
+  PlanPreview,
+  TaskDetails,
+} from '@/domain/plan'
 import type { BackendPort } from '@/ports/backend-port'
 import { groupActivitiesKey } from '@/data/activities'
 import { useBackendContext } from '@/data/backend-context-value'
@@ -21,9 +34,18 @@ export function planPreviewKey(groupId: string, target: number | null, endDate: 
   return [...planKey(groupId), 'preview', target, endDate] as const
 }
 
+/** `['plan', groupId, 'task', commitmentId]`: `get_task` for edit mode (plan writes refetch it). */
+export function taskKey(groupId: string, commitmentId: string) {
+  return [...planKey(groupId), 'task', commitmentId] as const
+}
+
 export interface PlanRepository {
   preview(groupId: string, target: number | null, endDate: string | null): Promise<PlanPreview>
   addCommitment(input: AddCommitmentInput): Promise<AddCommitmentResult>
+  addTask(input: AddTaskInput): Promise<AddTaskResult>
+  getTask(commitmentId: string): Promise<TaskDetails>
+  renameTask(commitmentId: string, name: string): Promise<void>
+  deleteTask(commitmentId: string): Promise<void>
 }
 
 /** Plan reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
@@ -31,6 +53,10 @@ export function createPlanRepository(backend: BackendPort): PlanRepository {
   return {
     preview: (groupId, target, endDate) => backend.planPreview(groupId, target, endDate),
     addCommitment: (input) => backend.addCommitment(input),
+    addTask: (input) => backend.addTask(input),
+    getTask: (commitmentId) => backend.getTask(commitmentId),
+    renameTask: (commitmentId, name) => backend.renameTask(commitmentId, name),
+    deleteTask: (commitmentId) => backend.deleteTask(commitmentId),
   }
 }
 
@@ -76,6 +102,85 @@ export function useAddCommitment(groupId: string) {
       if (backendErrorCode(error) === 'schedule_type_locked') {
         void queryClient.invalidateQueries({ queryKey: groupActivitiesKey(groupId) })
       }
+    },
+  })
+}
+
+/** Invalidates what every task write changes: Today's items and the member's plan. */
+function invalidatePlan(queryClient: QueryClient, groupId: string) {
+  void queryClient.invalidateQueries({ queryKey: todayKey(groupId) })
+  void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
+}
+
+/**
+ * `get_task` for the Plan sheet's edit mode: the task's name, activity, deadline and the server's
+ * `can_delete` / `can_rename`. Retries other failures than `not_found` once.
+ */
+export function useTask(groupId: string, commitmentId: string) {
+  const repository = usePlanRepository('useTask')
+  return useQuery({
+    queryKey: taskKey(groupId, commitmentId),
+    queryFn: () => repository.getTask(commitmentId),
+    // A task that is gone stays gone: retry only other failures, once.
+    retry: (count, error) => count < 1 && backendErrorCode(error) !== 'not_found',
+    retryDelay: 500,
+  })
+}
+
+/**
+ * `add_task`. On success invalidates `['today', groupId]`, `['plan', groupId]` and
+ * `['groupActivities', groupId]` (a first pick adds the activity to the group's list). An
+ * `invalid_deadline` answer (the member's day moved on) refetches the plan, so the days refresh.
+ */
+export function useAddTask(groupId: string) {
+  const repository = usePlanRepository('useAddTask')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AddTaskInput) => repository.addTask(input),
+    onSuccess: () => {
+      invalidatePlan(queryClient, groupId)
+      void queryClient.invalidateQueries({ queryKey: groupActivitiesKey(groupId) })
+    },
+    onError: (error) => {
+      if (backendErrorCode(error) === 'invalid_deadline') {
+        void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
+      }
+    },
+  })
+}
+
+/** `rename_task`. Invalidates today and the plan on success, and the plan on `task_locked`. */
+export function useRenameTask(groupId: string) {
+  const repository = usePlanRepository('useRenameTask')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ commitmentId, name }: { commitmentId: string; name: string }) =>
+      repository.renameTask(commitmentId, name),
+    onSuccess: () => invalidatePlan(queryClient, groupId),
+    onError: (error) => {
+      if (backendErrorCode(error) === 'task_locked') {
+        void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
+      }
+    },
+  })
+}
+
+/**
+ * `delete_task`. Invalidates today and the plan on success. A `task_locked` answer (the deadline day
+ * has started) refetches the plan too, so nothing keeps offering the delete.
+ */
+export function useDeleteTask(groupId: string) {
+  const repository = usePlanRepository('useDeleteTask')
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (commitmentId: string) => repository.deleteTask(commitmentId),
+    onSuccess: (_data, commitmentId) => {
+      // The task is gone: drop its edit-mode read instead of refetching a not_found.
+      queryClient.removeQueries({ queryKey: taskKey(groupId, commitmentId) })
+      invalidatePlan(queryClient, groupId)
+    },
+    onError: (error) => {
+      if (backendErrorCode(error) === 'task_locked') invalidatePlan(queryClient, groupId)
     },
   })
 }

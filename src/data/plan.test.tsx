@@ -1,9 +1,20 @@
 import type { ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { BackendError } from '@/domain/error-codes'
-import type { AddCommitmentInput } from '@/domain/plan'
+import { BackendError, backendErrorCode } from '@/domain/error-codes'
+import type { AddCommitmentInput, AddTaskInput, TaskDetails } from '@/domain/plan'
 import { groupActivitiesKey } from '@/data/activities'
-import { planKey, planPreviewKey, todayKey, useAddCommitment, usePlanPreview } from '@/data/plan'
+import {
+  planKey,
+  planPreviewKey,
+  taskKey,
+  todayKey,
+  useAddCommitment,
+  useAddTask,
+  useDeleteTask,
+  usePlanPreview,
+  useRenameTask,
+  useTask,
+} from '@/data/plan'
 import {
   createFakeBackend,
   createTestQueryClient,
@@ -87,5 +98,112 @@ describe('plan data', () => {
       await result.current.mutateAsync(INPUT).catch(() => undefined)
     })
     expect(queryClient.getQueryState(groupActivitiesKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+  })
+})
+
+const TASK_INPUT: AddTaskInput = {
+  groupId: TEST_GROUP.id,
+  activity: { kind: 'preset', presetKey: 'groceries' },
+  name: 'Grocery run',
+  deadline: '2026-11-22',
+}
+
+const TASK: TaskDetails = {
+  commitmentId: 'task-1',
+  groupId: TEST_GROUP.id,
+  presetKey: 'groceries',
+  customName: null,
+  name: 'Grocery run',
+  deadline: '2026-11-22',
+  canDelete: true,
+  canRename: true,
+}
+
+describe('task data (Story 2.4)', () => {
+  it('useAddTask sends the input and invalidates today, plan and group activities', async () => {
+    const { backend, queryClient, wrapper } = setup()
+    for (const key of [
+      todayKey(TEST_GROUP.id),
+      planKey(TEST_GROUP.id),
+      groupActivitiesKey(TEST_GROUP.id),
+    ]) {
+      queryClient.setQueryData(key, [])
+    }
+    const { result } = renderHook(() => useAddTask(TEST_GROUP.id), { wrapper })
+    let answer: unknown
+    await act(async () => {
+      answer = await result.current.mutateAsync(TASK_INPUT)
+    })
+    expect(backend.addTask).toHaveBeenCalledWith(TASK_INPUT)
+    expect(answer).toEqual({ commitmentId: 'commitment-1' })
+    for (const key of [
+      todayKey(TEST_GROUP.id),
+      planKey(TEST_GROUP.id),
+      groupActivitiesKey(TEST_GROUP.id),
+    ]) {
+      expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+    }
+  })
+
+  it('invalid_deadline refetches the plan (the days moved on)', async () => {
+    const backend = createFakeBackend()
+    const { queryClient, wrapper } = setup(backend)
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    vi.mocked(backend.addTask).mockRejectedValueOnce(new BackendError('invalid_deadline'))
+    const { result } = renderHook(() => useAddTask(TEST_GROUP.id), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync(TASK_INPUT).catch(() => undefined)
+    })
+    expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+  })
+
+  it('useTask reads get_task under the plan key', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    const { wrapper } = setup(backend)
+    const { result } = renderHook(() => useTask(TEST_GROUP.id, TASK.commitmentId), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(backend.getTask).toHaveBeenCalledWith(TASK.commitmentId)
+    expect(result.current.data).toEqual(TASK)
+    expect(taskKey(TEST_GROUP.id, 'c1').slice(0, 2)).toEqual(['plan', TEST_GROUP.id])
+  })
+
+  it('useRenameTask and useDeleteTask invalidate today and the plan', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    const { queryClient, wrapper } = setup(backend)
+    queryClient.setQueryData(todayKey(TEST_GROUP.id), [])
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    queryClient.setQueryData(taskKey(TEST_GROUP.id, TASK.commitmentId), TASK)
+    const rename = renderHook(() => useRenameTask(TEST_GROUP.id), { wrapper })
+    await act(async () => {
+      await rename.result.current.mutateAsync({ commitmentId: TASK.commitmentId, name: 'Big shop' })
+    })
+    expect(backend.renameTask).toHaveBeenCalledWith(TASK.commitmentId, 'Big shop')
+    expect(queryClient.getQueryState(todayKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+
+    queryClient.setQueryData(todayKey(TEST_GROUP.id), [])
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    const remove = renderHook(() => useDeleteTask(TEST_GROUP.id), { wrapper })
+    await act(async () => {
+      await remove.result.current.mutateAsync(TASK.commitmentId)
+    })
+    expect(backend.deleteTask).toHaveBeenCalledWith(TASK.commitmentId)
+    expect(queryClient.getQueryState(todayKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(taskKey(TEST_GROUP.id, TASK.commitmentId))).toBeUndefined()
+  })
+
+  it('task_locked on delete refetches the plan', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [{ ...TASK, canDelete: false }] })
+    const { queryClient, wrapper } = setup(backend)
+    queryClient.setQueryData(planKey(TEST_GROUP.id), [])
+    const { result } = renderHook(() => useDeleteTask(TEST_GROUP.id), { wrapper })
+    let code: unknown
+    await act(async () => {
+      await result.current.mutateAsync(TASK.commitmentId).catch((error: unknown) => {
+        code = backendErrorCode(error)
+      })
+    })
+    expect(code).toBe('task_locked')
+    expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(true)
   })
 })

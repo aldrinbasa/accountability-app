@@ -717,3 +717,115 @@ describe('plan', () => {
     expect(await backendCodeOf(adapter.addCommitment(input))).toBe('network')
   })
 })
+
+describe('tasks', () => {
+  const TASK_ROW = {
+    commitment_id: 't1',
+    group_id: 'g1',
+    preset_key: 'groceries',
+    custom_name: null,
+    name: 'Grocery run',
+    deadline: '2026-11-22',
+    can_delete: true,
+    can_rename: true,
+  }
+
+  it('add_task sends the one activity field, the name and the deadline', async () => {
+    db.rpc.mockResolvedValue({ data: [{ commitment_id: 't1' }], error: null, status: 200 })
+    expect(
+      await adapter.addTask({
+        groupId: 'g1',
+        activity: { kind: 'preset', presetKey: 'groceries' },
+        name: 'Grocery run',
+        deadline: '2026-11-22',
+      }),
+    ).toEqual({ commitmentId: 't1' })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_task', {
+      p_group_id: 'g1',
+      p_preset_key: 'groceries',
+      p_name: 'Grocery run',
+      p_deadline: '2026-11-22',
+    })
+    await adapter.addTask({
+      groupId: 'g1',
+      activity: { kind: 'group', groupActivityId: 'ga-1' },
+      name: 'Leg day',
+      deadline: '2026-11-20',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_task', {
+      p_group_id: 'g1',
+      p_group_activity_id: 'ga-1',
+      p_name: 'Leg day',
+      p_deadline: '2026-11-20',
+    })
+    await adapter.addTask({
+      groupId: 'g1',
+      activity: { kind: 'custom', name: 'Errands' },
+      name: 'Post office',
+      deadline: '2026-11-21',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_task', {
+      p_group_id: 'g1',
+      p_custom_name: 'Errands',
+      p_name: 'Post office',
+      p_deadline: '2026-11-21',
+    })
+    db.rpc.mockReset()
+  })
+
+  it('add_task maps its error codes; no row is an error', async () => {
+    const input = {
+      groupId: 'g1',
+      activity: { kind: 'preset', presetKey: 'groceries' } as const,
+      name: 'Grocery run',
+      deadline: '2026-11-22',
+    }
+    for (const code of ['not_member', 'invalid_plan', 'invalid_deadline', 'invalid_activity']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.addTask(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.addTask(input))).toBe('unknown')
+  })
+
+  it('get_task maps the row (null activity fields stay null)', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [TASK_ROW], error: null, status: 200 })
+    expect(await adapter.getTask('t1')).toEqual({
+      commitmentId: 't1',
+      groupId: 'g1',
+      presetKey: 'groceries',
+      customName: null,
+      name: 'Grocery run',
+      deadline: '2026-11-22',
+      canDelete: true,
+      canRename: true,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_task', { p_commitment_id: 't1' })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_found'), status: 400 })
+    expect(await backendCodeOf(adapter.getTask('t1'))).toBe('not_found')
+  })
+
+  it('rename_task and delete_task send the id and map task_locked and not_found', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.renameTask('t1', 'Big shop')
+    expect(db.rpc).toHaveBeenLastCalledWith('rename_task', {
+      p_commitment_id: 't1',
+      p_name: 'Big shop',
+    })
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.deleteTask('t1')
+    expect(db.rpc).toHaveBeenLastCalledWith('delete_task', { p_commitment_id: 't1' })
+    for (const code of ['task_locked', 'not_found']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.deleteTask('t1'))).toBe(code)
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.renameTask('t1', 'x'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.deleteTask('t1'))).toBe('network')
+  })
+})

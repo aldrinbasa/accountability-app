@@ -14,6 +14,7 @@ import {
   lockedTypeFor,
   otherScheduleType,
   PLAN_COPY,
+  PLAN_KIND_OPTIONS,
   SCHEDULE_TYPE_OPTIONS,
   selectionKey,
   selectionName,
@@ -21,12 +22,14 @@ import {
   TARGET_MAX,
   TARGET_MIN,
   targetLabel,
+  TASK_COPY,
   toAddCommitmentInput,
   validateCommitment,
   WEEKDAYS,
   type AddCommitmentInput,
   type CommitmentErrors,
   type CommitmentForm,
+  type PlanKind,
 } from '@/domain/plan'
 import { useGroupActivities, usePresetActivities } from '@/data/activities'
 import { isOffline } from '@/data/connectivity'
@@ -41,6 +44,10 @@ import { Stepper } from '@/ui/stepper'
 import { showToast } from '@/ui/toast'
 import { WeekdaySelector, type WeekdayOption } from '@/ui/weekday-selector'
 import { ActivityPicker } from '@/features/plan/activity-picker'
+import type { DeleteTarget } from '@/features/plan/delete-task-sheet'
+import type { PlanSheetRequest } from '@/features/plan/plan-sheet-context'
+import { TaskEditView } from '@/features/plan/task-edit-view'
+import { TaskFormView } from '@/features/plan/task-form-view'
 
 const WEEKDAY_OPTIONS: readonly WeekdayOption[] = WEEKDAYS.map((day) => ({
   value: day.iso,
@@ -69,16 +76,28 @@ export interface PlanSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   groupId: string
+  /** Add (Commitment pre-selected) or edit one item. Default: add. */
+  request?: PlanSheetRequest
+  /** Edit mode's "Delete task": the caller swaps this sheet for the delete confirm. */
+  onDeleteTask?: (task: DeleteTarget) => void
 }
 
 /**
- * The Plan sheet in Commitment mode (Story 2.2; DESIGN.md `plan-sheet`, mockups/key-add-plan.html).
- * Title "Add a commitment or task"; Activity, Schedule, Days or Times per week, End date (optional),
- * the start note from `plan_preview`, and a coral Save pinned to the bottom. Unsaved input asks
- * "Discard this?" on close; focus is trapped and returns to the opener. The Commitment / Task switch
- * arrives in Story 2.4, reminders in Epic 6.
+ * The Plan sheet (Stories 2.2 and 2.4; DESIGN.md `plan-sheet`, mockups/key-add-plan.html). Title
+ * "Add a commitment or task". In add mode an unlabeled Commitment / Task switch sits on top,
+ * Commitment pre-selected; Commitment mode has Activity, Schedule, Days or Times per week, End date
+ * (optional) and the start note from `plan_preview`; Task mode has Activity, Name and Deadline. In
+ * edit mode (tasks for now) the switch is hidden. Save is coral and pinned to the bottom. Unsaved
+ * input asks "Discard this?" on close; focus is trapped and returns to the opener. Reminders arrive
+ * in Epic 6.
  */
-export function PlanSheet({ open, onOpenChange, groupId }: PlanSheetProps) {
+export function PlanSheet({
+  open,
+  onOpenChange,
+  groupId,
+  request = { mode: 'add' },
+  onDeleteTask,
+}: PlanSheetProps) {
   const [dirty, setDirty] = useState(false)
 
   function change(next: boolean) {
@@ -89,12 +108,47 @@ export function PlanSheet({ open, onOpenChange, groupId }: PlanSheetProps) {
   return (
     <Sheet open={open} onOpenChange={change} title={PLAN_COPY.title} dirty={dirty}>
       {/* The sheet unmounts its content when closed, so every open starts from a fresh form. */}
-      <CommitmentFormView
-        groupId={groupId}
-        onDirtyChange={setDirty}
-        onSaved={() => change(false)}
-      />
+      {request.mode === 'edit' ? (
+        <TaskEditView
+          groupId={groupId}
+          commitmentId={request.commitmentId}
+          onDirtyChange={setDirty}
+          onSaved={() => change(false)}
+          onDelete={(task) => {
+            setDirty(false)
+            onDeleteTask?.(task)
+          }}
+        />
+      ) : (
+        <AddPlanView groupId={groupId} onDirtyChange={setDirty} onSaved={() => change(false)} />
+      )}
     </Sheet>
+  )
+}
+
+interface AddPlanViewProps {
+  groupId: string
+  onDirtyChange: (dirty: boolean) => void
+  onSaved: () => void
+}
+
+/** Add mode: the Commitment / Task switch, then the form of the chosen kind. */
+function AddPlanView({ groupId, onDirtyChange, onSaved }: AddPlanViewProps) {
+  const [kind, setKind] = useState<PlanKind>('commitment')
+  return (
+    <div className="flex flex-col gap-5">
+      <SegmentedSwitch
+        options={PLAN_KIND_OPTIONS}
+        value={kind}
+        onChange={setKind}
+        label={TASK_COPY.kindLabel}
+      />
+      {kind === 'commitment' ? (
+        <CommitmentFormView groupId={groupId} onDirtyChange={onDirtyChange} onSaved={onSaved} />
+      ) : (
+        <TaskFormView groupId={groupId} onDirtyChange={onDirtyChange} onSaved={onSaved} />
+      )}
+    </div>
   )
 }
 

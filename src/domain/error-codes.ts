@@ -18,6 +18,9 @@ export const ERROR_COPY = {
   invalid_plan: 'Check the days or times per week, then try again.',
   invalid_end_date: 'Pick a later end date.',
   schedule_type_locked: 'This activity already has a schedule type in this group.',
+  invalid_deadline: 'Pick a deadline from today to Sunday.',
+  task_locked: "This task's deadline has passed. It can't change now.",
+  not_found: "That's not on your plan anymore.",
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY

@@ -1,11 +1,15 @@
 import type { GroupActivity } from '@/domain/activities'
 import {
   addedToast,
+  deadlineOptions,
+  deleteTaskTitle,
   endDateError,
   formatDayMonth,
   formatShortDate,
   hasErrors,
+  hasTaskErrors,
   isCommitmentFormDirty,
+  isTaskFormDirty,
   lastWeekNote,
   lockedNote,
   lockedTypeFor,
@@ -13,10 +17,17 @@ import {
   selectionName,
   startNote,
   targetLabel,
+  TASK_COPY,
+  taskActivityName,
+  taskAddedToast,
   toAddCommitmentInput,
+  toAddTaskInput,
   validateCommitment,
+  validateTask,
   WEEKDAYS,
   type CommitmentForm,
+  type TaskDetails,
+  type TaskForm,
 } from '@/domain/plan'
 import { TEST_PRESETS } from '@/test/fake-backend'
 
@@ -181,5 +192,111 @@ describe('Plan sheet validation', () => {
     expect(isCommitmentFormDirty({ ...fresh, target: 4 })).toBe(true)
     expect(isCommitmentFormDirty({ ...fresh, scheduleType: 'times_per_week' })).toBe(true)
     expect(isCommitmentFormDirty({ ...fresh, endDate: '2026-12-01' })).toBe(true)
+  })
+})
+
+describe('tasks (Story 2.4)', () => {
+  it('deadline options run from the server today to the server Sunday, today labeled Today', () => {
+    const options = deadlineOptions('2026-11-18', '2026-11-22')
+    expect(options.map((o) => [o.date, o.iso, o.letter, o.name, o.today])).toEqual([
+      ['2026-11-18', 3, 'W', 'Today', true],
+      ['2026-11-19', 4, 'T', 'Thursday', false],
+      ['2026-11-20', 5, 'F', 'Friday', false],
+      ['2026-11-21', 6, 'S', 'Saturday', false],
+      ['2026-11-22', 7, 'S', 'Sunday', false],
+    ])
+  })
+
+  it('on a Sunday only Today is offered; a Monday offers the whole week', () => {
+    expect(deadlineOptions('2026-11-22', '2026-11-22').map((o) => o.name)).toEqual(['Today'])
+    expect(deadlineOptions('2026-11-16', '2026-11-22')).toHaveLength(7)
+    // Across a month end.
+    expect(deadlineOptions('2026-11-30', '2026-12-06').map((o) => o.date)).toEqual([
+      '2026-11-30',
+      '2026-12-01',
+      '2026-12-02',
+      '2026-12-03',
+      '2026-12-04',
+      '2026-12-05',
+      '2026-12-06',
+    ])
+    expect(deadlineOptions('2026-11-23', '2026-11-22')).toEqual([])
+    expect(deadlineOptions('nope', '2026-11-22')).toEqual([])
+  })
+
+  it('validation: "Pick an activity." and "Give the task a short name."', () => {
+    const fresh: TaskForm = { activity: null, name: '', deadline: null }
+    expect(validateTask(fresh)).toEqual({
+      activity: 'Pick an activity.',
+      name: 'Give the task a short name.',
+    })
+    expect(hasTaskErrors(validateTask(fresh))).toBe(true)
+    const valid: TaskForm = {
+      activity: { kind: 'preset', presetKey: 'groceries' },
+      name: '  Grocery run ',
+      deadline: null,
+    }
+    expect(validateTask(valid)).toEqual({})
+    expect(hasTaskErrors({})).toBe(false)
+    expect(validateTask({ ...valid, name: '   ' }).name).toBe('Give the task a short name.')
+    expect(validateTask({ ...valid, name: 'x'.repeat(40) }).name).toBeUndefined()
+    expect(validateTask({ ...valid, name: 'x'.repeat(41) }).name).toBe(
+      'Give the task a short name.',
+    )
+    expect(validateTask({ ...valid, activity: { kind: 'custom', name: ' ' } }).activity).toBe(
+      'Pick an activity.',
+    )
+  })
+
+  it('copy: the added toast, the delete title and the start note', () => {
+    expect(taskAddedToast('Grocery run')).toBe('Grocery run added · counts this week.')
+    expect(deleteTaskTitle('Grocery run')).toBe('Delete Grocery run?')
+    expect(TASK_COPY.deleteBody).toBe("It comes off this week's plan.")
+    expect(TASK_COPY.startNote).toBe('Counts this week, starting now.')
+    expect(TASK_COPY.tooLateToDelete).toBe('Too late to delete. Its day has started.')
+  })
+
+  it('dirty once anything differs from a fresh form (Sunday is the default deadline)', () => {
+    const fresh: TaskForm = { activity: null, name: '', deadline: null }
+    expect(isTaskFormDirty(fresh, '2026-11-22')).toBe(false)
+    expect(isTaskFormDirty({ ...fresh, deadline: '2026-11-22' }, '2026-11-22')).toBe(false)
+    expect(isTaskFormDirty({ ...fresh, deadline: '2026-11-20' }, '2026-11-22')).toBe(true)
+    expect(isTaskFormDirty({ ...fresh, name: 'G' }, '2026-11-22')).toBe(true)
+    expect(
+      isTaskFormDirty({ ...fresh, activity: { kind: 'preset', presetKey: 'run' } }, null),
+    ).toBe(true)
+  })
+
+  it('the add_task input trims the name', () => {
+    expect(
+      toAddTaskInput(
+        'g1',
+        { kind: 'preset', presetKey: 'groceries' },
+        ' Grocery run ',
+        '2026-11-22',
+      ),
+    ).toEqual({
+      groupId: 'g1',
+      activity: { kind: 'preset', presetKey: 'groceries' },
+      name: 'Grocery run',
+      deadline: '2026-11-22',
+    })
+  })
+
+  it("a task's activity name: the custom name, else the preset's", () => {
+    const task: TaskDetails = {
+      commitmentId: 'c1',
+      groupId: 'g1',
+      presetKey: 'groceries',
+      customName: null,
+      name: 'Grocery run',
+      deadline: '2026-11-22',
+      canDelete: true,
+      canRename: true,
+    }
+    expect(taskActivityName(task, TEST_PRESETS)).toBe('Groceries')
+    expect(
+      taskActivityName({ ...task, presetKey: null, customName: 'Errands' }, TEST_PRESETS),
+    ).toBe('Errands')
   })
 })

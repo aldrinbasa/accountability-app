@@ -22,7 +22,7 @@ import {
   type MyGroup,
   type MyGroupsSnapshot,
 } from '@/domain/groups'
-import type { AddCommitmentInput, PlanPreview } from '@/domain/plan'
+import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
@@ -205,6 +205,35 @@ export function toAddCommitmentArgs(input: AddCommitmentInput) {
   }
 }
 
+/** `add_task` arguments: the one activity field that applies, the name and the deadline. */
+export function toAddTaskArgs(input: AddTaskInput) {
+  const { activity } = input
+  return {
+    p_group_id: input.groupId,
+    ...(activity.kind === 'preset' ? { p_preset_key: activity.presetKey } : {}),
+    ...(activity.kind === 'group' ? { p_group_activity_id: activity.groupActivityId } : {}),
+    ...(activity.kind === 'custom' ? { p_custom_name: activity.name } : {}),
+    p_name: input.name,
+    p_deadline: input.deadline,
+  }
+}
+
+type TaskRow = Database['public']['Functions']['get_task']['Returns'][number]
+
+/** The `get_task` row as domain task details (the generated type misses the nullable columns). */
+export function toTaskDetails(row: TaskRow): TaskDetails {
+  return {
+    commitmentId: row.commitment_id,
+    groupId: row.group_id,
+    presetKey: row.preset_key ?? null,
+    customName: row.custom_name ?? null,
+    name: row.name,
+    deadline: row.deadline,
+    canDelete: row.can_delete,
+    canRename: row.can_rename,
+  }
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -264,7 +293,8 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
- * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2).
+ * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
+ * (2.4).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -455,5 +485,36 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'add_commitment returned no row')
     return { commitmentId: row.commitment_id, startsOn: row.starts_on }
+  },
+
+  async addTask(input) {
+    const { data, error, status } = await supabase.rpc('add_task', toAddTaskArgs(input))
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'add_task returned no row')
+    return { commitmentId: row.commitment_id }
+  },
+
+  async getTask(commitmentId) {
+    const { data, error, status } = await supabase.rpc('get_task', {
+      p_commitment_id: commitmentId,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_task returned no row')
+    return toTaskDetails(row)
+  },
+
+  async renameTask(commitmentId, name) {
+    const { error, status } = await supabase.rpc('rename_task', {
+      p_commitment_id: commitmentId,
+      p_name: name,
+    })
+    if (error) throw toBackendError(error, status)
+  },
+
+  async deleteTask(commitmentId) {
+    const { error, status } = await supabase.rpc('delete_task', { p_commitment_id: commitmentId })
+    if (error) throw toBackendError(error, status)
   },
 }

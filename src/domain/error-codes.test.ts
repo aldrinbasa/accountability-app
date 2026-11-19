@@ -53,6 +53,13 @@ describe('error-code table (AD-14)', () => {
     expect(errorCopy('schedule_type_locked')).toMatch(/schedule type/)
   })
 
+  it('maps the task codes to copy', () => {
+    for (const code of ['invalid_deadline', 'task_locked', 'not_found']) {
+      expect(isRpcErrorCode(code)).toBe(true)
+    }
+    expect(errorCopy('invalid_deadline')).toBe('Pick a deadline from today to Sunday.')
+  })
+
   it('knows only its own codes', () => {
     expect(isRpcErrorCode('invalid_display_name')).toBe(true)
     expect(isRpcErrorCode('invalid_time_zone')).toBe(true)

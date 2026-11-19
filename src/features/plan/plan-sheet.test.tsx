@@ -1,8 +1,11 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { GroupActivity } from '@/domain/activities'
 import { BackendError } from '@/domain/error-codes'
-import { createFakeBackend, renderRoutes, TEST_GROUP } from '@/test/fake-backend'
+import type { TaskDetails } from '@/domain/plan'
+import { createFakeBackend, renderRoutes, TEST_GROUP, withBackend } from '@/test/fake-backend'
+import { usePlanSheet } from '@/features/plan/plan-sheet-context'
+import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }))
 vi.mock('@/ui/toast', () => toast)
@@ -310,5 +313,333 @@ describe('Plan sheet (add a commitment)', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Monday' }))
     await user.click(save(dialog))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(FAILED)
+  })
+})
+
+const TASK: TaskDetails = {
+  commitmentId: 'task-1',
+  groupId: TEST_GROUP.id,
+  presetKey: 'groceries',
+  customName: null,
+  name: 'Grocery run',
+  deadline: '2026-11-22',
+  canDelete: true,
+  canRename: true,
+}
+
+async function openTaskMode(backend = createFakeBackend()) {
+  const opened = await openSheet(backend)
+  await opened.user.click(within(opened.dialog).getByRole('radio', { name: 'Task' }))
+  await within(opened.dialog).findByRole('radio', { name: 'Sunday' })
+  return opened
+}
+
+describe('Plan sheet (add a task)', () => {
+  it('an unlabeled Commitment / Task switch sits on top, Commitment selected; arrow keys switch', async () => {
+    const { user, dialog } = await openSheet()
+    const kind = within(dialog).getByRole('radiogroup', { name: 'Commitment or task' })
+    expect(kind).not.toHaveAttribute('aria-labelledby')
+    expect(within(dialog).queryByText('Commitment or task')).not.toBeInTheDocument()
+    const commitment = within(kind).getByRole('radio', { name: 'Commitment' })
+    expect(commitment).toBeChecked()
+    expect(within(kind).getByRole('radio', { name: 'Task' })).not.toBeChecked()
+    // The switch comes before every field.
+    expect(
+      kind.compareDocumentPosition(within(dialog).getByRole('radiogroup', { name: 'Activity' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    commitment.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(within(kind).getByRole('radio', { name: 'Task' })).toBeChecked()
+    expect(within(kind).getByRole('radio', { name: 'Task' })).toHaveFocus()
+    await user.keyboard('{ArrowLeft}')
+    expect(commitment).toBeChecked()
+  })
+
+  it('Task mode: Activity, Name, Deadline from today to Sunday (default Sunday) and the note', async () => {
+    const { dialog } = await openTaskMode()
+    expect(within(dialog).getByRole('radiogroup', { name: 'Activity' })).toBeInTheDocument()
+    const name = within(dialog).getByRole('textbox', { name: 'Name' })
+    expect(name).toHaveAttribute('placeholder', 'Grocery run')
+    expect(name).toHaveAttribute('maxlength', '40')
+    const deadline = within(dialog).getByRole('radiogroup', { name: 'Deadline' })
+    expect(
+      within(deadline)
+        .getAllByRole('radio')
+        .map((r) => r.getAttribute('aria-label')),
+    ).toEqual(['Today', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
+    expect(within(deadline).getByRole('radio', { name: 'Sunday' })).toBeChecked()
+    expect(within(deadline).getByText('Today')).toBeInTheDocument()
+    expect(within(dialog).getByText('Counts this week, starting now.')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Schedule' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('End date (optional)')).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/Starts next Monday/)).not.toBeInTheDocument()
+  })
+
+  it('on a Sunday only "Today" shows', async () => {
+    const backend = createFakeBackend(undefined, {
+      planPreview: {
+        memberToday: '2026-11-22',
+        weekStart: '2026-11-16',
+        weekEnd: '2026-11-22',
+        startsOn: '2026-11-23',
+        minEndDate: '2026-11-29',
+      },
+    })
+    const user = userEvent.setup()
+    renderRoutes(['/today'], backend)
+    await user.click(await screen.findByRole('button', { name: 'Add a commitment or task' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
+    await user.click(within(dialog).getByRole('radio', { name: 'Task' }))
+    const deadline = await within(dialog).findByRole('radiogroup', { name: 'Deadline' })
+    await within(deadline).findByRole('radio', { name: 'Today' })
+    expect(within(deadline).getAllByRole('radio')).toHaveLength(1)
+    expect(within(deadline).getByRole('radio', { name: 'Today' })).toBeChecked()
+  })
+
+  it('Save with nothing: "Pick an activity." and "Give the task a short name.", focus on the first', async () => {
+    const { user, dialog, backend } = await openTaskMode()
+    await user.click(save(dialog))
+    expect(
+      within(dialog)
+        .getAllByRole('alert')
+        .map((a) => a.textContent),
+    ).toEqual(['Pick an activity.', 'Give the task a short name.'])
+    await waitFor(() =>
+      expect(within(dialog).getAllByRole('radio', { name: 'Gym' })[0]).toHaveFocus(),
+    )
+    expect(backend.addTask).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('radio', { name: 'Groceries' }))
+    expect(within(dialog).queryByText('Pick an activity.')).not.toBeInTheDocument()
+    await user.click(save(dialog))
+    const name = within(dialog).getByRole('textbox', { name: 'Name' })
+    await waitFor(() => expect(name).toHaveFocus())
+    expect(name).toHaveAccessibleDescription('Give the task a short name.')
+    await user.type(name, '   ')
+    expect(within(dialog).getByText('Give the task a short name.')).toBeInTheDocument()
+    await user.type(name, 'Milk')
+    expect(within(dialog).queryByText('Give the task a short name.')).not.toBeInTheDocument()
+  })
+
+  it('a valid save: the picked deadline, then closed with "Grocery run added · counts this week."', async () => {
+    const { user, dialog, backend, add } = await openTaskMode()
+    await user.click(within(dialog).getByRole('radio', { name: 'Groceries' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), '  Grocery run ')
+    await user.click(within(dialog).getByRole('radio', { name: 'Friday' }))
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.addTask).toHaveBeenCalledWith({
+      groupId: TEST_GROUP.id,
+      activity: { kind: 'preset', presetKey: 'groceries' },
+      name: 'Grocery run',
+      deadline: '2026-11-20',
+    })
+    expect(backend.addCommitment).not.toHaveBeenCalled()
+    expect(toast.showToast).toHaveBeenCalledWith('Grocery run added · counts this week.')
+    await waitFor(() => expect(add).toHaveFocus())
+  })
+
+  it('the default deadline is Sunday; a task to a locked activity is allowed', async () => {
+    const backend = createFakeBackend(undefined, {
+      groupActivities: { [TEST_GROUP.id]: [GYM_LOCKED] },
+    })
+    const { user, dialog } = await openTaskMode(backend)
+    await user.click(within(dialog).getAllByRole('radio', { name: 'Gym, times per week' })[0]!)
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Leg day')
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.addTask).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Leg day', deadline: '2026-11-22' }),
+    )
+  })
+
+  it('offline: the Plan sheet Inline retry with inputs kept; Retry sends', async () => {
+    const { user, dialog, backend } = await openTaskMode()
+    await user.click(within(dialog).getByRole('radio', { name: 'Groceries' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Grocery run')
+    setOnline(false)
+    await user.click(save(dialog))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(OFFLINE)
+    expect(backend.addTask).not.toHaveBeenCalled()
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveValue('Grocery run')
+    setOnline(true)
+    vi.mocked(backend.addTask).mockRejectedValueOnce(new BackendError('unknown'))
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    expect(await within(dialog).findByText(FAILED)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.addTask).toHaveBeenCalledTimes(2)
+  })
+
+  it('invalid_deadline from the server: a Deadline Field error, focused', async () => {
+    const backend = createFakeBackend()
+    vi.mocked(backend.addTask).mockRejectedValueOnce(new BackendError('invalid_deadline'))
+    const { user, dialog } = await openTaskMode(backend)
+    await user.click(within(dialog).getByRole('radio', { name: 'Groceries' }))
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Grocery run')
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Pick a deadline from today to Sunday.',
+    )
+    await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Sunday' })).toHaveFocus())
+  })
+
+  it('closing with a typed name asks "Discard this?"; an untouched Task mode does not', async () => {
+    const { user, dialog } = await openTaskMode()
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    const again = await openTaskMode()
+    await again.user.type(within(again.dialog).getByRole('textbox', { name: 'Name' }), 'G')
+    await again.user.click(within(again.dialog).getByRole('button', { name: 'Close' }))
+    expect(within(again.dialog).getByText('Discard this?')).toBeInTheDocument()
+  })
+})
+
+function EditOpener({ commitmentId }: { commitmentId: string }) {
+  const { openPlanSheet } = usePlanSheet()
+  return (
+    <button type="button" onClick={() => openPlanSheet({ mode: 'edit', commitmentId })}>
+      Edit
+    </button>
+  )
+}
+
+async function openEdit(
+  task: TaskDetails = TASK,
+  backend = createFakeBackend(undefined, { tasks: [task] }),
+) {
+  const user = userEvent.setup()
+  render(
+    withBackend(
+      backend,
+      <PlanSheetHost groupId={TEST_GROUP.id}>
+        <EditOpener commitmentId={task.commitmentId} />
+      </PlanSheetHost>,
+    ),
+  )
+  const opener = screen.getByRole('button', { name: 'Edit' })
+  await user.click(opener)
+  const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
+  await within(dialog).findByRole('textbox', { name: 'Name' })
+  await within(dialog).findByText('Groceries')
+  return { user, dialog, backend, opener }
+}
+
+describe('Plan sheet (task edit mode)', () => {
+  it('hides the switch, shows activity and deadline read-only and the Name to edit', async () => {
+    const { dialog } = await openEdit()
+    expect(
+      within(dialog).queryByRole('radiogroup', { name: 'Commitment or task' }),
+    ).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Activity' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Deadline' })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Groceries')).toBeInTheDocument()
+    expect(within(dialog).getByText('Sun 22 Nov')).toBeInTheDocument()
+    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveValue('Grocery run')
+  })
+
+  it('"Delete task" shows only while the server says can_delete', async () => {
+    const { dialog } = await openEdit()
+    expect(within(dialog).getByRole('button', { name: 'Delete task' })).toBeInTheDocument()
+    cleanup()
+    const due = await openEdit({ ...TASK, canDelete: false })
+    expect(
+      within(due.dialog).queryByRole('button', { name: 'Delete task' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('Save renames through rename_task and closes', async () => {
+    const { user, dialog, backend } = await openEdit()
+    const name = within(dialog).getByRole('textbox', { name: 'Name' })
+    await user.clear(name)
+    await user.click(save(dialog))
+    await waitFor(() => expect(name).toHaveFocus())
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Give the task a short name.')
+    await user.type(name, ' Big shop ')
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.renameTask).toHaveBeenCalledWith('task-1', 'Big shop')
+  })
+
+  it('task_locked on rename shows its copy without Retry', async () => {
+    const { user, dialog } = await openEdit({ ...TASK, canDelete: false, canRename: false })
+    const name = within(dialog).getByRole('textbox', { name: 'Name' })
+    await user.type(name, '!')
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "This task's deadline has passed. It can't change now.",
+    )
+    expect(within(dialog).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
+  it('"Delete task" replaces the sheet with the confirm; Delete task deletes and returns to Today', async () => {
+    const { user, dialog, backend, opener } = await openEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Grocery run?' })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(within(confirm).getByText("It comes off this week's plan.")).toBeInTheDocument()
+    // One coral button; the close is the cancel.
+    expect(within(confirm).getAllByRole('button')).toHaveLength(2)
+    expect(within(confirm).getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.deleteTask).toHaveBeenCalledWith('task-1')
+    await waitFor(() => expect(opener).toHaveFocus())
+  })
+
+  it('closing the confirm cancels and returns to Today, not to the edit sheet', async () => {
+    const { user, dialog, backend } = await openEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Grocery run?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.deleteTask).not.toHaveBeenCalled()
+  })
+
+  it('task_locked on delete: "Too late to delete. Its day has started." without Retry', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.deleteTask).mockRejectedValueOnce(new BackendError('task_locked'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Grocery run?' })
+    await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
+    expect(await within(confirm).findByRole('alert')).toHaveTextContent(
+      'Too late to delete. Its day has started.',
+    )
+    expect(within(confirm).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Delete Grocery run?' })).toBeInTheDocument()
+  })
+
+  it('offline on delete: the Plan sheet offline copy with Retry', async () => {
+    const { user, dialog, backend } = await openEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'Delete task' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Delete Grocery run?' })
+    setOnline(false)
+    await user.click(within(confirm).getByRole('button', { name: 'Delete task' }))
+    expect(within(confirm).getByRole('alert')).toHaveTextContent(OFFLINE)
+    expect(backend.deleteTask).not.toHaveBeenCalled()
+    setOnline(true)
+    await user.click(within(confirm).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.deleteTask).toHaveBeenCalledWith('task-1')
+  })
+
+  it('a task that is gone reads as not found', async () => {
+    const user = userEvent.setup()
+    render(
+      withBackend(
+        createFakeBackend(),
+        <PlanSheetHost groupId={TEST_GROUP.id}>
+          <EditOpener commitmentId="nope" />
+        </PlanSheetHost>,
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "That's not on your plan anymore.",
+    )
   })
 })

@@ -27,6 +27,11 @@ export interface SheetProps {
   description?: ReactNode
   /** The sheet holds unsaved input: closing asks "Discard this?" first. */
   dirty?: boolean
+  /**
+   * Where focus returns on close, when the opener is not what has focus as the sheet opens (a sheet
+   * that replaces another one). Default: the element focused when the sheet opened.
+   */
+  returnFocusTo?: HTMLElement | null
   className?: string
 }
 
@@ -43,6 +48,7 @@ export function Sheet({
   children,
   description,
   dirty = false,
+  returnFocusTo,
   className,
 }: SheetProps) {
   const [confirming, setConfirming] = useState(false)
@@ -167,7 +173,7 @@ export function Sheet({
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             // No Dialog.Trigger here, so remember the opener ourselves to return focus to it.
-            returnFocusRef.current = document.activeElement as HTMLElement | null
+            returnFocusRef.current = returnFocusTo ?? (document.activeElement as HTMLElement | null)
             const target =
               bodyRef.current?.querySelector<HTMLElement>('[data-autofocus]') ??
               bodyRef.current?.querySelector<HTMLElement>(FOCUSABLE)

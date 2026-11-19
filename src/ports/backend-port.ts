@@ -1,7 +1,14 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
-import type { AddCommitmentInput, AddCommitmentResult, PlanPreview } from '@/domain/plan'
+import type {
+  AddCommitmentInput,
+  AddCommitmentResult,
+  AddTaskInput,
+  AddTaskResult,
+  PlanPreview,
+  TaskDetails,
+} from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 
 /**
@@ -88,4 +95,19 @@ export interface BackendPort {
    * `invalid_plan`, `invalid_activity`, `invalid_end_date` or `schedule_type_locked`.
    */
   addCommitment(input: AddCommitmentInput): Promise<AddCommitmentResult>
+
+  /**
+   * `add_task`: a one-off task that counts this week at once (its single session is written now).
+   * Rejects with `not_member`, `invalid_plan` (name), `invalid_deadline` or `invalid_activity`.
+   */
+  addTask(input: AddTaskInput): Promise<AddTaskResult>
+  /** `get_task`: one of the caller's own tasks for edit mode. Rejects with `not_found`. */
+  getTask(commitmentId: string): Promise<TaskDetails>
+  /**
+   * `rename_task`: until the task's session ends. Rejects with `not_found`, `invalid_plan` or
+   * `task_locked`.
+   */
+  renameTask(commitmentId: string, name: string): Promise<void>
+  /** `delete_task`: before the deadline day starts. Rejects with `not_found` or `task_locked`. */
+  deleteTask(commitmentId: string): Promise<void>
 }

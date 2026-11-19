@@ -13,7 +13,9 @@ export interface SegmentedSwitchProps<T extends string> {
   value: T
   onChange: (value: T) => void
   /** Id of the visible label for the group. */
-  labelledBy: string
+  labelledBy?: string
+  /** The group's accessible name when it has no visible label (the Plan sheet's kind switch). */
+  label?: string
   /**
    * Locked: only the selected segment shows, with a lock icon, and `lockedNote` sits under the
    * track (DESIGN.md `segmented-switch` locked state). Arrow keys do nothing.
@@ -35,6 +37,7 @@ export function SegmentedSwitch<T extends string>({
   value,
   onChange,
   labelledBy,
+  label,
   locked = false,
   lockedNote,
   announceNote = false,
@@ -49,6 +52,7 @@ export function SegmentedSwitch<T extends string>({
         <div
           role="radiogroup"
           aria-labelledby={labelledBy}
+          aria-label={label}
           aria-describedby={lockedNote ? noteId : undefined}
           aria-readonly="true"
           className="flex min-h-target-min gap-1 rounded-wob-sm border-[2.5px] border-line bg-paper p-[3px]"
@@ -99,6 +103,7 @@ export function SegmentedSwitch<T extends string>({
     <div
       role="radiogroup"
       aria-labelledby={labelledBy}
+      aria-label={label}
       className="flex min-h-target-min gap-1 rounded-wob-sm border-[2.5px] border-line bg-paper p-[3px]"
     >
       {options.map((option, index) => {

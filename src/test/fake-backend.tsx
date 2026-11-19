@@ -6,7 +6,7 @@ import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
-import type { AddCommitmentInput, PlanPreview } from '@/domain/plan'
+import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
@@ -149,6 +149,8 @@ export function createFakeBackend(
     groupActivities?: Record<string, GroupActivity[]>
     /** The `plan_preview` dates (default `TEST_PLAN_PREVIEW`). */
     planPreview?: Omit<PlanPreview, 'lastWeekTarget'>
+    /** The member's own tasks that `getTask` knows (default none; `addTask` adds to them). */
+    tasks?: TaskDetails[]
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -164,6 +166,7 @@ export function createFakeBackend(
   let created = 0
   let invitesMade = 0
   let commitmentsMade = 0
+  const tasks = new Map<string, TaskDetails>((options.tasks ?? []).map((t) => [t.commitmentId, t]))
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -306,6 +309,52 @@ export function createFakeBackend(
       }
       commitmentsMade += 1
       return { commitmentId: `commitment-${commitmentsMade}`, startsOn: planPreview.startsOn }
+    }),
+    // Enforces membership, the name and the deadline window of the preview's week.
+    addTask: vi.fn(async (input: AddTaskInput) => {
+      if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
+      const name = input.name.trim()
+      if (name.length === 0 || name.length > 40) throw new BackendError('invalid_plan')
+      if (input.deadline < planPreview.memberToday || input.deadline > planPreview.weekEnd) {
+        throw new BackendError('invalid_deadline')
+      }
+      commitmentsMade += 1
+      const commitmentId = `commitment-${commitmentsMade}`
+      const { activity } = input
+      const row =
+        activity.kind === 'group'
+          ? (groupActivities[input.groupId] ?? []).find((r) => r.id === activity.groupActivityId)
+          : undefined
+      tasks.set(commitmentId, {
+        commitmentId,
+        groupId: input.groupId,
+        presetKey: activity.kind === 'preset' ? activity.presetKey : (row?.presetKey ?? null),
+        customName: activity.kind === 'custom' ? activity.name.trim() : (row?.customName ?? null),
+        name,
+        deadline: input.deadline,
+        canDelete: input.deadline > planPreview.memberToday,
+        canRename: true,
+      })
+      return { commitmentId }
+    }),
+    getTask: vi.fn(async (commitmentId: string) => {
+      const task = tasks.get(commitmentId)
+      if (!task) throw new BackendError('not_found')
+      return task
+    }),
+    renameTask: vi.fn(async (commitmentId: string, name: string) => {
+      const task = tasks.get(commitmentId)
+      if (!task) throw new BackendError('not_found')
+      const trimmed = name.trim()
+      if (trimmed.length === 0 || trimmed.length > 40) throw new BackendError('invalid_plan')
+      if (!task.canRename) throw new BackendError('task_locked')
+      tasks.set(commitmentId, { ...task, name: trimmed })
+    }),
+    deleteTask: vi.fn(async (commitmentId: string) => {
+      const task = tasks.get(commitmentId)
+      if (!task) throw new BackendError('not_found')
+      if (!task.canDelete) throw new BackendError('task_locked')
+      tasks.delete(commitmentId)
     }),
   }
 }

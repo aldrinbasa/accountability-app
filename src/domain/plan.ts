@@ -292,3 +292,182 @@ export function isCommitmentFormDirty(form: CommitmentForm): boolean {
     form.endDate !== null
   )
 }
+
+// ===== Tasks (Story 2.4) =====
+
+/** What the Plan sheet adds: a weekly commitment or a one-off task. */
+export type PlanKind = 'commitment' | 'task'
+
+/** The unlabeled Commitment / Task switch on top of the sheet (Commitment pre-selected). */
+export const PLAN_KIND_OPTIONS: readonly { value: PlanKind; label: string }[] = [
+  { value: 'commitment', label: 'Commitment' },
+  { value: 'task', label: 'Task' },
+]
+
+/** A task name: 1 to 40 characters once trimmed (same rule as `add_task` / `rename_task`). */
+export const TASK_NAME_MAX = 40
+
+/** Copy for Task mode, task edit mode and the delete confirm (Story 2.4 ACs). */
+export const TASK_COPY = {
+  /** The switch has no visible label; this is only its accessible name. */
+  kindLabel: 'Commitment or task',
+  name: 'Name',
+  namePlaceholder: 'Grocery run',
+  deadline: 'Deadline',
+  today: 'Today',
+  pickName: 'Give the task a short name.',
+  startNote: 'Counts this week, starting now.',
+  deleteTask: 'Delete task',
+  deleteBody: "It comes off this week's plan.",
+  tooLateToDelete: 'Too late to delete. Its day has started.',
+  deleting: 'Deleting…',
+  loadFailed: "Couldn't load this task. Tap Retry.",
+} as const
+
+/** `add_task` input. */
+export interface AddTaskInput {
+  groupId: string
+  activity: Exclude<ActivitySelection, null>
+  /** Trimmed, 1 to 40 characters. */
+  name: string
+  /** `YYYY-MM-DD`: from the member's today to the Sunday of their current week. */
+  deadline: string
+}
+
+/** `add_task` result. */
+export interface AddTaskResult {
+  commitmentId: string
+}
+
+/** `get_task`: one of the member's own tasks, for the Plan sheet's edit mode. */
+export interface TaskDetails {
+  commitmentId: string
+  groupId: string
+  /** The activity: a preset key, or a custom name (exactly one is set). */
+  presetKey: string | null
+  customName: string | null
+  name: string
+  /** `YYYY-MM-DD`. */
+  deadline: string
+  /** The server's rule: true before the deadline day starts. */
+  canDelete: boolean
+  /** The server's rule: true until the task's session ends. */
+  canRename: boolean
+}
+
+/** "Grocery run added · counts this week." */
+export function taskAddedToast(name: string): string {
+  return `${name} added · counts this week.`
+}
+
+/** "Delete Grocery run?" */
+export function deleteTaskTitle(name: string): string {
+  return `Delete ${name}?`
+}
+
+/** The display name of a task's activity: its custom name, else the preset's name. */
+export function taskActivityName(task: TaskDetails, presets: readonly PresetActivity[]): string {
+  if (task.customName !== null) return task.customName
+  if (task.presetKey === null) return ''
+  return presets.find((p) => p.key === task.presetKey)?.name ?? task.presetKey
+}
+
+/** One circle of the deadline selector: a day of the member's current week from today on. */
+export interface DeadlineOption {
+  /** `YYYY-MM-DD`. */
+  date: string
+  /** ISO weekday (Monday = 1). */
+  iso: number
+  letter: string
+  /** The accessible name: "Today" for today, else the full day name. */
+  name: string
+  today: boolean
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+/**
+ * The deadline choices: every calendar day from the server's `memberToday` to its `weekEnd` (both
+ * from `plan_preview`), today labeled "Today". On a Sunday only today is left. The week's bounds come
+ * from the server; this only lists the days between them.
+ */
+export function deadlineOptions(memberToday: string, weekEnd: string): DeadlineOption[] {
+  const start = calendarDate(memberToday)
+  if (!start || calendarDate(weekEnd) === null || weekEnd < memberToday) return []
+  const options: DeadlineOption[] = []
+  // A week has at most 7 days left; the cap guards against bad input.
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = new Date(start.getTime())
+    day.setUTCDate(start.getUTCDate() + offset)
+    const date = isoDate(day)
+    if (date > weekEnd) break
+    const iso = day.getUTCDay() === 0 ? 7 : day.getUTCDay()
+    const weekday = WEEKDAYS[iso - 1]
+    if (!weekday) break
+    options.push({
+      date,
+      iso,
+      letter: weekday.letter,
+      name: offset === 0 ? TASK_COPY.today : weekday.name,
+      today: offset === 0,
+    })
+  }
+  return options
+}
+
+/** The Plan sheet's task inputs. `deadline` null means the default, the Sunday of this week. */
+export interface TaskForm {
+  activity: ActivitySelection
+  name: string
+  deadline: string | null
+}
+
+export interface TaskErrors {
+  activity?: string
+  name?: string
+}
+
+/** The field order task errors are focused in. */
+export const TASK_ERROR_ORDER: readonly (keyof TaskErrors)[] = ['activity', 'name']
+
+/** The name Field error, or undefined when the trimmed name is 1 to 40 characters. */
+export function taskNameError(name: string): string | undefined {
+  const trimmed = name.trim()
+  return trimmed.length === 0 || trimmed.length > TASK_NAME_MAX ? TASK_COPY.pickName : undefined
+}
+
+/** Field errors for a task Save. The deadline is a choice from the server's days, never typed. */
+export function validateTask(form: TaskForm): TaskErrors {
+  const errors: TaskErrors = {}
+  if (form.activity === null || selectionKey(form.activity) === 'custom:') {
+    errors.activity = PLAN_COPY.pickActivity
+  }
+  const nameError = taskNameError(form.name)
+  if (nameError) errors.name = nameError
+  return errors
+}
+
+export function hasTaskErrors(errors: TaskErrors): boolean {
+  return TASK_ERROR_ORDER.some((key) => errors[key] !== undefined)
+}
+
+/** Whether a task form differs from a fresh one (closing then asks "Discard this?"). */
+export function isTaskFormDirty(form: TaskForm, defaultDeadline: string | null): boolean {
+  return (
+    form.activity !== null ||
+    form.name !== '' ||
+    (form.deadline !== null && form.deadline !== defaultDeadline)
+  )
+}
+
+/** The `add_task` input for a valid form (name trimmed). */
+export function toAddTaskInput(
+  groupId: string,
+  activity: Exclude<ActivitySelection, null>,
+  name: string,
+  deadline: string,
+): AddTaskInput {
+  return { groupId, activity, name: name.trim(), deadline }
+}
