@@ -66,7 +66,8 @@ test('Me shows the name and My groups, and a group opens its settings', async ({
   await row.click()
   await expect(page).toHaveURL(/\/me\/groups\/[0-9a-f-]{36}/)
   await expect(page.getByRole('heading', { level: 1, name: 'Mia Squad' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Group time zone' })).toBeVisible()
+  // Mia is the admin: the Group time zone row opens the picker (Story 2.7).
+  await expect(page.getByRole('button', { name: /^Group time zone/ })).toBeVisible()
 })
 
 test('Settings Appearance sets light or dark on this device and survives a reload', async ({
