@@ -1,23 +1,20 @@
 import {
   chooseZone,
-  filterZones,
+  choiceLabel,
+  displayZone,
+  filterOptions,
+  formatClock,
   formatLockTime,
   formatSessionTime,
+  offsetLabel,
   pendingFromText,
-  pickerZones,
+  pickerOptions,
+  ZONE_CHOICES,
   zoneCity,
   zoneLabel,
   zoneRegion,
   type TimeZoneState,
 } from '@/domain/time-zones'
-
-const ZONES = [
-  'America/Argentina/Buenos_Aires',
-  'America/New_York',
-  'Asia/Manila',
-  'Europe/London',
-  'Pacific/Auckland',
-]
 
 describe('zone naming', () => {
   it('takes the city from the last part of the IANA name, underscores as spaces', () => {
@@ -44,46 +41,62 @@ describe('zone naming', () => {
   })
 })
 
-describe('picker zones', () => {
-  it('filters by IANA name or city, case-insensitive, spaces matching underscores', () => {
-    expect(filterZones(ZONES, 'new york')).toEqual(['America/New_York'])
-    expect(filterZones(ZONES, 'NEW_YORK')).toEqual(['America/New_York'])
-    expect(filterZones(ZONES, 'buenos a')).toEqual(['America/Argentina/Buenos_Aires'])
-    expect(filterZones(ZONES, 'europe')).toEqual(['Europe/London'])
-    expect(filterZones(ZONES, 'america/')).toEqual([
-      'America/Argentina/Buenos_Aires',
-      'America/New_York',
-    ])
-    expect(filterZones(ZONES, '  lon ')).toEqual(['Europe/London'])
-    expect(filterZones(ZONES, '')).toEqual(ZONES)
-    expect(filterZones(ZONES, 'Mars')).toEqual([])
+describe('picker choices', () => {
+  it('has 24 choices, GMT−11 to GMT+12 in order, each saving one zone', () => {
+    expect(ZONE_CHOICES).toHaveLength(24)
+    expect(ZONE_CHOICES.map((c) => c.offset)).toEqual(Array.from({ length: 24 }, (_, i) => i - 11))
+    expect(new Set(ZONE_CHOICES.map((c) => c.zone)).size).toBe(24)
   })
 
-  it('offers the runtime list plus the current and pending zones, sorted, without duplicates', () => {
-    expect(pickerZones(['UTC', 'Europe/London'], () => ZONES)).toEqual([...ZONES, 'UTC'])
-    expect(pickerZones(['Asia/Manila', null], () => ZONES)).toEqual(ZONES)
+  it('labels a choice with its standard offset (a real minus sign) and sample cities', () => {
+    expect(offsetLabel(8)).toBe('GMT+8')
+    expect(offsetLabel(0)).toBe('GMT+0')
+    expect(offsetLabel(-11)).toBe('GMT−11')
+    const manila = ZONE_CHOICES.find((c) => c.zone === 'Asia/Manila')
+    expect(manila && choiceLabel(manila)).toBe('GMT+8 · Manila, Singapore, Hong Kong')
   })
 
-  it('falls back to the given zones when the runtime has no list', () => {
-    expect(pickerZones(['Asia/Manila', null], () => [])).toEqual(['Asia/Manila'])
-    expect(
-      pickerZones(['Asia/Manila'], () => {
-        throw new TypeError('supportedValuesOf is not a function')
-      }),
-    ).toEqual(['Asia/Manila'])
+  it('shows one of the 24 by its label, any other zone as "City · Region"', () => {
+    expect(displayZone('Europe/London')).toBe('GMT+0 · London, Lisbon')
+    expect(displayZone('America/New_York')).toBe('GMT−5 · New York, Toronto')
+    expect(displayZone('Asia/Kolkata')).toBe('Kolkata · Asia')
+    expect(displayZone('UTC')).toBe('UTC')
   })
 
-  it('uses Intl.supportedValuesOf by default, and only the given zones without it', () => {
-    const intl = Intl as unknown as { supportedValuesOf?: unknown }
-    const original = intl.supportedValuesOf
-    try {
-      intl.supportedValuesOf = () => ['Europe/London']
-      expect(pickerZones(['Asia/Manila'])).toEqual(['Asia/Manila', 'Europe/London'])
-      intl.supportedValuesOf = undefined
-      expect(pickerZones(['Asia/Manila'])).toEqual(['Asia/Manila'])
-    } finally {
-      intl.supportedValuesOf = original
-    }
+  it('puts a current or waiting zone outside the 24 first, marked (current), once', () => {
+    const options = pickerOptions(['Asia/Kolkata', 'Asia/Kolkata', 'Asia/Manila', null])
+    expect(options).toHaveLength(25)
+    expect(options[0]).toMatchObject({ zone: 'Asia/Kolkata', label: 'Kolkata · Asia (current)' })
+    expect(options[1].label).toBe('GMT−11 · Pago Pago, Midway')
+    expect(options[24].label).toBe('GMT+12 · Auckland, Fiji')
+    expect(pickerOptions(['Asia/Manila'])).toHaveLength(24)
+  })
+
+  it('filters by offset exactly, or by city, case- and accent-insensitive', () => {
+    const options = pickerOptions(['Asia/Kolkata'])
+    const zones = (query: string) => filterOptions(options, query).map((o) => o.zone)
+    expect(zones('GMT+8')).toEqual(['Asia/Manila'])
+    expect(zones('+8')).toEqual(['Asia/Manila'])
+    expect(zones('+1')).toEqual(['Europe/Paris'])
+    expect(zones('gmt-3')).toEqual(['America/Sao_Paulo'])
+    expect(zones('GMT−3')).toEqual(['America/Sao_Paulo'])
+    expect(zones('sao paulo')).toEqual(['America/Sao_Paulo'])
+    expect(zones('NOUMEA')).toEqual(['Pacific/Noumea'])
+    expect(zones('hong')).toEqual(['Asia/Manila'])
+    expect(zones('kolkata')).toEqual(['Asia/Kolkata'])
+    expect(zones('  ')).toHaveLength(25)
+    expect(zones('Mars')).toEqual([])
+  })
+})
+
+describe('formatClock', () => {
+  it('shows the local time now through the real zone rules (live DST)', () => {
+    const july = new Date('2026-07-15T13:32:00Z')
+    const january = new Date('2026-01-15T13:32:00Z')
+    expect(formatClock(july, 'Europe/London')).toBe('14:32')
+    expect(formatClock(january, 'Europe/London')).toBe('13:32')
+    expect(formatClock(july, 'Asia/Manila')).toBe('21:32')
+    expect(formatClock(january, 'Asia/Manila')).toBe('21:32')
   })
 })
 

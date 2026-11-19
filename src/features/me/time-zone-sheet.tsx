@@ -1,11 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CaretRight, Check, Globe, MagnifyingGlass } from '@phosphor-icons/react'
 import {
-  filterZones,
+  displayZone,
+  filterOptions,
+  formatClock,
   pendingFromText,
-  pickerZones,
+  pickerOptions,
   TIME_ZONE_COPY,
-  zoneLabel,
   type TimeZoneState,
 } from '@/domain/time-zones'
 import { Icon } from '@/ui/icon'
@@ -24,12 +25,26 @@ export interface TimeZoneSheetProps {
 }
 
 const ROW =
-  'flex min-h-row-min w-full items-center gap-3 border-b-[1.5px] border-line/18 px-1 text-left text-ink press-overlay'
+  'flex min-h-row-min w-full items-center gap-3 border-b-[1.5px] border-line/18 px-1 py-2 text-left text-ink press-overlay'
+
+/** The clock the picker shows: taken when it opens, then once a minute while it stays open. */
+function useMinuteClock(running: boolean): Date {
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    if (!running) return
+    setNow(new Date())
+    const id = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(id)
+  }, [running])
+  return now
+}
 
 /**
- * The time zone picker (Story 2.7): a search field over `Intl.supportedValuesOf('timeZone')` (plus
- * the current and waiting zones), each row "City · Region". The chosen zone (the waiting one, else
- * the current one) is checked. One tap on another zone saves it and closes the sheet.
+ * The time zone picker (Story 2.7; 24 choices at Aldrin's request, 2026-11-20): a search field over
+ * the 24 whole-hour GMT choices ("GMT+8 · Manila, Singapore, Hong Kong", each with its current local
+ * time), led by the current or waiting zone when it is not one of them ("Kolkata · Asia (current)").
+ * The chosen zone (the waiting one, else the current one) is checked. One tap on another zone saves
+ * it and closes the sheet.
  */
 export function TimeZoneSheet({
   open,
@@ -40,12 +55,13 @@ export function TimeZoneSheet({
   onChoose,
 }: TimeZoneSheetProps) {
   const [query, setQuery] = useState('')
+  const now = useMinuteClock(open)
   const chosen = zones.pendingTimeZone ?? zones.timeZone
   const all = useMemo(
-    () => pickerZones([zones.timeZone, zones.pendingTimeZone]),
+    () => pickerOptions([zones.timeZone, zones.pendingTimeZone]),
     [zones.timeZone, zones.pendingTimeZone],
   )
-  const shown = useMemo(() => filterZones(all, query), [all, query])
+  const shown = useMemo(() => filterOptions(all, query), [all, query])
 
   function setOpen(next: boolean) {
     if (!next) setQuery('')
@@ -75,17 +91,22 @@ export function TimeZoneSheet({
           <p className="type-body-sm text-muted">{TIME_ZONE_COPY.noMatch}</p>
         ) : (
           <ul className="flex flex-col" aria-label={title}>
-            {shown.map((zone) => {
-              const selected = zone === chosen
+            {shown.map((option) => {
+              const selected = option.zone === chosen
+              const clock = formatClock(now, option.zone)
               return (
-                <li key={zone}>
+                <li key={option.zone}>
                   <button
                     type="button"
                     aria-current={selected || undefined}
-                    onClick={() => pick(zone)}
+                    aria-label={`${option.label.replace(' · ', ', ')}, ${clock}`}
+                    onClick={() => pick(option.zone)}
                     className={ROW}
                   >
-                    <span className="min-w-0 flex-1 break-words type-body">{zoneLabel(zone)}</span>
+                    <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3">
+                      <span className="min-w-0 break-words type-body">{option.label}</span>
+                      <span className="type-meta text-muted tabular-nums">{clock}</span>
+                    </span>
                     {selected ? <Icon icon={Check} size={24} className="text-success" /> : null}
                   </button>
                 </li>
@@ -98,30 +119,30 @@ export function TimeZoneSheet({
   )
 }
 
-/** "New York · America from Mon 23 Nov" (no date while the server has not answered yet). */
+/** "GMT−5 · New York, Toronto from Mon 23 Nov" (no date while the server has not answered yet). */
 function pendingLine(zone: string, weekStart: string | null): string {
-  return weekStart ? `${zoneLabel(zone)} ${pendingFromText(weekStart)}` : zoneLabel(zone)
+  return weekStart ? `${displayZone(zone)} ${pendingFromText(weekStart)}` : displayZone(zone)
 }
 
 /**
- * What a screen reader reads for the row: "Time zone, Manila · Asia, changes to New York · America
- * from Mon 23 Nov".
+ * What a screen reader reads for the row: "Time zone, GMT+8 · Manila, Singapore, Hong Kong, changes
+ * to GMT−5 · New York, Toronto from Mon 23 Nov".
  */
 function rowName(label: string, zones: TimeZoneState): string {
-  const current = `${label}, ${zoneLabel(zones.timeZone)}`
+  const current = `${label}, ${displayZone(zones.timeZone)}`
   return zones.pendingTimeZone
     ? `${current}, ${TIME_ZONE_COPY.changesTo} ${pendingLine(zones.pendingTimeZone, zones.pendingWeekStart)}`
     : current
 }
 
 /**
- * The zone line and, for a waiting change, "New York · America from Mon 23 Nov" (with a visually
+ * The zone line and, for a waiting change, "GMT−5 · New York, Toronto from Mon 23 Nov" (with a visually
  * hidden "changes to" before it).
  */
 function ZoneLines({ zones }: { zones: TimeZoneState }) {
   return (
     <>
-      <span className="type-meta text-muted">{zoneLabel(zones.timeZone)}</span>
+      <span className="type-meta text-muted">{displayZone(zones.timeZone)}</span>
       {zones.pendingTimeZone ? (
         <span className="type-meta text-ink">
           <span className="sr-only">{`${TIME_ZONE_COPY.changesTo} `}</span>
