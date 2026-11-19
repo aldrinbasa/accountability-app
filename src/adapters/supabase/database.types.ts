@@ -51,14 +51,14 @@ isOneToOne: false
                   ]
                 },"commitments": {
                   Row: {
-                    "created_at": string,"ends_after_week_start": string | null,"group_activity_id": string,"group_id": string,"id": string,"kind": string,"membership_id": string,"schedule_type": string | null,"updated_at": string,"user_id": string
+                    "created_at": string,"ends_after_week_start": string | null,"group_activity_id": string,"group_id": string,"id": string,"kind": string,"membership_id": string,"schedule_type": string | null,"sessions_through": string | null,"updated_at": string,"user_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id": string,"group_id": string,"id"?: string,"kind": string,"membership_id": string,"schedule_type"?: string | null,"updated_at"?: string,"user_id": string
+                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id": string,"group_id": string,"id"?: string,"kind": string,"membership_id": string,"schedule_type"?: string | null,"sessions_through"?: string | null,"updated_at"?: string,"user_id": string
                   }
                   Update: {
-                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"membership_id"?: string,"schedule_type"?: string | null,"updated_at"?: string,"user_id"?: string
+                    "created_at"?: string,"ends_after_week_start"?: string | null,"group_activity_id"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"membership_id"?: string,"schedule_type"?: string | null,"sessions_through"?: string | null,"updated_at"?: string,"user_id"?: string
                   }
                   Relationships: [
                     {
@@ -125,6 +125,26 @@ isOneToOne: false
       referencedColumns: ["key"]
     }
                   ]
+                },"group_weeks": {
+                  Row: {
+                    "created_at": string,"group_id": string,"lock_at": string,"updated_at": string,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"group_id": string,"lock_at": string,"updated_at"?: string,"week_start": string
+                  }
+                  Update: {
+                    "created_at"?: string,"group_id"?: string,"lock_at"?: string,"updated_at"?: string,"week_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "group_weeks_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"groups": {
                   Row: {
                     "created_at": string,"created_by": string | null,"id": string,"name": string,"time_zone": string,"updated_at": string
@@ -144,6 +164,20 @@ isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
     }
+                  ]
+                },"heartbeat": {
+                  Row: {
+                    "id": boolean,"last_error": string | null,"last_error_at": string | null,"last_error_step": number | null,"last_run_at": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "id"?: boolean,"last_error"?: string | null,"last_error_at"?: string | null,"last_error_step"?: number | null,"last_run_at"?: string | null
+                  }
+                  Update: {
+                    "id"?: boolean,"last_error"?: string | null,"last_error_at"?: string | null,"last_error_step"?: number | null,"last_run_at"?: string | null
+                  }
+                  Relationships: [
+                    
                   ]
                 },"invites": {
                   Row: {
@@ -224,6 +258,44 @@ isOneToOne: false
                   }
                   Relationships: [
                     
+                  ]
+                },"sessions": {
+                  Row: {
+                    "commitment_id": string,"created_at": string,"ends_at": string,"group_id": string,"id": string,"membership_id": string,"miss_recorded_at": string | null,"slot": number,"starts_at": string,"updated_at": string,"user_id": string,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "commitment_id": string,"created_at"?: string,"ends_at": string,"group_id": string,"id"?: string,"membership_id": string,"miss_recorded_at"?: string | null,"slot": number,"starts_at": string,"updated_at"?: string,"user_id": string,"week_start": string
+                  }
+                  Update: {
+                    "commitment_id"?: string,"created_at"?: string,"ends_at"?: string,"group_id"?: string,"id"?: string,"membership_id"?: string,"miss_recorded_at"?: string | null,"slot"?: number,"starts_at"?: string,"updated_at"?: string,"user_id"?: string,"week_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "sessions_commitment_id_fkey"
+      columns: ["commitment_id"]
+isOneToOne: false
+      referencedRelation: "commitments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sessions_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sessions_membership_id_fkey"
+      columns: ["membership_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "sessions_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
                   ]
                 }
           }
