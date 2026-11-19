@@ -386,7 +386,12 @@ function CommitmentEditForm({
         <Button
           variant="link"
           className="self-center text-miss"
-          onClick={() => onEnd({ commitmentId: details.commitmentId, name: details.activityName })}
+          // Not while a save is in flight (no disabled look in this design: taps are ignored).
+          aria-disabled={busy || undefined}
+          onClick={() => {
+            if (busyRef.current) return
+            onEnd({ commitmentId: details.commitmentId, name: details.activityName })
+          }}
         >
           {MY_PLAN_COPY.endCommitment}
         </Button>

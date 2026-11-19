@@ -5,13 +5,14 @@ import { CUSTOM_ACTIVITY_ICON, presetIcon } from '@/domain/activities'
 import { GROUP_COPY } from '@/domain/groups'
 import { editLabel, MY_PLAN_COPY, myPlanIn, myPlanMeta, type MyPlanItem } from '@/domain/my-plan'
 import { itemTitle } from '@/domain/today'
-import { useMyPlan } from '@/data/plan'
+import { useCommitment, useMyPlan } from '@/data/plan'
 import { EmptyState } from '@/ui/empty-state'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
 import { runAfterSheetClose } from '@/ui/sheet-history'
 import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
-import { useFocusedGroup } from '@/features/group/use-focused-group'
+import { showToast } from '@/ui/toast'
+import { searchWithGroup, useFocusedGroup } from '@/features/group/use-focused-group'
 import { cameFromMe } from '@/features/me/pushed-from-me'
 import { usePlanSheet } from '@/features/plan/plan-sheet-context'
 import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
@@ -23,7 +24,9 @@ import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
  * the server says it can be edited. Without `?g=` the focused group is used.
  * The deep link opens that commitment's edit sheet over the list; closing it (any way) returns to
  * `/me/plan`. A task id, or a commitment that is gone or ended, opens My plan with the toast
- * "That's already wrapped up." System back closes an open sheet first, then pops My plan.
+ * "That's already wrapped up." A commitment of another of the member's groups switches `?g=` to
+ * that group first; one of a group they are not in reads as wrapped up. System back closes an open
+ * sheet first, then pops My plan.
  */
 export function MyPlanScreen() {
   const { commitmentId } = useParams()
@@ -42,6 +45,23 @@ export function MyPlanScreen() {
     const { search, state } = location
     runAfterSheetClose(
       () => void navigate({ pathname: '/me/plan', search }, { replace: true, state }),
+    )
+  }
+
+  /** The deep link's commitment belongs to another current group: show that group's plan. */
+  function toGroup(groupId: string) {
+    void navigate(
+      { pathname: location.pathname, search: searchWithGroup(location.search, groupId) },
+      { replace: true, state: location.state },
+    )
+  }
+
+  /** The deep link's commitment can't be shown here: the plain list with the toast. */
+  function wrappedUp() {
+    showToast(MY_PLAN_COPY.wrappedUp)
+    void navigate(
+      { pathname: '/me/plan', search: location.search },
+      { replace: true, state: location.state },
     )
   }
 
@@ -67,7 +87,14 @@ export function MyPlanScreen() {
             <MyPlanSections groupId={group.id} />
           </div>
           {commitmentId ? (
-            <DeepLinkEdit commitmentId={commitmentId} opener={() => headingRef.current} />
+            <DeepLinkEdit
+              commitmentId={commitmentId}
+              groupId={group.id}
+              groupIds={(groups ?? []).map((g) => g.id)}
+              onOtherGroup={toGroup}
+              onUnavailable={wrappedUp}
+              opener={() => headingRef.current}
+            />
           ) : null}
         </PlanSheetHost>
       ) : (
@@ -89,21 +116,50 @@ export function MyPlanScreen() {
   )
 }
 
-/** Opens the deep link's commitment in the Plan sheet once, as the screen mounts. */
+/**
+ * Opens the deep link's commitment in the Plan sheet once its `get_commitment` read is in and it
+ * belongs to the shown group. A commitment of another current group moves `?g=` there first (this
+ * host and its query keys are the shown group's); one of a group the member is not in is
+ * unavailable. A failed read opens the sheet anyway, which shows the failure (or, for not_found,
+ * closes with the wrapped-up toast).
+ */
 function DeepLinkEdit({
   commitmentId,
+  groupId,
+  groupIds,
+  onOtherGroup,
+  onUnavailable,
   opener,
 }: {
   commitmentId: string
+  groupId: string
+  groupIds: readonly string[]
+  onOtherGroup: (groupId: string) => void
+  onUnavailable: () => void
   opener: () => HTMLElement | null
 }) {
   const { openPlanSheet } = usePlanSheet()
-  const opened = useRef<string | null>(null)
+  const commitment = useCommitment(groupId, commitmentId)
+  const ownGroup = commitment.data?.groupId
+  const ready = ownGroup !== undefined || commitment.isError
+  const handled = useRef<string | null>(null)
+  const latest = useRef({ groupIds, onOtherGroup, onUnavailable, opener })
   useEffect(() => {
-    if (opened.current === commitmentId) return
-    opened.current = commitmentId
-    openPlanSheet({ mode: 'edit', commitmentId, kind: 'commitment' }, opener())
-  }, [commitmentId, openPlanSheet, opener])
+    latest.current = { groupIds, onOtherGroup, onUnavailable, opener }
+  })
+  useEffect(() => {
+    if (!ready) return
+    const key = `${groupId}:${commitmentId}`
+    if (handled.current === key) return
+    handled.current = key
+    const current = latest.current
+    if (ownGroup !== undefined && ownGroup !== groupId) {
+      if (current.groupIds.includes(ownGroup)) current.onOtherGroup(ownGroup)
+      else current.onUnavailable()
+      return
+    }
+    openPlanSheet({ mode: 'edit', commitmentId, kind: 'commitment' }, current.opener())
+  }, [ready, ownGroup, groupId, commitmentId, openPlanSheet])
   return null
 }
 

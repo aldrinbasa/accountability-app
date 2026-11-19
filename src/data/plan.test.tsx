@@ -383,4 +383,27 @@ describe('task data (Story 2.4)', () => {
     })
     expect(queryClient.getQueryState(planKey(TEST_GROUP.id))?.isInvalidated).toBe(false)
   })
+
+  it('not_found on an edit or end refetches today and the plan', async () => {
+    const { queryClient, wrapper } = setup(createFakeBackend())
+    const keys = [todayKey(TEST_GROUP.id), planKey(TEST_GROUP.id)]
+    const update = renderHook(() => useUpdateCommitment(TEST_GROUP.id), { wrapper })
+    for (const key of keys) queryClient.setQueryData(key, [])
+    let code: unknown
+    await act(async () => {
+      code = await update.result.current
+        .mutateAsync({ commitmentId: 'c-none', days: null, target: 4, endDate: null })
+        .catch(backendErrorCode)
+    })
+    expect(code).toBe('not_found')
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+
+    const end = renderHook(() => useEndCommitment(TEST_GROUP.id), { wrapper })
+    for (const key of keys) queryClient.setQueryData(key, [])
+    await act(async () => {
+      code = await end.result.current.mutateAsync('c-none').catch(backendErrorCode)
+    })
+    expect(code).toBe('not_found')
+    for (const key of keys) expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+  })
 })

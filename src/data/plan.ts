@@ -283,7 +283,12 @@ export function useUpdateCommitment(groupId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: UpdateCommitmentInput) => repository.updateCommitment(input),
-    onSuccess: () => invalidateCommitment(queryClient, groupId),
+    onSuccess: (_data, input) => {
+      // Drop the edit-mode read, so a reopened sheet waits for the saved values instead of
+      // seeding its form from the pre-edit cache.
+      queryClient.removeQueries({ queryKey: commitmentKey(groupId, input.commitmentId) })
+      invalidateCommitment(queryClient, groupId)
+    },
     onError: (error) => {
       if (isStaleCommitmentError(error)) invalidateCommitment(queryClient, groupId)
     },
@@ -300,7 +305,10 @@ export function useEndCommitment(groupId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (commitmentId: string) => repository.endCommitment(commitmentId),
-    onSuccess: () => invalidateCommitment(queryClient, groupId),
+    onSuccess: (_data, commitmentId) => {
+      queryClient.removeQueries({ queryKey: commitmentKey(groupId, commitmentId) })
+      invalidateCommitment(queryClient, groupId)
+    },
     onError: (error) => {
       if (isStaleCommitmentError(error)) invalidateCommitment(queryClient, groupId)
     },

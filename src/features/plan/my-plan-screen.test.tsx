@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { BackendError } from '@/domain/error-codes'
 import type { MyPlanItem } from '@/domain/my-plan'
 import type { TaskDetails } from '@/domain/plan'
 import { createFakeBackend, renderRoutes, TEST_COMMITMENT, TEST_GROUP } from '@/test/fake-backend'
@@ -248,5 +249,44 @@ describe('My plan', () => {
     const { router } = renderRoutes([`/me/plan/c-study?g=${TEST_GROUP.id}`], ended)
     await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
     expect(toast.showToast).toHaveBeenCalledWith("That's already wrapped up.")
+  })
+
+  it('a deep link to a commitment of another current group switches ?g= to that group', async () => {
+    const other = { ...TEST_GROUP, id: 'group-2', name: 'Book Club' }
+    const backend = createFakeBackend(undefined, {
+      groups: [TEST_GROUP, other],
+      myPlan: { [other.id]: [{ ...GYM, commitmentId: 'c-book' }] },
+      commitments: [{ ...TEST_COMMITMENT, commitmentId: 'c-book', groupId: other.id }],
+    })
+    const { router } = renderRoutes([`/me/plan/c-book?g=${TEST_GROUP.id}`], backend)
+    await waitFor(() => expect(router.state.location.search).toBe(`?g=${other.id}`))
+    expect(router.state.location.pathname).toBe('/me/plan/c-book')
+    expect(await screen.findByRole('dialog', { name: 'Edit commitment' })).toBeInTheDocument()
+    await waitFor(() => expect(backend.getMyPlan).toHaveBeenCalledWith(other.id))
+    expect(toast.showToast).not.toHaveBeenCalled()
+  })
+
+  it('a deep link to a commitment of a group the member is not in reads as wrapped up', async () => {
+    const backend = createFakeBackend(undefined, {
+      myPlan: { [TEST_GROUP.id]: [] },
+      commitments: [{ ...TEST_COMMITMENT, commitmentId: 'c-old', groupId: 'group-gone' }],
+    })
+    const { router } = renderRoutes([`/me/plan/c-old?g=${TEST_GROUP.id}`], backend)
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    expect(toast.showToast).toHaveBeenCalledWith("That's already wrapped up.")
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('a failed load: the load-failed Empty state with Try again, which refetches', async () => {
+    const user = userEvent.setup()
+    const backend = withPlan()
+    vi.mocked(backend.getMyPlan).mockRejectedValue(new BackendError('network'))
+    renderRoutes([PLAN_PATH], backend)
+    expect(
+      await screen.findByText("Can't reach Proofy right now.", {}, { timeout: 3000 }),
+    ).toBeInTheDocument()
+    vi.mocked(backend.getMyPlan).mockResolvedValue([GYM])
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('heading', { level: 3, name: 'Gym' })).toBeInTheDocument()
   })
 })

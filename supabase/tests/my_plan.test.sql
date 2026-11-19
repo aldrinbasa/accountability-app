@@ -18,7 +18,7 @@
 -- test_overrides so tests.freeze_time moves their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(73);
+select plan(80);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -141,6 +141,8 @@ select pg_catalog.set_config('test.yesterday', (select a.commitment_id::text fro
 select tests.freeze_time('2026-11-18 10:00:00+00');
 select pg_catalog.set_config('test.garage', (select a.commitment_id::text from public.add_task(
   current_setting('test.g1')::uuid, p_preset_key => 'clean', p_name => 'Garage', p_deadline => '2026-11-22') a), true);
+select pg_catalog.set_config('test.zoo', (select a.commitment_id::text from public.add_task(
+  current_setting('test.g1')::uuid, p_preset_key => 'clean', p_name => 'Zoo run', p_deadline => '2026-11-20') a), true);
 select pg_catalog.set_config('test.read', (select a.commitment_id::text from public.add_commitment(
   current_setting('test.g1')::uuid, p_preset_key => 'read', p_schedule_type => 'times_per_week', p_target => 4) a), true);
 select pg_catalog.set_config('test.study', (select a.commitment_id::text from public.add_commitment(
@@ -346,8 +348,8 @@ select is(
    from public.get_my_plan(current_setting('test.g1')::uuid) with ordinality
      as p(commitment_id, kind, section, state, preset_key, custom_name, activity_name, name, schedule_type,
           days, target, end_date, deadline, starts_on, ends_on, can_edit, can_delete, ord)),
-  'current:pending_change:Gym, current:ending:Meditate, current:starts_next_week:Read, current:ending:Run, current:active:Yoga, current:open:Garage, past:ended:Study, past:past:Yesterday',
-  'Wednesday: current commitments by name, then open tasks; the ended commitment and the passed task are in Past'
+  'current:pending_change:Gym, current:ending:Meditate, current:starts_next_week:Read, current:ending:Run, current:active:Yoga, current:open:Zoo run, current:open:Garage, past:ended:Study, past:past:Yesterday',
+  'Wednesday: current commitments by name, then open tasks by deadline (Zoo run before Garage, though Garage sorts first by name); the ended commitment and the passed task are in Past'
 );
 select is(
   (select p.kind || ' ' || p.schedule_type || ' ' || coalesce(p.days::text, '-') || ' ' || p.target::text || ' '
@@ -367,8 +369,8 @@ select is(
 select is(
   (select p.target::text || ' ' || p.end_date::text || ' ' || p.ends_on::text || ' ' || p.can_edit::text
    from public.get_my_plan(current_setting('test.g1')::uuid) p where p.commitment_id = current_setting('test.meditate')::uuid),
-  '5 2026-11-19 2026-11-19 true',
-  'a commitment whose end date is inside this week is ending on that day and can still be edited'
+  '5 2026-11-19 2026-11-19 false',
+  'a commitment whose end date is inside this week is ending on that day and cannot be edited'
 );
 select is(
   (select p.target::text || ' ' || p.starts_on::text || ' ' || p.can_edit::text
@@ -418,6 +420,37 @@ select is(
   'ended false', 'get_commitment: an ended commitment cannot be edited'
 );
 
+-- A commitment ending by its end date this week: an edit would extend it, so it is refused.
+select throws_ok(
+  format($$ select * from public.update_commitment(%L, p_target => 5) $$, current_setting('test.meditate')),
+  'P0001', 'commitment_ended', 'editing a commitment that ends by its end date this week raises commitment_ended');
+select is(
+  (select g.state || ' ' || g.can_edit::text || ' '
+          || (select count(*) from public.commitment_versions v where v.commitment_id = current_setting('test.meditate')::uuid)::text
+   from public.get_commitment(current_setting('test.meditate')::uuid) g),
+  'ending false 1',
+  'get_commitment says it cannot be edited, and the refused edit wrote no version'
+);
+
+-- Ending a started commitment that has a pending change drops the change.
+select is(
+  (select u.changes_from from public.update_commitment(current_setting('test.yoga')::uuid, p_target => 3) u),
+  '2026-11-23'::date,
+  'Yoga gets a pending change for next Monday'
+);
+select is(
+  (select e.ends_after_week_start from public.end_commitment(current_setting('test.yoga')::uuid) e),
+  '2026-11-16'::date,
+  'ending it sets the current week'
+);
+reset role;
+select is(
+  (select pg_catalog.string_agg(v.effective_week_start::text || ':' || v.target::text, ', ' order by v.effective_week_start)
+   from public.commitment_versions v where v.commitment_id = current_setting('test.yoga')::uuid),
+  '2026-11-16:2',
+  'only the versions up to the current week remain (the pending change is dropped)'
+);
+
 -- bob's plan does not include alice's rows.
 select tests.authenticate_as('bob');
 select is(
@@ -447,6 +480,11 @@ select is(
   0, 'the commitment ended last week gets no sessions this week'
 );
 select is(
+  (select count(*)::integer from public.sessions s
+   where s.commitment_id = current_setting('test.yoga')::uuid and s.week_start = '2026-11-23'),
+  0, 'the commitment ended with a pending change gets no sessions this week'
+);
+select is(
   (select count(*)::integer from public.sessions s where s.commitment_id = current_setting('test.study')::uuid),
   0, 'the not-started commitment ended at once never gets sessions'
 );
@@ -463,8 +501,15 @@ select is(
    from public.get_my_plan(current_setting('test.g1')::uuid) with ordinality
      as p(commitment_id, kind, section, state, preset_key, custom_name, activity_name, name, schedule_type,
           days, target, end_date, deadline, starts_on, ends_on, can_edit, can_delete, ord)),
-  'current:active:Gym, current:active:Read, current:active:Yoga, past:ended:Meditate, past:ended:Run, past:ended:Study, past:past:Garage, past:past:Yesterday',
+  'current:active:Gym, current:active:Read, past:ended:Meditate, past:ended:Run, past:ended:Study, past:ended:Yoga, past:past:Garage, past:past:Zoo run, past:past:Yesterday',
   'next Monday: the change is active, ended commitments and passed tasks are in Past (latest task first)'
+);
+
+select is(
+  (select p.schedule_type || ' ' || p.target::text
+   from public.get_my_plan(current_setting('test.g1')::uuid) p where p.commitment_id = current_setting('test.yoga')::uuid),
+  'times_per_week 2',
+  'the ended commitment''s Past row shows the schedule that ran, not the dropped change'
 );
 
 -- The FR-10 lock from Run is released the week after the end.

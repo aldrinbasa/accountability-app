@@ -852,6 +852,31 @@ describe('Plan sheet (commitment edit mode)', () => {
     await waitFor(() => expect(opener).toHaveFocus())
   })
 
+  it('reopening after a save shows the saved values, not the pre-edit cache', async () => {
+    const { user, dialog, opener } = await openCommitmentEdit()
+    await user.click(within(dialog).getByRole('button', { name: 'More' }))
+    await user.click(save(dialog))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await user.click(opener)
+    const again = await screen.findByRole('dialog', { name: 'Edit commitment' })
+    expect(await within(again).findByRole('group', { name: 'Times per week' })).toHaveTextContent(
+      '4 times per week',
+    )
+  })
+
+  it('"End commitment" ignores taps while a save is in flight', async () => {
+    const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
+    vi.mocked(backend.updateCommitment).mockReturnValueOnce(new Promise(() => {}))
+    const { user, dialog } = await openCommitmentEdit(TEST_COMMITMENT, backend)
+    await user.click(within(dialog).getByRole('button', { name: 'More' }))
+    await user.click(save(dialog))
+    const end = within(dialog).getByRole('button', { name: 'End commitment' })
+    expect(end).toHaveAttribute('aria-disabled', 'true')
+    await user.click(end)
+    expect(screen.queryByRole('dialog', { name: 'End Gym?' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Edit commitment' })).toBeInTheDocument()
+  })
+
   it('fixed days: days and end date start from the latest version; the toast names the days', async () => {
     const { user, dialog, backend } = await openCommitmentEdit(STUDY_FIXED)
     expect(within(dialog).getByText('Sun 20 Dec')).toBeInTheDocument()
