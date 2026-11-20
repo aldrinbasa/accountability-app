@@ -45,8 +45,9 @@ select columns_are('public', 'week_commitment_results',
   'week_commitment_results has the story''s columns');
 select columns_are('public', 'group_week_results',
   array['id', 'group_id', 'week_start', 'scored', 'ranked', 'goal_target', 'goal_period',
-        'goal_average', 'goal_hit', 'winner_user_ids', 'created_at', 'updated_at'],
-  'group_week_results has the story''s columns plus ranked');
+        'goal_average', 'goal_hit', 'goal_result_average', 'winner_user_ids', 'created_at',
+        'updated_at'],
+  'group_week_results has the story''s columns plus ranked (and Story 4.7''s goal_result_average)');
 select has_column('public', 'group_weeks', 'locked_at', 'group_weeks has the locked_at marker');
 select ok(
   (select bool_and(i.indisunique)
