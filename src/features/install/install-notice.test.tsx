@@ -21,6 +21,11 @@ afterEach(() => {
 async function openToday() {
   const result = renderRoutes(['/today'])
   await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' })
+  // The focused group reaches the URL (`?g=`) in a replace navigation after the groups load; act
+  // only once it is there, or "Show me how" can still carry the old, empty search.
+  await vi.waitFor(() => expect(result.router.state.location.search).toBe('?g=group-1'))
+  // The router state can lead React's render; flush it so click handlers see the new search.
+  await act(async () => {})
   return result
 }
 
