@@ -445,6 +445,20 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"titles": {
+                  Row: {
+                    "created_at": string,"key": string,"min_points": number,"name": string,"sort_order": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"key": string,"min_points": number,"name": string,"sort_order": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"key"?: string,"min_points"?: number,"name"?: string,"sort_order"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
                 },"week_commitment_results": {
                   Row: {
                     "commitment_id": string,"created_at": string,"done": number,"frozen": number,"group_id": string,"id": string,"membership_id": string,"planned": number,"streak_after": number | null,"target_met": boolean,"updated_at": string,"week_start": string
@@ -639,6 +653,11 @@ isOneToOne: false
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
             }[]
                            },
+"get_member_profile":
+{ Args: { "p_group_id": string,"p_user_id": string }; Returns: {
+              "all_time_points": number,"avatar_path": string,"badges": Json,"display_name": string,"is_current_member": boolean,"plan": Json,"streaks": Json,"task_count": number,"time_zone": string,"title_key": string
+            }[]
+                           },
 "get_my_plan":
 { Args: { "p_group_id": string }; Returns: {
               "activity_name": string,"can_delete": boolean,"can_edit": boolean,"commitment_id": string,"custom_name": string,"days": (number)[],"deadline": string,"end_date": string,"ends_on": string,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"state": string,"target": number
@@ -666,7 +685,7 @@ isOneToOne: false
                            },
 "get_winner_week":
 { Args: { "p_group_id": string,"p_week_start": string }; Returns: {
-              "avatar_path": string,"display_name": string,"is_winner": boolean,"lock_at": string,"rank": number,"ranked": boolean,"scored": boolean,"user_id": string,"week_start": string,"weekly_points": number,"winner_user_ids": (string)[]
+              "avatar_path": string,"badge_line": string,"badge_name": string,"display_name": string,"is_winner": boolean,"lock_at": string,"rank": number,"ranked": boolean,"scored": boolean,"user_id": string,"week_start": string,"weekly_points": number,"winner_user_ids": (string)[]
             }[]
                            },
 "join_group":
