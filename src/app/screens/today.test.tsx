@@ -82,6 +82,7 @@ const WEDNESDAY: TodaySummary = {
   planned: 9,
   done: 0,
   left: 9,
+  hasPlan: true,
 }
 
 const GARAGE_TASK: TaskDetails = {
@@ -226,6 +227,20 @@ describe('Today with a plan', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: 'This week' })).toBeInTheDocument()
     expect(screen.queryByText('No plan here yet.')).not.toBeInTheDocument()
+  })
+
+  it('a plan with nothing listed today (fixed days on another day): the couch, not "No plan here yet." (retro F1)', async () => {
+    renderRoutes(['/today'], withToday([], { ...WEDNESDAY, planned: 3, left: 2, hasPlan: true }))
+    expect(
+      await screen.findByText('Nothing due today. The couch is suspicious.'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Due today · 2 left this week' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No plan here yet.')).not.toBeInTheDocument()
+    // Add stays available as the "+ Add" button, not as an Empty state action.
+    const add = screen.getByRole('button', { name: 'Add a commitment or task' })
+    expect(add.closest('[data-component="empty-state"]')).toBeNull()
   })
 
   it('only next week planned: no week line, the couch, and the next-week block', async () => {

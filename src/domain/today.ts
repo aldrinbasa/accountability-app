@@ -63,6 +63,11 @@ export interface TodaySummary {
   done: number
   /** `planned - done`. */
   left: number
+  /**
+   * The member has an active commitment (this week or from next week) or an open task in the group,
+   * even when nothing is listed today (fixed days on another day). False means "No plan here yet."
+   */
+  hasPlan: boolean
 }
 
 /** Both Today reads, under one query key. */
@@ -208,13 +213,19 @@ export function startsHeading(startsOn: string | null): string {
 export type TodayEmptyState = 'no_plan' | 'nothing_due' | null
 
 /**
- * - No commitments or tasks in the group: "No plan here yet." with the Add button as its action,
- *   except in a waiting group, where the waiting state already fills that place (Add only).
- * - Rows exist but none is due today: "Nothing due today. The couch is suspicious."
+ * - No commitments or tasks in the group (`hasPlan` false, no rows): "No plan here yet." with the Add
+ *   button as its action, except in a waiting group, where the waiting state already fills that place
+ *   (Add only).
+ * - A plan, but none of it due today (rows only later this week or next, or none listed today, like
+ *   fixed days Mon Wed Fri on a Tuesday): "Nothing due today. The couch is suspicious." (retro F1).
  * - Otherwise none.
  */
-export function todayEmptyState(items: readonly TodayItem[], waiting: boolean): TodayEmptyState {
-  if (items.length === 0) return waiting ? null : 'no_plan'
+export function todayEmptyState(
+  items: readonly TodayItem[],
+  waiting: boolean,
+  hasPlan: boolean,
+): TodayEmptyState {
+  if (items.length === 0 && !hasPlan) return waiting ? null : 'no_plan'
   if (!items.some((item) => item.section === 'due_today')) return 'nothing_due'
   return null
 }

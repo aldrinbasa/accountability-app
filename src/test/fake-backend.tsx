@@ -139,6 +139,7 @@ export const TEST_TODAY_SUMMARY: TodaySummary = {
   planned: 0,
   done: 0,
   left: 0,
+  hasPlan: false,
 }
 
 /**

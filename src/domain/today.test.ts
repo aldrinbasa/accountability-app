@@ -120,17 +120,24 @@ describe('Today formatters', () => {
       planned: 9,
       done: 6,
       left: 3,
+      hasPlan: true,
     }
     expect(weekLine(summary)).toBe('Week 4 of the grind · 6 of 9 done')
     expect(weekLine({ ...summary, planned: 0, done: 0, left: 0 })).toBeNull()
   })
 
   it('empty-state selection', () => {
-    expect(todayEmptyState([], false)).toBe('no_plan')
-    expect(todayEmptyState([], true)).toBeNull()
-    expect(todayEmptyState([TIMES, TASK], false)).toBe('nothing_due')
-    expect(todayEmptyState([NEXT], true)).toBe('nothing_due')
-    expect(todayEmptyState([FIXED, TIMES], false)).toBeNull()
+    expect(todayEmptyState([], false, false)).toBe('no_plan')
+    expect(todayEmptyState([], true, false)).toBeNull()
+    expect(todayEmptyState([TIMES, TASK], false, true)).toBe('nothing_due')
+    expect(todayEmptyState([NEXT], true, true)).toBe('nothing_due')
+    expect(todayEmptyState([FIXED, TIMES], false, true)).toBeNull()
+  })
+
+  it('a plan with nothing listed today is "nothing due", not "no plan" (retro F1)', () => {
+    // Fixed days Mon Wed Fri on a Tuesday: no rows, but the member has a plan.
+    expect(todayEmptyState([], false, true)).toBe('nothing_due')
+    expect(todayEmptyState([], true, true)).toBe('nothing_due')
   })
 
   it('sections keep the server order', () => {

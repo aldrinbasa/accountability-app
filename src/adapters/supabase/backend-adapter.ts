@@ -322,6 +322,7 @@ export function toTodaySummary(row: TodaySummaryRow): TodaySummary {
     planned: row.planned,
     done: row.done,
     left: row.left,
+    hasPlan: row.has_plan,
   }
 }
 

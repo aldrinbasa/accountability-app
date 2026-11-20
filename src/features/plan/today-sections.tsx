@@ -79,8 +79,9 @@ function TodaySkeleton() {
  * as usual). From `useToday`: Due today ("Due today · N left this week"), This week, then
  * "Your plan here · starts Mon", then "+ Add". Every row and section comes from the server in display
  * order; nothing here does day or week math.
- * - No rows: "No plan here yet." with Add as its one action; in a waiting group, Add only.
- * - Nothing due today: "Nothing due today. The couch is suspicious." in the Due today section.
+ * - No plan: "No plan here yet." with Add as its one action; in a waiting group, Add only.
+ * - A plan with nothing due today (even with no rows listed, e.g. fixed days on another day):
+ *   "Nothing due today. The couch is suspicious." in the Due today section.
  * - Cold load: the Skeleton after 300 ms; a failed cold load: "Can't reach Proofy right now." with
  *   Try again. Cached data shows at once and refreshes silently.
  * Mount inside the `PlanSheetHost`: Add and a row's Edit (task or commitment) open its Plan sheet.
@@ -119,8 +120,8 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
     return <TodaySkeleton />
   }
 
-  const empty = todayEmptyState(data.items, waiting)
-  if (data.items.length === 0) {
+  const empty = todayEmptyState(data.items, waiting, data.summary.hasPlan)
+  if (data.items.length === 0 && empty !== 'nothing_due') {
     if (empty === 'no_plan') {
       return (
         <EmptyState

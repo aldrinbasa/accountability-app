@@ -997,6 +997,7 @@ describe('today', () => {
           planned: 9,
           done: 0,
           left: 9,
+          has_plan: true,
         },
       ],
       error: null,
@@ -1009,6 +1010,7 @@ describe('today', () => {
       planned: 9,
       done: 0,
       left: 9,
+      hasPlan: true,
     })
     expect(db.rpc).toHaveBeenLastCalledWith('get_today_summary', { p_group_id: 'g1' })
     db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
