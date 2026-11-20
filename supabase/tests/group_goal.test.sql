@@ -16,7 +16,7 @@
 -- Solo (frank): weekly 50 from 2 Nov; P: 100, a solo week.
 begin;
 set local timezone = 'UTC';
-select plan(48);
+select plan(49);
 
 select tests.create_supabase_user(u)
 from (values ('alice'), ('bob'), ('cara'), ('dave'), ('erin'), ('gina'), ('hank'), ('frank'),
@@ -365,6 +365,17 @@ select is(
   private.lock_month(current_setting('test.manila')::uuid, '2026-09-21')::text,
   '2026-10-01',
   'Manila: the lock at Thu 1 Oct 00:00 local (30 Sep 16:00 UTC) falls in October in group time'
+);
+-- Already locked, so the lock step later leaves it alone.
+insert into public.group_weeks (group_id, week_start, lock_at, locked_at)
+values (current_setting('test.manila')::uuid, '2026-09-21', '2026-09-30 16:00:00+00',
+        '2026-09-30 16:00:00+00');
+update public.groups set time_zone = 'America/New_York'
+where id = current_setting('test.manila')::uuid;
+select is(
+  private.lock_month(current_setting('test.manila')::uuid, '2026-09-21')::text,
+  '2026-10-01',
+  'after the group moves west, that past lock (30 Sep 12:00 in New York) still belongs to October'
 );
 
 -- ===== Before P locks: live values and pending Team Player =====
