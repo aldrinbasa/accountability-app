@@ -3,6 +3,7 @@ import type { EndedMembership } from '@/domain/groups'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
 import { lastSeenCountKey, removedNoticeKey } from '@/data/group-notices'
 import { createFakeBackend, renderRoutes, TEST_GROUP } from '@/test/fake-backend'
+import { waitForGroupInUrl } from '@/test/router'
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }))
 vi.mock('@/ui/toast', () => toast)
@@ -37,7 +38,7 @@ describe('Today: removed from a group', () => {
     expect(
       screen.getByRole('button', { name: 'Group: Gym Rats, switch group' }),
     ).toBeInTheDocument()
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=group-1'))
+    await waitForGroupInUrl(router, 'group-1')
     await vi.waitFor(() =>
       expect(toast.showToast).toHaveBeenCalledWith("You're no longer in Sunday Reset.", {
         id: 'removed-m1',
@@ -60,7 +61,7 @@ describe('Today: removed from a group', () => {
     expect(
       await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' }),
     ).toBeInTheDocument()
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=group-1'))
+    await waitForGroupInUrl(router, 'group-1')
     expect(screen.queryByText("You're not in Sunday Reset anymore.")).not.toBeInTheDocument()
     await vi.waitFor(() =>
       expect(toast.showToast).toHaveBeenCalledWith("You're no longer in Sunday Reset.", {

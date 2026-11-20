@@ -7,6 +7,7 @@ import { Sheet } from '@/ui/sheet'
 import { useState } from 'react'
 import { createFakeBackend, renderRoutes, withBackend } from '@/test/fake-backend'
 import { feedCheckin } from '@/test/feed-items'
+import { waitForGroupInUrl } from '@/test/router'
 
 /** Test-only Feed route with a sheet already open. */
 function FeedWithSheet() {
@@ -47,7 +48,7 @@ describe('bottom nav', () => {
     const router = renderAt('/today')
     await screen.findByRole('heading', { level: 1 })
     // Today writes the focused group into the URL (a replace); let that settle before the push.
-    await waitFor(() => expect(router.state.location.search).toContain('g='))
+    await waitForGroupInUrl(router)
 
     await user.click(tab('Feed'))
     expect(router.state.location.pathname).toBe('/feed')
@@ -93,7 +94,7 @@ describe('bottom nav', () => {
     const router = renderAt('/board')
     await screen.findByRole('heading', { level: 1, name: 'Board' })
     // The rebuild pushes /board; the focus sync then replaces it with the group query.
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=group-1'))
+    await waitForGroupInUrl(router, 'group-1')
     expect(router.state.location.pathname).toBe('/board')
 
     await act(() => router.navigate(-1))

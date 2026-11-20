@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { MyGroup } from '@/domain/groups'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
 import { createFakeBackend, renderRoutes } from '@/test/fake-backend'
+import { waitForGroupInUrl } from '@/test/router'
 
 const GYM: MyGroup = {
   id: 'gym',
@@ -121,7 +122,7 @@ describe('group switcher', () => {
     await user.click(within(sheet).getByRole('button', { name: /Sunday Reset/ }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=reset'))
+    await waitForGroupInUrl(router, 'reset')
     expect(router.state.historyAction).toBe('REPLACE')
     expect(router.state.location.pathname).toBe('/feed')
     // The navigation waited until the sheet's history entry was gone.
@@ -178,13 +179,13 @@ describe('group switcher', () => {
     await user.click(screen.getByRole('button', { name: /switch group/ }))
     const sheet = await screen.findByRole('dialog', { name: 'Your groups' })
     await user.click(within(sheet).getByRole('button', { name: /Sunday Reset/ }))
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=reset'))
+    await waitForGroupInUrl(router, 'reset')
     // Wait for the re-render too: the nav's click handler reads the rendered location.
     await screen.findByRole('button', { name: 'Group: Sunday Reset, switch group' })
 
     await user.click(screen.getByRole('link', { name: 'Today' }))
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=reset'))
+    await waitForGroupInUrl(router, 'reset')
     expect(
       await screen.findByRole('button', { name: 'Group: Sunday Reset, switch group' }),
     ).toBeInTheDocument()

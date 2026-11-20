@@ -5,6 +5,7 @@ import type { EndedMembership, MyGroup } from '@/domain/groups'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
 import { removedNoticeKey } from '@/data/group-notices'
 import { createFakeBackend, renderRoutes, TEST_GROUP, TEST_MEMBERS } from '@/test/fake-backend'
+import { waitForGroupInUrl } from '@/test/router'
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }))
 vi.mock('@/ui/toast', () => toast)
@@ -286,7 +287,7 @@ describe('links to a group the member is no longer in', () => {
     expect(router.state.location.pathname).toBe('/me/groups/group-old')
     await user.click(screen.getByRole('button', { name: 'Go to Today' }))
     expect(router.state.location.pathname).toBe('/today')
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=group-1'))
+    await waitForGroupInUrl(router, 'group-1')
   })
 
   it('a tab with ?g= of an ended group: the Empty state, no switcher, and ?g= stays', async () => {
@@ -304,7 +305,7 @@ describe('links to a group the member is no longer in', () => {
       await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' }),
     ).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/today')
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=group-1'))
+    await waitForGroupInUrl(router, 'group-1')
   })
 
   it('Me with ?g= of an ended group shows Me, not the Empty state', async () => {

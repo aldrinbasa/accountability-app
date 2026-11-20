@@ -17,6 +17,7 @@ import {
   TEST_PROFILE,
   TEST_USER,
 } from '@/test/fake-backend'
+import { waitForGroupInUrl } from '@/test/router'
 
 function setOnline(online: boolean) {
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online })
@@ -307,7 +308,7 @@ describe('rejoining with a code joined before, without a reload', () => {
     const user = userEvent.setup()
     const result = renderRoutes(['/join/K7QX2M'])
     await user.click(await screen.findByRole('button', { name: 'Join' }))
-    await vi.waitFor(() => expect(result.router.state.location.search).toBe('?g=group-9'))
+    await waitForGroupInUrl(result.router, 'group-9')
     await screen.findByRole('button', { name: 'Group: Sunday Reset, switch group' })
     return { user, ...result }
   }

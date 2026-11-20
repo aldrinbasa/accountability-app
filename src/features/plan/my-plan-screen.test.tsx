@@ -4,6 +4,7 @@ import { BackendError } from '@/domain/error-codes'
 import type { MyPlanItem } from '@/domain/my-plan'
 import type { TaskDetails } from '@/domain/plan'
 import { createFakeBackend, renderRoutes, TEST_COMMITMENT, TEST_GROUP } from '@/test/fake-backend'
+import { waitForGroupInUrl } from '@/test/router'
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }))
 vi.mock('@/ui/toast', () => toast)
@@ -259,7 +260,7 @@ describe('My plan', () => {
       commitments: [{ ...TEST_COMMITMENT, commitmentId: 'c-book', groupId: other.id }],
     })
     const { router } = renderRoutes([`/me/plan/c-book?g=${TEST_GROUP.id}`], backend)
-    await waitFor(() => expect(router.state.location.search).toBe(`?g=${other.id}`))
+    await waitForGroupInUrl(router, other.id)
     expect(router.state.location.pathname).toBe('/me/plan/c-book')
     expect(await screen.findByRole('dialog', { name: 'Edit commitment' })).toBeInTheDocument()
     await waitFor(() => expect(backend.getMyPlan).toHaveBeenCalledWith(other.id))
