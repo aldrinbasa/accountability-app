@@ -157,6 +157,8 @@ as $$
   from public.get_board(current_setting('test.' || p_group)::uuid, p_week) b
   where b.user_id = tests.get_supabase_uid(p_user);
 $$;
+-- Called as a member (get_board runs as the caller's auth.uid()).
+grant execute on function pg_temp.board_row(text, date, text) to authenticated;
 
 -- ===== Plans =====
 -- alice: Gym Mon Wed Fri, Read Tue, Walk 2 times per week, task Tax forms (W).
