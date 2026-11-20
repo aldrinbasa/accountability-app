@@ -6,6 +6,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/  |  Tailwind v4 uses the @tailwindcss/vite plugin (CSS-first, no tailwind.config.js)
 export default defineConfig({
+  define: {
+    // Camera first-frame timing (Story 3.1): logged in dev and Vercel Preview builds, never in prod.
+    __PROOFY_LOG_CAMERA__: JSON.stringify(process.env.VERCEL_ENV !== 'production'),
+  },
   plugins: [
     react(),
     tailwindcss(),

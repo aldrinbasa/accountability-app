@@ -12,7 +12,8 @@ const fake = vi.hoisted(() => ({ backend: null as unknown as FakeBackend }))
 vi.mock('@/app/composition', async () => {
   const { createFakeBackend } = await import('@/test/fake-backend')
   fake.backend = createFakeBackend()
-  return { adapters: { backend: fake.backend } }
+  const { createFakeCamera } = await import('@/test/fake-camera')
+  return { adapters: { backend: fake.backend, camera: createFakeCamera() } }
 })
 
 const sw = vi.hoisted(() => ({ needRefresh: false, updateServiceWorker: vi.fn() }))

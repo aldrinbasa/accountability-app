@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { DotsThree } from '@phosphor-icons/react'
 import { CUSTOM_ACTIVITY_ICON, presetIcon } from '@/domain/activities'
+import { CAMERA_COPY, checkInLabel } from '@/domain/camera'
 import {
   itemTitle,
   overflowLabel,
@@ -9,6 +10,7 @@ import {
   showsRing,
   type TodayItem,
 } from '@/domain/today'
+import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
 import { ProgressRing } from '@/ui/progress-ring'
 
@@ -16,17 +18,21 @@ import { ProgressRing } from '@/ui/progress-ring'
  * A Today row (DESIGN.md `due-row`): a card with the 44px activity icon, the title in `title-sm`
  * (the task's name, else the activity's) and the schedule meta in `meta` muted, which wraps under the
  * title at large text. A times-per-week row shows the 60px Progress ring in the icon's place
- * (mockups/key-today.html). No Check in button until Epic 3. `onMore` adds the Overflow button
- * ("More actions for Grocery run"), called with the button so focus can return to it.
+ * (mockups/key-today.html). `onMore` adds the Overflow button ("More actions for Grocery run");
+ * `onCheckIn` adds the coral Check in button after it ("Check in Grocery run", Story 3.1). Both are
+ * called with their button so focus can return to it.
  */
 export function DueRow({
   item,
   onMore,
+  onCheckIn,
 }: {
   item: TodayItem
   onMore?: (button: HTMLButtonElement) => void
+  onCheckIn?: (button: HTMLButtonElement) => void
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
+  const checkInRef = useRef<HTMLButtonElement>(null)
   const title = itemTitle(item)
   const icon = item.presetKey !== null ? presetIcon(item.presetKey) : CUSTOM_ACTIVITY_ICON
   return (
@@ -63,6 +69,20 @@ export function DueRow({
         >
           <DotsThree weight="bold" size={24} aria-hidden="true" focusable="false" />
         </button>
+      ) : null}
+      {onCheckIn ? (
+        <Button
+          ref={checkInRef}
+          variant="primary"
+          aria-label={checkInLabel(title)}
+          aria-haspopup="dialog"
+          className="shrink-0 px-[14px] whitespace-nowrap"
+          onClick={() => {
+            if (checkInRef.current) onCheckIn(checkInRef.current)
+          }}
+        >
+          {CAMERA_COPY.checkIn}
+        </Button>
       ) : null}
     </li>
   )

@@ -12,9 +12,12 @@ import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
+import type { CameraPort } from '@/ports/camera-port'
 import { BackendProvider } from '@/data/backend-context'
 import { INSTALLED_KEY } from '@/data/install-state'
 import { routes } from '@/app/router'
+import { CameraPortContext } from '@/app/camera-port-context'
+import { createFakeCamera } from '@/test/fake-camera'
 
 export const TEST_USER: AuthUser = { id: 'user-1', email: 'jo@example.com' }
 
@@ -508,11 +511,12 @@ export function withBackend(
   children: ReactNode,
   onSignedOut?: () => void,
   queryClient: QueryClient = createTestQueryClient(),
+  camera: CameraPort = createFakeCamera(),
 ) {
   return (
     <QueryClientProvider client={queryClient}>
       <BackendProvider backend={backend} onSignedOut={onSignedOut}>
-        {children}
+        <CameraPortContext.Provider value={camera}>{children}</CameraPortContext.Provider>
       </BackendProvider>
     </QueryClientProvider>
   )
@@ -522,12 +526,23 @@ export function withBackend(
 export function renderRoutes(
   initialEntries: InitialEntry[],
   backend: BackendPort = createFakeBackend(),
-  options: { initialIndex?: number; onSignedOut?: () => void; queryClient?: QueryClient } = {},
+  options: {
+    initialIndex?: number
+    onSignedOut?: () => void
+    queryClient?: QueryClient
+    camera?: CameraPort
+  } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries, initialIndex: options.initialIndex })
   const queryClient = options.queryClient ?? createTestQueryClient()
   const utils = render(
-    withBackend(backend, <RouterProvider router={router} />, options.onSignedOut, queryClient),
+    withBackend(
+      backend,
+      <RouterProvider router={router} />,
+      options.onSignedOut,
+      queryClient,
+      options.camera,
+    ),
   )
   return { router, backend, queryClient, ...utils }
 }

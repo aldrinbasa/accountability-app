@@ -61,6 +61,12 @@ if (hasWindow) {
   installMatchMedia(false)
   // jsdom does not implement scrolling; the shell scrolls to top on a tab re-tap and on navigation.
   Object.defineProperty(window, 'scrollTo', { writable: true, configurable: true, value: vi.fn() })
+  // jsdom does not play media; the camera viewfinder calls play() on its stream.
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+    configurable: true,
+    writable: true,
+    value: () => Promise.resolve(),
+  })
   // jsdom has no pointer capture; sonner calls it when a toast is pressed (swipe tracking).
   for (const name of ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const) {
     if (!(name in Element.prototype)) {

@@ -53,7 +53,11 @@ export function BottomNavItem({ href, label, icon, active, onNavigate }: BottomN
  * Camera button: 64px coral blob, 2.5px outline, hard offset, lifted 30px above the bar, 32px camera.
  * Announced "Check in, button"; it is a button outside the tab semantics.
  */
-export function CameraButton({ onClick }: { onClick?: () => void }) {
+export function CameraButton({
+  onClick,
+}: {
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void
+}) {
   return (
     <li className="flex shrink-0 justify-center">
       <button

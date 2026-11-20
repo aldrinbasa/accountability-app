@@ -1,6 +1,7 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
 import { CloudSlash, Couch, ListChecks } from '@phosphor-icons/react'
 import { GROUP_COPY } from '@/domain/groups'
+import type { CameraTarget } from '@/domain/camera'
 import {
   itemsIn,
   itemTitle,
@@ -12,6 +13,7 @@ import {
 } from '@/domain/today'
 import { useToday } from '@/data/plan'
 import { EmptyState } from '@/ui/empty-state'
+import { useCameraLauncher } from '@/features/camera/camera-launcher'
 import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
 import { AddPlanButton } from '@/features/plan/add-plan-button'
 import { DueRow } from '@/features/plan/due-row'
@@ -44,17 +46,35 @@ function Section({
 function Rows({
   items,
   onMore,
+  onCheckIn,
 }: {
   items: readonly TodayItem[]
   onMore: (item: TodayItem, button: HTMLButtonElement) => void
+  /** Due today and This week rows only; never "Your plan here · starts Mon". */
+  onCheckIn?: (item: TodayItem, button: HTMLButtonElement) => void
 }) {
   return (
     <ul className="flex flex-col gap-2">
       {items.map((item) => (
-        <DueRow key={item.commitmentId} item={item} onMore={(button) => onMore(item, button)} />
+        <DueRow
+          key={item.commitmentId}
+          item={item}
+          onMore={(button) => onMore(item, button)}
+          onCheckIn={onCheckIn ? (button) => onCheckIn(item, button) : undefined}
+        />
       ))}
     </ul>
   )
+}
+
+/** What a row's Check in pre-picks in the camera's Target chip. */
+function cameraTarget(item: TodayItem): CameraTarget {
+  return {
+    commitmentId: item.commitmentId,
+    kind: item.kind,
+    title: itemTitle(item),
+    presetKey: item.presetKey,
+  }
 }
 
 /** The static cold-load placeholder in the Today layout (shown only after 300 ms). */
@@ -85,10 +105,13 @@ function TodaySkeleton() {
  * - Cold load: the Skeleton after 300 ms; a failed cold load: "Can't reach Proofy right now." with
  *   Try again. Cached data shows at once and refreshes silently.
  * Mount inside the `PlanSheetHost`: Add and a row's Edit (task or commitment) open its Plan sheet.
+ * Due today and This week rows carry Check in (also in a waiting group, FR-4), which opens the camera
+ * with the row pre-picked; next week's rows do not. Mount inside `CameraHost`.
  */
 export function TodaySections({ groupId, waiting }: { groupId: string; waiting: boolean }) {
   const query = useToday(groupId)
   const { openPlanSheet } = usePlanSheet()
+  const { openCamera } = useCameraLauncher()
   const [actions, setActions] = useState<{ item: TodayItem; opener: HTMLButtonElement } | null>(
     null,
   )
@@ -139,6 +162,10 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   const thisWeek = itemsIn(data.items, 'this_week')
   const next = itemsIn(data.items, 'starts_next_week')
 
+  function checkIn(item: TodayItem, button: HTMLButtonElement) {
+    openCamera({ mode: 'checkin', target: cameraTarget(item) }, button)
+  }
+
   function openActions(item: TodayItem, opener: HTMLButtonElement) {
     handedOff.current = false
     setActions({ item, opener })
@@ -155,12 +182,12 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
         {empty === 'nothing_due' ? (
           <EmptyState icon={Couch} line={TODAY_COPY.nothingDue} />
         ) : (
-          <Rows items={due} onMore={openActions} />
+          <Rows items={due} onMore={openActions} onCheckIn={checkIn} />
         )}
       </Section>
       {thisWeek.length > 0 ? (
         <Section title={TODAY_COPY.thisWeek}>
-          <Rows items={thisWeek} onMore={openActions} />
+          <Rows items={thisWeek} onMore={openActions} onCheckIn={checkIn} />
         </Section>
       ) : null}
       {next.length > 0 ? (

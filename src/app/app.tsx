@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { RouterProvider } from 'react-router/dom'
+import { CameraPortContext } from '@/app/camera-port-context'
 import { adapters } from '@/app/composition'
 import { createAppRouter } from '@/app/router'
 import { UpdatePrompt } from '@/app/update-prompt'
@@ -23,7 +24,9 @@ export function App() {
           clearAccountDeviceState()
         }}
       >
-        <RouterProvider router={router} />
+        <CameraPortContext.Provider value={adapters.camera}>
+          <RouterProvider router={router} />
+        </CameraPortContext.Provider>
       </BackendProvider>
       <Toaster />
       <UpdatePrompt />

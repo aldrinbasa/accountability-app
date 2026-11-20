@@ -207,10 +207,19 @@ describe('Today with a plan', () => {
     expect(ring).toHaveTextContent('0/3')
     expect(screen.getAllByRole('img')).toHaveLength(1)
 
-    // No Check in button until Epic 3; every row has an Overflow (commitment Edit since Story 2.6).
-    for (const row of document.querySelectorAll<HTMLElement>('[data-component="due-row"]')) {
-      expect(within(row).queryByRole('button', { name: /Check in/ })).not.toBeInTheDocument()
+    // Due today and This week rows end with Overflow, then Check in (Story 3.1); next week's row
+    // has no Check in.
+    for (const title of ['Gym', 'Grocery run', 'Run', 'Garage']) {
+      const checkIn = screen.getByRole('button', { name: `Check in ${title}` })
+      expect(checkIn).toHaveTextContent('Check in')
+      const buttons = within(checkIn.closest('li')!).getAllByRole('button')
+      expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
+        `More actions for ${title}`,
+        `Check in ${title}`,
+      ])
     }
+    const nextRow = screen.getByRole('heading', { level: 3, name: 'Read' }).closest('li')!
+    expect(within(nextRow).queryByRole('button', { name: /Check in/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More actions for Grocery run' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More actions for Garage' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'More actions for Gym' })).toBeInTheDocument()

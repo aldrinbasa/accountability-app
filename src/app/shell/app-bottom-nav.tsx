@@ -3,11 +3,13 @@ import { useLocation } from 'react-router'
 import { BottomNav, BottomNavItem, CameraButton } from '@/ui/bottom-nav'
 import { LEADING_TABS, TRAILING_TABS, type Tab } from '@/app/shell/tabs'
 import { useTabNavigation } from '@/app/shell/use-tab-navigation'
+import { useCameraLauncher } from '@/features/camera/camera-launcher'
 
-/** Bottom nav wired to the router: Today, Feed, Camera, Board, Me. */
+/** Bottom nav wired to the router and the camera: Today, Feed, Camera, Board, Me. */
 export function AppBottomNav() {
   const { pathname, search } = useLocation()
   const goToTab = useTabNavigation()
+  const { openCamera } = useCameraLauncher()
 
   function renderTab(tab: Tab) {
     function onNavigate(event: MouseEvent<HTMLAnchorElement>) {
@@ -33,8 +35,10 @@ export function AppBottomNav() {
   return (
     <BottomNav>
       {LEADING_TABS.map(renderTab)}
-      {/* Inert until Story 3.1 opens the camera from here. */}
-      <CameraButton />
+      {/* Snap-first: the camera opens with no target. */}
+      <CameraButton
+        onClick={(event) => openCamera({ mode: 'checkin', target: null }, event.currentTarget)}
+      />
       {TRAILING_TABS.map(renderTab)}
     </BottomNav>
   )

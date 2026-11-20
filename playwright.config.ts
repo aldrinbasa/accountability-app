@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 import { loadEnv } from 'vite'
-import { BASE_URL, PHONE } from './e2e/support/phone'
+import { BASE_URL, CAMERA_LAUNCH_ARGS, PHONE } from './e2e/support/phone'
 
 /**
  * Browser end-to-end tests (Story 1.9). They drive the built app (`vite preview`) against the LOCAL
@@ -46,8 +46,14 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: 'retain-on-failure',
   },
-  // One project: Chromium with a phone profile. iOS-only behaviour is checked by hand.
-  projects: [{ name: 'chromium-phone', use: { ...PHONE } }],
+  // One project: Chromium with a phone profile and a fake camera. iOS-only behaviour is checked by
+  // hand.
+  projects: [
+    {
+      name: 'chromium-phone',
+      use: { ...PHONE, launchOptions: { args: CAMERA_LAUNCH_ARGS } },
+    },
+  ],
   webServer: {
     command: process.env.CI ? preview : `npm run build && ${preview}`,
     url: BASE_URL,
