@@ -372,7 +372,7 @@ isOneToOne: false
           Views: {
             "feed_items": {
                   Row: {
-                    "activity_name": string | null,"actor_avatar_path": string | null,"actor_id": string | null,"actor_name": string | null,"caption": string | null,"captured_at": string | null,"commitment_id": string | null,"commitment_kind": string | null,"counted_position": number | null,"full_pruned_at": string | null,"group_id": string | null,"is_extra": boolean | null,"is_late": boolean | null,"item_id": string | null,"item_kind": string | null,"payload": Json | null,"preset_key": string | null,"received_at": string | null,"sort_at": string | null,"subject_id": string | null,"subject_name": string | null,"target": number | null,"task_name": string | null
+                    "activity_name": string | null,"actor_avatar_path": string | null,"actor_id": string | null,"actor_name": string | null,"caption": string | null,"captured_at": string | null,"commitment_id": string | null,"commitment_kind": string | null,"counted_position": number | null,"full_pruned_at": string | null,"group_id": string | null,"is_extra": boolean | null,"is_late": boolean | null,"item_id": string | null,"item_kind": string | null,"miss_count": number | null,"payload": Json | null,"preset_key": string | null,"received_at": string | null,"sort_at": string | null,"subject_id": string | null,"subject_name": string | null,"target": number | null,"task_name": string | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -449,6 +449,39 @@ isOneToOne: false
               "activity_name": string,"can_edit": boolean,"changes_from": string,"commitment_id": string,"custom_name": string,"days": (number)[],"end_date": string,"group_id": string,"min_end_date": string,"preset_key": string,"schedule_type": string,"state": string,"target": number
             }[]
                            },
+"get_friends_today":
+{ Args: { "p_group_id": string }; Returns: {
+              "activity_name": string | null,
+"actor_avatar_path": string | null,
+"actor_id": string | null,
+"actor_name": string | null,
+"caption": string | null,
+"captured_at": string | null,
+"commitment_id": string | null,
+"commitment_kind": string | null,
+"counted_position": number | null,
+"full_pruned_at": string | null,
+"group_id": string | null,
+"is_extra": boolean | null,
+"is_late": boolean | null,
+"item_id": string | null,
+"item_kind": string | null,
+"miss_count": number | null,
+"payload": Json | null,
+"preset_key": string | null,
+"received_at": string | null,
+"sort_at": string | null,
+"subject_id": string | null,
+"subject_name": string | null,
+"target": number | null,
+"task_name": string | null
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "feed_items"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
 "get_invite":
 { Args: { "p_code": string }; Returns: {
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
