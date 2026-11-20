@@ -11,7 +11,8 @@ import { cameFromMe } from '@/features/me/pushed-from-me'
 /**
  * Tab switching that never stacks tabs in history. History holds at most `[/today, /tab]`:
  * - Today -> tab: push (marked `fromToday`), so system back from the tab lands on Today.
- * - tab -> tab: replace.
+ * - tab -> tab: replace. From a screen pushed from Me (or a tab that replaced one), the Me tab goes
+ *   back one entry to the Me entry instead, so Me is never stacked on Me.
  * - tab -> Today: go back to the Today entry when it sits behind (one entry, or two from a screen
  *   pushed from Me, like My plan, whose Me entry sits in between). If the group changed on the tab, that
  *   entry still holds the old `?g=`, so it is then replaced with the current one (see
@@ -19,8 +20,8 @@ import { cameFromMe } from '@/features/me/pushed-from-me'
  * - re-tapping the active tab scrolls to the top.
  * The `?g=` group query is carried along.
  */
-/** The `?g=` search the Today entry should get once a back step from a tab lands on it. */
-let pendingTodaySearch: string | null = null
+/** The `?g=` search the entry a tab back step lands on (Today, or Me) should get once it is there. */
+let pendingReturn: { pathname: string; search: string } | null = null
 
 export function useTabNavigation(): (to: TabPath) => void {
   const navigate = useNavigate()
@@ -45,8 +46,14 @@ export function useTabNavigation(): (to: TabPath) => void {
           void navigate({ pathname: TODAY_PATH, search }, { replace: true })
           return
         }
-        if (behind !== search) pendingTodaySearch = search
+        if (behind !== search) pendingReturn = { pathname: TODAY_PATH, search }
         void navigate(cameFromMe(location.state) ? -2 : -1)
+        return
+      }
+      if (to === '/me' && cameFromMe(location.state)) {
+        // The Me entry may hold an older `?g=` (group changed since): fixed after the pop.
+        pendingReturn = { pathname: to, search }
+        void navigate(-1)
         return
       }
       // Tab -> tab keeps what sits behind (the Today entry and its search).
@@ -57,8 +64,9 @@ export function useTabNavigation(): (to: TabPath) => void {
 }
 
 /**
- * After a tab -> Today back step whose Today entry holds an older `?g=`, replace that entry's search
- * with the tab's, so Today shows the group picked on the tab and no old-group entry stays behind.
+ * After a tab back step (to Today, or to Me from a screen pushed from Me) whose entry holds an older
+ * `?g=`, replace that entry's search with the tab's, so it shows the group picked on the tab and no
+ * old-group entry stays behind.
  * Mounted once, in the app shell, before the focus sync.
  */
 export function useFinishTodayReturn(): void {
@@ -66,10 +74,10 @@ export function useFinishTodayReturn(): void {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (pendingTodaySearch === null) return
-    const search = pendingTodaySearch
-    pendingTodaySearch = null
-    if (location.pathname !== TODAY_PATH || location.search === search) return
-    void navigate({ pathname: TODAY_PATH, search }, { replace: true, state: location.state })
+    if (pendingReturn === null) return
+    const { pathname, search } = pendingReturn
+    pendingReturn = null
+    if (location.pathname !== pathname || location.search === search) return
+    void navigate({ pathname, search }, { replace: true, state: location.state })
   }, [location, navigate])
 }

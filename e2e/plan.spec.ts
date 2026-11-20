@@ -50,6 +50,7 @@ test('add a commitment, edit it from My plan, end it', async ({ page }) => {
 
   // Today follows the edit.
   await tab(page, 'Today').click()
+  await expect(page).toHaveURL(/\/today\?g=/)
   await expect(
     planHere.getByText(/^4 times per week · starts Mon \d{1,2} [A-Z][a-z]{2}$/),
   ).toBeVisible()
@@ -67,6 +68,7 @@ test('add a commitment, edit it from My plan, end it', async ({ page }) => {
   await expect(current.getByRole('heading', { level: 3, name: 'Run', exact: true })).toHaveCount(0)
 
   await tab(page, 'Today').click()
+  await expect(page).toHaveURL(/\/today\?g=/)
   await expect(page.getByRole('button', { name: 'Add a commitment or task' })).toBeVisible()
   await expect(planHere).toHaveCount(0)
 })

@@ -5,7 +5,7 @@ import { AppShell } from '@/app/shell/app-shell'
 import { TodayScreen } from '@/app/screens/today'
 import { Sheet } from '@/ui/sheet'
 import { useState } from 'react'
-import { createFakeBackend, renderRoutes, withBackend } from '@/test/fake-backend'
+import { createFakeBackend, renderRoutes, TEST_GROUP, withBackend } from '@/test/fake-backend'
 import { feedCheckin } from '@/test/feed-items'
 import { waitForGroupInUrl } from '@/test/router'
 
@@ -83,6 +83,65 @@ describe('bottom nav', () => {
     await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
     expect(router.state.historyAction).toBe('POP')
     expect(router.state.location.search).toBe('?g=group-1')
+  })
+
+  it('Today after a tab switch on a screen pushed from Me still goes back to the Today entry', async () => {
+    const user = userEvent.setup()
+    const router = renderAt('/today')
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+
+    await user.click(tab('Me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    await user.click(tab('Feed'))
+    expect(router.state.location.pathname).toBe('/feed')
+
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(router.state.historyAction).toBe('POP')
+  })
+
+  it('the Me tab on a screen pushed from Me goes back to Me, so Today still lands on Today', async () => {
+    const user = userEvent.setup()
+    const router = renderAt('/today')
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+
+    await user.click(tab('Me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    await user.click(tab('Me'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+  })
+
+  it('the Me tab after a group change on a tab from a pushed screen lands on Me with the new group', async () => {
+    const user = userEvent.setup()
+    const backend = createFakeBackend(undefined, {
+      groups: [TEST_GROUP, { ...TEST_GROUP, id: 'group-2', name: 'Night Owls' }],
+    })
+    const { router } = renderRoutes(['/today'], backend)
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router, 'group-1')
+
+    await user.click(tab('Me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    await user.click(tab('Feed'))
+    expect(router.state.location.pathname).toBe('/feed')
+    // The group changes on the Feed tab (as the switcher does: a replace that keeps the state).
+    await act(() =>
+      router.navigate('/feed?g=group-2', { replace: true, state: router.state.location.state }),
+    )
+
+    await user.click(tab('Me'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    await waitForGroupInUrl(router, 'group-2')
   })
 
   it('system back on a non-Today tab lands on Today', async () => {
