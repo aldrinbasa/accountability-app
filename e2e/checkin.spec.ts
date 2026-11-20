@@ -32,10 +32,10 @@ test('check in a task from its row, then see it in the snap-first picker', async
   await camera.getByRole('button', { name: 'Post' }).click()
   await expect(camera).toBeHidden({ timeout: 30_000 })
 
-  // The post moment on Today, and the server's Done row.
+  // The post moment settles into Friends today as the first mini, and the server's Done row.
   const moment = page.locator('[data-component="post-moment"]')
-  await expect(moment.getByText('milk, eggs, done')).toBeVisible()
-  await expect(moment.getByRole('img', { name: /Your Grocery run check-in/ })).toBeVisible()
+  await expect(moment).toHaveText('You · Grocery run')
+  await expect(moment).toHaveAccessibleName(/^Your Grocery run check-in.*milk, eggs, done$/)
   await expect(
     page.getByRole('status').filter({ hasText: 'Posted. Grocery run 1 of 1.' }),
   ).toHaveCount(1)

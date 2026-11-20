@@ -45,7 +45,7 @@ test('post offline, then it sends when the connection returns', async ({ page, c
   await expect(waiting).toBeHidden({ timeout: 30_000 })
   await expect(page.getByText(/^Offline · showing/)).toHaveCount(0)
   const moment = page.locator('[data-component="post-moment"]')
-  await expect(moment.getByText('no bars down here')).toBeVisible()
+  await expect(moment).toHaveAccessibleName(/^Your Grocery run check-in.*no bars down here$/)
   await expect(row).toHaveAttribute('data-done', '')
   await expect(row.getByRole('img', { name: 'Done' })).toBeVisible()
 })
