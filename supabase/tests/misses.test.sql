@@ -18,13 +18,14 @@
 -- test_overrides so tests.freeze_time moves their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(55);
+select plan(56);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
 select tests.create_supabase_user('carol');
 select tests.create_supabase_user('dave');
 select tests.create_supabase_user('erin');
+select tests.create_supabase_user('fiona');
 
 -- ===== Shape =====
 select ok(
@@ -92,6 +93,8 @@ select tests.authenticate_as('dave');
 select public.save_profile('Dave', 'UTC');
 select tests.authenticate_as('erin');
 select public.save_profile('Erin', 'Europe/London');
+select tests.authenticate_as('fiona');
+select public.save_profile('Fiona', 'Asia/Manila');
 
 select tests.authenticate_as('alice');
 select pg_catalog.set_config('test.g1', public.create_group('Crew')::text, true);
@@ -101,6 +104,8 @@ select public.join_group(current_setting('test.code'));
 select tests.authenticate_as('carol');
 select public.join_group(current_setting('test.code'));
 select tests.authenticate_as('erin');
+select public.join_group(current_setting('test.code'));
+select tests.authenticate_as('fiona');
 select public.join_group(current_setting('test.code'));
 select tests.authenticate_as('dave');
 select pg_catalog.set_config('test.g2', public.create_group('Solo')::text, true);
@@ -172,6 +177,8 @@ $$;
 
 select pg_catalog.set_config('test.a1', '00000000-0000-4000-a000-0000000035a1', true);
 select pg_catalog.set_config('test.a2', '00000000-0000-4000-a000-0000000035a2', true);
+select pg_catalog.set_config('test.a3', '00000000-0000-4000-a000-0000000035a3', true);
+select pg_catalog.set_config('test.a4', '00000000-0000-4000-a000-0000000035a4', true);
 select pg_catalog.set_config('test.b1', '00000000-0000-4000-a000-0000000035b1', true);
 select pg_catalog.set_config('test.b2', '00000000-0000-4000-a000-0000000035b2', true);
 
@@ -179,7 +186,8 @@ set local role service_role;
 insert into storage.objects (bucket_id, name, owner_id)
 select 'checkins', current_setting('test.g1') || '/' || current_setting('test.' || p.id) || '/' || s.size || '.webp',
        tests.get_supabase_uid(p.owner)::text
-from (values ('a1', 'alice'), ('a2', 'alice'), ('b1', 'bob'), ('b2', 'bob')) p(id, owner)
+from (values ('a1', 'alice'), ('a2', 'alice'), ('a3', 'alice'), ('a4', 'alice'), ('b1', 'bob'),
+             ('b2', 'bob')) p(id, owner)
 cross join (values ('1080'), ('360')) s(size);
 reset role;
 
@@ -558,6 +566,25 @@ select tests.authenticate_as('alice');
 select throws_ok(
   $$ select private.tick_step_4_misses() $$,
   '42501', null, 'a client cannot run step 4'
+);
+
+-- A caller far from UTC (fiona, Asia/Manila = UTC+8): her midnight is 16:00 UTC. A post received
+-- one minute before it is yesterday for her; one minute after is today. A UTC-midnight or 24-hour
+-- cutoff would include both.
+select tests.freeze_time('2026-11-23 15:59:00+00');
+select tests.authenticate_as('alice');
+select * from public.post_checkin(current_setting('test.a3')::uuid, current_setting('test.meditate')::uuid,
+  '2026-11-23 15:58:00+00', null);
+select tests.freeze_time('2026-11-23 16:01:00+00');
+select * from public.post_checkin(current_setting('test.a4')::uuid, current_setting('test.meditate')::uuid,
+  '2026-11-23 16:00:00+00', null);
+select tests.freeze_time('2026-11-23 17:00:00+00');
+select tests.authenticate_as('fiona');
+select is(
+  (select pg_catalog.string_agg(f.item_id::text, ',' order by f.sort_at desc)
+   from public.get_friends_today(current_setting('test.g1')::uuid) f),
+  current_setting('test.a4'),
+  'get_friends_today: the cutoff is the caller''s own local midnight (Manila), not UTC''s'
 );
 
 -- ===== A failing step 4 is recorded and counts before the lock =====

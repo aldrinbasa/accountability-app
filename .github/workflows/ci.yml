@@ -151,6 +151,13 @@ jobs:
           echo "VITE_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
           mail_url="${MAILPIT_URL:-${INBUCKET_URL:-}}"
           if [ -n "$mail_url" ]; then echo "MAILPIT_URL=$mail_url" >> "$GITHUB_ENV"; fi
+          # The local database URL (the CLI's fixed local value, not a secret): e2e/misses.spec.ts
+          # moves a session into the past with psql and runs tick step 4.
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::supabase status did not report DB_URL."
+            exit 1
+          fi
+          echo "DB_URL=$DB_URL" >> "$GITHUB_ENV"
       - run: npm run build
       - name: Install Chromium for Playwright
         run: npx playwright install --with-deps chromium

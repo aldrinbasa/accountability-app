@@ -12,8 +12,11 @@ const VIEWER_SIZES = '100vw'
 export interface CheckinPhotoProps {
   item: Pick<FeedCheckin, 'groupId' | 'id' | 'fullPrunedAt'>
   alt: string
-  /** `polaroid`: cover-fills the 4:3 box, opens the viewer on tap. `viewer`: contained. */
-  variant: 'polaroid' | 'viewer'
+  /**
+   * `polaroid`: cover-fills the 4:3 box, opens the viewer on tap. `viewer`: contained. `mini` (the
+   * 104px Friends today polaroid): cover-fills, the 360 rendition only.
+   */
+  variant: 'polaroid' | 'viewer' | 'mini'
   /** Load at once (the first polaroids); otherwise lazily. */
   eager?: boolean
   /** Polaroid only: the photo is a button that opens the Photo viewer. */
@@ -41,7 +44,10 @@ export function CheckinPhoto({
   onOpen,
   buttonRef,
 }: CheckinPhotoProps) {
-  const source = usePhotoUrl(item.groupId, item.id, { fullPrunedAt: item.fullPrunedAt })
+  const source = usePhotoUrl(item.groupId, item.id, {
+    fullPrunedAt: item.fullPrunedAt,
+    small: variant === 'mini',
+  })
   const online = useOnline()
   // The src that failed to load; a new src (re-mint, back online) clears the error by itself.
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
@@ -49,6 +55,10 @@ export function CheckinPhoto({
   // Offline, the cached copy is tried with the online candidates first, then as the 360 alone.
   const [smallOnly, setSmallOnly] = useState(false)
   const srcSet = source.fromCache && smallOnly ? undefined : source.srcSet
+
+  // A 104px mini has no room for a message or Retry (and sits inside a button): its gradient stays,
+  // and the Photo viewer it opens has both.
+  if (variant === 'mini' && (source.failed || loadFailed)) return null
 
   if (loadFailed && (source.fromCache || !online)) {
     return (

@@ -13,7 +13,7 @@ import {
   TEST_GROUP,
   TEST_USER,
 } from '@/test/fake-backend'
-import { feedCheckin, feedCheckinId, feedCheckins, feedEvent } from '@/test/feed-items'
+import { feedCheckin, feedCheckinId, feedCheckins, feedEvent, feedMiss } from '@/test/feed-items'
 import { intersectAll } from '@/test/intersection-observer'
 
 // Friday 20 Nov 2026, 11:00 in Manila (the test profile's zone).
@@ -119,6 +119,48 @@ describe('Feed wall', () => {
       `${FAKE_PHOTO_ORIGIN}/sign/${TEST_GROUP.id}/checkin-1/360.webp?token=t`,
     )
     expect(photo.getAttribute('srcset')).toContain('1080.webp?token=t 1080w')
+  })
+
+  it('renders misses as sticky2 stickies with the Miss chip, the day and the tease line', async () => {
+    const paint = feedMiss()
+    const gym = feedMiss({
+      id: 'miss-gym',
+      sortAt: '2026-11-17T00:00:30.000000+00:00',
+      actorId: TEST_USER.id,
+      actorName: 'Jo',
+      title: 'Gym',
+      scheduleType: 'times_per_week',
+      missCount: 2,
+      tease: 'couch_loses',
+      missedOn: '2026-11-08',
+    })
+    renderFeed('/feed', [paint, feedEvent(), gym])
+
+    await waitFor(() => expect(articles()).toHaveLength(3))
+    expect(
+      articles().map((article) => within(article).getByRole('heading', { level: 2 }).textContent),
+    ).toEqual([
+      'Dev missed Paint. The couch wins this round.',
+      'Sam joined.',
+      'You missed 2 Gym sessions. Next time, the couch loses.',
+    ])
+    const [paintArticle, joined, gymArticle] = articles() as HTMLElement[]
+    expect(paintArticle).toHaveTextContent('Miss· Thu')
+    expect(gymArticle).toHaveTextContent('Miss· 8 Nov')
+    const sticky = paintArticle?.querySelector('[data-component="sticky-note"]')
+    expect(sticky).toHaveClass('bg-sticky2')
+    expect(within(paintArticle as HTMLElement).getByText('Miss')).toHaveClass(
+      'bg-obj-miss',
+      'text-obj-on-miss',
+      '-rotate-3',
+    )
+    // Tilts alternate across event and miss stickies.
+    expect(sticky).toHaveClass('rotate-[1.5deg]')
+    expect(joined?.querySelector('[data-component="sticky-note"]')).toHaveClass('-rotate-[1.5deg]')
+    expect(gymArticle?.querySelector('[data-component="sticky-note"]')).toHaveClass(
+      'rotate-[1.5deg]',
+    )
+    expect(paintArticle).not.toHaveTextContent(/score|point|lazy|fail|shame/i)
   })
 
   it('loads the next 20 by keyset when the end comes near', async () => {

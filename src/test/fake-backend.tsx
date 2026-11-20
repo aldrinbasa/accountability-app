@@ -11,7 +11,7 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
-import type { FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
+import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
@@ -217,6 +217,8 @@ export function createFakeBackend(
     postCheckin?: (input: PostCheckinInput) => PostCheckinResult
     /** Feed items per group id, any order (the fake sorts newest first). Default none. */
     feed?: Record<string, FeedItem[]>
+    /** Friends today per group id, newest first as given. Default none. */
+    friendsToday?: Record<string, FeedCheckin[]>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -250,6 +252,7 @@ export function createFakeBackend(
       target: 1,
     }))
   const feed = options.feed ?? {}
+  const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -536,7 +539,38 @@ export function createFakeBackend(
     ),
     postCheckin: vi.fn(async (input: PostCheckinInput) => {
       if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
-      return postResult(input)
+      const result = postResult(input)
+      // A post lands at the head of the group's Friends today, like the server's list.
+      const target = (checkinTargets[input.groupId] ?? []).find(
+        (t) => t.commitmentId === input.commitmentId,
+      )
+      const at = new Date().toISOString()
+      friendsToday[input.groupId] = [
+        {
+          type: 'checkin',
+          id: input.id,
+          groupId: input.groupId,
+          sortAt: at,
+          authorId: user?.id ?? TEST_USER.id,
+          authorName: profile?.displayName ?? '',
+          authorAvatarPath: null,
+          commitmentId: input.commitmentId,
+          commitmentKind: target?.kind ?? 'commitment',
+          activityName: target?.activityName ?? '',
+          presetKey: target?.presetKey ?? null,
+          taskName: target?.name ?? null,
+          capturedAt: input.capturedAt,
+          receivedAt: at,
+          isLate: result.isLate,
+          isExtra: !result.counted,
+          caption: input.caption,
+          fullPrunedAt: null,
+          countedPosition: result.counted ? result.doneCount : null,
+          target: result.counted ? result.target : null,
+        },
+        ...(friendsToday[input.groupId] ?? []).filter((item) => item.id !== input.id),
+      ]
+      return result
     }),
     // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
     listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {
@@ -567,6 +601,10 @@ export function createFakeBackend(
         null
       )
     }),
+    // RLS: a non-member gets nothing.
+    listFriendsToday: vi.fn(async (groupId: string) =>
+      groups.some((group) => group.id === groupId) ? [...(friendsToday[groupId] ?? [])] : [],
+    ),
     signCheckinPhotos: vi.fn(async (paths: readonly string[]) =>
       Object.fromEntries(paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/sign/${path}?token=t`])),
     ),

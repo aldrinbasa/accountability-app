@@ -6,7 +6,7 @@ import { formatLateLabel, type LateLabel } from '@/domain/checkin'
  * this file only names the items and formats what the server returns.
  */
 
-/** The event kinds the Feed renders. `miss` (Story 3.5) and any later kind are dropped on read. */
+/** The membership event kinds the Feed renders as plain stickies. `miss` has its own item type. */
 export type FeedEventKind = 'member_joined' | 'member_left' | 'member_removed' | 'admin_handover'
 
 export const FEED_EVENT_KINDS: readonly FeedEventKind[] = [
@@ -71,7 +71,47 @@ export interface FeedEvent {
   subjectName: string | null
 }
 
-export type FeedItem = FeedCheckin | FeedEvent
+/** The five couch teases a miss event carries (picked by the server, never the same twice in a row). */
+export type MissTease =
+  'couch_wins' | 'couch_regards' | 'couch_comfortable' | 'couch_thanks' | 'couch_loses'
+
+export const MISS_TEASES: Readonly<Record<MissTease, string>> = {
+  couch_wins: 'The couch wins this round.',
+  couch_regards: 'The couch sends its regards.',
+  couch_comfortable: 'The couch is getting comfortable.',
+  couch_thanks: 'The couch says thanks for visiting.',
+  couch_loses: 'Next time, the couch loses.',
+}
+
+function isMissTease(value: string | null): value is MissTease {
+  return value !== null && Object.hasOwn(MISS_TEASES, value)
+}
+
+/**
+ * A miss sticky (Story 3.5): a session (fixed days, task) or a times-per-week week that ended without
+ * a counted check-in. The server stamps it, picks the tease and hides it once nothing is missed.
+ */
+export interface FeedMiss {
+  type: 'miss'
+  id: string
+  groupId: string
+  sortAt: string
+  /** The member who missed. */
+  actorId: string | null
+  actorName: string
+  commitmentId: string | null
+  /** The task's name, else the activity's. */
+  title: string
+  scheduleType: 'fixed_days' | 'times_per_week' | null
+  /** The event's sessions still missed (times per week: target minus counted, minus late arrivals). */
+  missCount: number
+  /** The tease key as stored; an unknown key shows the line without a tease. */
+  tease: string | null
+  /** The member-local day the miss covers (`YYYY-MM-DD`), the last day of a times-per-week week. */
+  missedOn: string | null
+}
+
+export type FeedItem = FeedCheckin | FeedEvent | FeedMiss
 
 /** One keyset read: older than `before`, or newer than `after` (never both), at most `limit` rows. */
 export interface FeedRowsRequest {
@@ -128,7 +168,21 @@ export const FEED_COPY = {
   close: 'Close',
   viewer: 'Photo',
   you: 'You',
+  miss: 'Miss',
+  friendsToday: 'Friends today',
+  seeAll: 'See all in Feed',
 } as const
+
+/** The Friends today heading's count: "· 3 posted". */
+export function postedCount(count: number): string {
+  return `· ${count} posted`
+}
+
+/** A mini polaroid's caption: "Marco · Gym" ("You · Gym" for the viewer's own). */
+export function miniCaption(item: FeedCheckin, viewer: Pick<FeedViewer, 'userId'>): string {
+  const who = item.authorId === viewer.userId ? FEED_COPY.you : item.authorName
+  return `${who} · ${feedTitle(item)}`
+}
 
 /** "Switched to Sunday Reset." when a deep link moved the focus to another group. */
 export function switchedToast(groupName: string): string {
@@ -284,4 +338,39 @@ export function photoRenditions(options: {
   const slow = options.hints.effectiveType === '2g' || options.hints.effectiveType === 'slow-2g'
   if (options.small || options.fullPruned || options.hints.saveData || slow) return 'small'
   return 'responsive'
+}
+
+/**
+ * A miss sticky's line: "Dev missed Paint. The couch wins this round."; times per week "Dev missed 2
+ * Gym sessions. …" ("1 Gym session"); the viewer's own "You missed …"; tasks use the task name. No
+ * score and no judgment words: only who, what and the tease. An unknown tease key leaves it off.
+ */
+export function missLine(item: FeedMiss, viewerId: string): string {
+  const who = item.actorId !== null && item.actorId === viewerId ? FEED_COPY.you : item.actorName
+  const what =
+    item.scheduleType === 'times_per_week'
+      ? `${item.missCount} ${item.title} ${item.missCount === 1 ? 'session' : 'sessions'}`
+      : item.title
+  const line = `${who} missed ${what}.`
+  return isMissTease(item.tease) ? `${line} ${MISS_TEASES[item.tease]}` : line
+}
+
+/** The weekday of a calendar date (`YYYY-MM-DD`), read as that date (no zone shift). */
+function dateLabel(isoDate: string, options: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', ...options }).format(
+    new Date(`${isoDate}T00:00:00Z`),
+  )
+}
+
+/**
+ * The miss sticky's day: "Thu" when the missed day is within the last 6 days of the viewer's today
+ * (or is the viewer's tomorrow, for a member in a zone ahead), else "12 Nov". Empty when the server sent no day.
+ */
+export function missDay(missedOn: string | null, zone: string, now: Date): string {
+  if (missedOn === null || !/^\d{4}-\d{2}-\d{2}$/.test(missedOn)) return ''
+  const days = dayNumber(localDate(now, zone)) - dayNumber(missedOn)
+  if (Number.isNaN(days)) return ''
+  // -1: a viewer behind the member's zone can see the member's day as their own tomorrow.
+  if (days >= -1 && days <= 6) return dateLabel(missedOn, { weekday: 'short' })
+  return dateLabel(missedOn, { day: 'numeric', month: 'short' })
 }

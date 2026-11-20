@@ -249,9 +249,15 @@ describe('posting', () => {
     ])
     expect(router.state.location.pathname).toBe('/today')
 
-    // The moment: the polaroid on Today, one polite announcement, and the server's row after refetch.
-    const moment = await screen.findByText('leg day')
-    expect(moment.closest('[data-component="post-moment"]')).not.toBeNull()
+    // The moment: the post leads Friends today, one polite announcement, and the server's row after
+    // refetch.
+    const moment = await waitFor(() => {
+      const element = document.querySelector('[data-component="post-moment"]')
+      expect(element).not.toBeNull()
+      return element as HTMLElement
+    })
+    expect(moment).toHaveAccessibleName(/^Your Gym check-in, .*caption: leg day$/)
+    expect(moment.closest('[data-component="friends-today"]')).not.toBeNull()
     expect(await screen.findByText('Posted. Gym 2 of 3.')).toHaveAttribute('role', 'status')
     const row = await waitFor(() => {
       const element = document.querySelector('[data-commitment-id="c-gym"]')

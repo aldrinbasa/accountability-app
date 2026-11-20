@@ -11,6 +11,7 @@ import { InlineRetry } from '@/ui/inline-retry'
 import { cn } from '@/ui/lib/utils'
 import { EventSticky } from '@/features/feed/event-sticky'
 import { FeedPolaroid } from '@/features/feed/feed-polaroid'
+import { MissSticky } from '@/features/feed/miss-sticky'
 import { NextPagePlaceholder } from '@/features/feed/feed-skeleton'
 import { PhotoViewer } from '@/features/feed/photo-viewer'
 
@@ -57,8 +58,8 @@ export interface FeedWallProps {
 }
 
 /**
- * The scrapbook wall, newest first: one Polaroid per row (alternating -2.2 / 2 deg) with event
- * stickies (±1.5 deg) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
+ * The scrapbook wall, newest first: one Polaroid per row (alternating -2.2 / 2 deg) with event and
+ * miss stickies (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
  * items skip layout and paint while off screen (`content-visibility: auto`). Nearing the end loads the
  * next page. Tapping a photo opens the Photo viewer; closing it returns focus to that photo.
  */
@@ -112,7 +113,11 @@ export function FeedWall({
           stickies += 1
           return (
             <li key={item.id} className={className}>
-              <EventSticky item={item} viewerId={viewer.userId} tilt={tilt} />
+              {item.type === 'miss' ? (
+                <MissSticky item={item} viewer={viewer} tilt={tilt} />
+              ) : (
+                <EventSticky item={item} viewerId={viewer.userId} tilt={tilt} />
+              )}
             </li>
           )
         })}

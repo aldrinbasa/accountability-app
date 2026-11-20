@@ -5,6 +5,7 @@ import {
   givenNameOf,
   keysetFilter,
   supabaseBackendAdapter as adapter,
+  toFeedItem,
   toFeedRows,
 } from '@/adapters/supabase/backend-adapter'
 import type { Tables } from '@/adapters/supabase/database.types'
@@ -1542,6 +1543,7 @@ function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_it
     counted_position: 2,
     target: 3,
     payload: null,
+    miss_count: null,
     ...overrides,
   }
 }
@@ -1581,6 +1583,57 @@ describe('feed mapping', () => {
       actorName: 'Jo',
       subjectName: 'Marco',
     })
+  })
+
+  it("maps a miss from the live title and count and the payload's tease, day and schedule", () => {
+    const miss = feedRow({
+      item_kind: 'miss',
+      item_id: 'm-1',
+      actor_id: 'u-4',
+      actor_name: 'Dev',
+      commitment_id: 'cm-2',
+      activity_name: 'Gym',
+      task_name: null,
+      captured_at: null,
+      received_at: null,
+      is_late: null,
+      is_extra: null,
+      caption: null,
+      counted_position: null,
+      target: null,
+      miss_count: 2,
+      payload: {
+        schedule_type: 'times_per_week',
+        tease: 'couch_wins',
+        missed_on: '2026-11-22',
+        count: 3,
+        activity_name: 'Old name',
+      },
+    })
+    expect(toFeedItem(miss)).toEqual({
+      type: 'miss',
+      id: 'm-1',
+      groupId: 'g-1',
+      sortAt: '2026-11-20T07:12:30.123456+00:00',
+      actorId: 'u-4',
+      actorName: 'Dev',
+      commitmentId: 'cm-2',
+      title: 'Gym',
+      scheduleType: 'times_per_week',
+      missCount: 2,
+      tease: 'couch_wins',
+      missedOn: '2026-11-22',
+    })
+    expect(toFeedItem({ ...miss, task_name: 'Tax forms' })).toMatchObject({ title: 'Tax forms' })
+    expect(
+      toFeedItem({
+        ...miss,
+        activity_name: null,
+        payload: { schedule_type: 'fixed_days', activity_name: 'Paint' },
+      }),
+    ).toMatchObject({ title: 'Paint', scheduleType: 'fixed_days', tease: null, missedOn: null })
+    // Nothing left missed: not rendered.
+    expect(toFeedItem({ ...miss, miss_count: 0 })).toBeNull()
   })
 
   it('quotes the timestamp in the keyset filter', () => {
@@ -1670,6 +1723,24 @@ describe('feed reads', () => {
     expect(db.query.limit).toHaveBeenCalledWith(10)
     expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
     expect(page.newest?.itemId).toBe('c-new')
+  })
+
+  it('reads Friends today through get_friends_today, check-ins only', async () => {
+    const select = vi.fn().mockResolvedValue({
+      data: [NEWER, feedRow({ item_kind: 'member_joined', item_id: 'e-1' }), OLDER],
+      error: null,
+      status: 200,
+    })
+    db.rpc.mockReturnValueOnce({ select })
+    const items = await adapter.listFriendsToday('g-1')
+    expect(db.rpc).toHaveBeenCalledWith('get_friends_today', { p_group_id: 'g-1' })
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('miss_count'))
+    expect(items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+
+    db.rpc.mockReturnValueOnce({
+      select: vi.fn().mockResolvedValue({ data: null, error: pgError('boom'), status: 500 }),
+    })
+    expect(await backendCodeOf(adapter.listFriendsToday('g-1'))).toBe('unknown')
   })
 
   it('reads one check-in of the group, or null', async () => {

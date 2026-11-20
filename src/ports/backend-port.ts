@@ -6,7 +6,7 @@ import type {
   PostCheckinInput,
   PostCheckinResult,
 } from '@/domain/checkin'
-import type { FeedItem, FeedRows, FeedRowsRequest } from '@/domain/feed'
+import type { FeedCheckin, FeedItem, FeedRows, FeedRowsRequest } from '@/domain/feed'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
   CommitmentDetails,
@@ -188,11 +188,16 @@ export interface BackendPort {
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on
    * (`sort_at`, `item_id`), returned newest first: older than `before` or newer than `after`. Items
-   * of kinds the app does not render yet are dropped (the cursors still cover them).
+   * of kinds the app does not render are dropped (the cursors still cover them).
    */
   listFeed(groupId: string, request: FeedRowsRequest): Promise<FeedRows>
   /** One check-in of the group's feed, or null when it is gone, hidden or in another group. */
   getFeedCheckin(groupId: string, checkinId: string): Promise<FeedItem | null>
+  /**
+   * `get_friends_today`: the group's check-ins received since the caller's local midnight, newest
+   * first, at most 30 (Today's Friends today strip).
+   */
+  listFriendsToday(groupId: string): Promise<FeedCheckin[]>
   /**
    * 10-minute signed URLs for check-in photo object paths (one request for all). A path the caller
    * may not read maps to null.

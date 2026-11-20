@@ -22,8 +22,10 @@ import {
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
   isFeedEventKind,
+  type FeedCheckin,
   type FeedCursor,
   type FeedItem,
+  type FeedMiss,
   type FeedRows,
   type FeedRowsRequest,
 } from '@/domain/feed'
@@ -498,11 +500,45 @@ type FeedItemRow = Tables<'feed_items'>
 
 /** The view's columns, in its order. */
 const FEED_COLUMNS =
-  'group_id, item_kind, item_id, sort_at, actor_id, actor_name, actor_avatar_path, subject_id, subject_name, commitment_id, commitment_kind, activity_name, preset_key, task_name, captured_at, received_at, is_late, is_extra, caption, full_pruned_at, counted_position, target, payload'
+  'group_id, item_kind, item_id, sort_at, actor_id, actor_name, actor_avatar_path, subject_id, subject_name, commitment_id, commitment_kind, activity_name, preset_key, task_name, captured_at, received_at, is_late, is_extra, caption, full_pruned_at, counted_position, target, payload, miss_count'
+
+/** A string field of an event's `payload`, else null. */
+function payloadString(payload: FeedItemRow['payload'], key: string): string | null {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const value = payload[key]
+  return typeof value === 'string' ? value : null
+}
+
+/** A miss row (Story 3.5): the live title and count, the payload's tease, day and schedule type. */
+function toFeedMiss(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedMiss | null {
+  const missCount = row.miss_count ?? 0
+  if (missCount <= 0) return null
+  const scheduleType = payloadString(row.payload, 'schedule_type')
+  return {
+    type: 'miss',
+    id,
+    groupId,
+    sortAt,
+    actorId: row.actor_id,
+    actorName: row.actor_name ?? '',
+    commitmentId: row.commitment_id,
+    title: row.task_name ?? row.activity_name ?? payloadString(row.payload, 'activity_name') ?? '',
+    scheduleType:
+      scheduleType === 'fixed_days' || scheduleType === 'times_per_week' ? scheduleType : null,
+    missCount,
+    tease: payloadString(row.payload, 'tease'),
+    missedOn: payloadString(row.payload, 'missed_on'),
+  }
+}
 
 /**
- * One `feed_items` row as a domain item, or null for a kind the app does not render yet (`miss`
- * until Story 3.5) or a row missing what every item needs.
+ * One `feed_items` row as a domain item, or null for a kind the app does not render or a row
+ * missing what every item needs.
  */
 export function toFeedItem(row: FeedItemRow): FeedItem | null {
   const { item_id: id, group_id: groupId, sort_at: sortAt, item_kind: kind } = row
@@ -532,6 +568,7 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
       target: row.target,
     }
   }
+  if (kind === 'miss') return toFeedMiss(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -1034,6 +1071,19 @@ export const supabaseBackendAdapter: BackendPort = {
       .maybeSingle()
     if (error) throw toBackendError(error, status)
     return data ? toFeedItem(data) : null
+  },
+
+  async listFriendsToday(groupId) {
+    const { data, error, status } = await supabase
+      .rpc('get_friends_today', { p_group_id: groupId })
+      .select(FEED_COLUMNS)
+    if (error) throw toBackendError(error, status)
+    const items: FeedCheckin[] = []
+    for (const row of data ?? []) {
+      const item = toFeedItem(row)
+      if (item?.type === 'checkin') items.push(item)
+    }
+    return items
   },
 
   async signCheckinPhotos(paths) {

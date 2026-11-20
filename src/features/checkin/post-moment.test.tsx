@@ -7,6 +7,7 @@ import {
   TEST_GROUP,
   TEST_TODAY_SUMMARY,
 } from '@/test/fake-backend'
+import { installMatchMedia } from '@/test/setup'
 import { PostMoment } from '@/features/checkin/post-moment'
 
 const MOMENT: Moment = {
@@ -45,25 +46,25 @@ const RUN: TodayItem = {
 }
 
 describe('PostMoment', () => {
-  it('shows the polaroid with the caption, announces once and vibrates once (also after a remount)', () => {
+  it('drops the polaroid as a hidden fixed overlay, announces once and vibrates once (also after a remount)', () => {
     const vibrate = vi.fn(() => true)
     Object.defineProperty(navigator, 'vibrate', { configurable: true, value: vibrate })
     try {
       setPostMoment({ ...MOMENT })
       const first = render(<PostMoment groupId={TEST_GROUP.id} />)
-      const moment = document.querySelector('[data-component="post-moment"]') as HTMLElement
-      expect(within(moment).getByRole('figure')).toHaveTextContent('leg day')
-      expect(within(moment).getByText('Run · 3/3')).toBeInTheDocument()
-      expect(
-        within(moment).getByRole('img', { name: 'Your Run check-in, caption: leg day' }),
-      ).toBeInTheDocument()
+      const drop = document.querySelector('[data-component="post-moment-drop"]') as HTMLElement
+      expect(drop).toHaveAttribute('aria-hidden', 'true')
+      expect(drop).toHaveClass('fixed', 'pointer-events-none', 'animate-polaroid-fade')
+      expect(drop.querySelector('.animate-polaroid-drop')).not.toBeNull()
+      expect(drop.querySelector('figure')).toHaveTextContent('leg day')
+      expect(drop).toHaveTextContent('Run · 3/3')
+      // The strip's mini carries the focus target, never the overlay.
+      expect(document.querySelector('[data-component="post-moment"]')).toBeNull()
       expect(screen.getByRole('status')).toHaveTextContent('Posted. Run 3 of 3.')
-      expect(moment).toHaveClass('animate-polaroid-drop')
       first.unmount()
 
       render(<PostMoment groupId={TEST_GROUP.id} />)
       expect(screen.getByRole('status')).toHaveTextContent('')
-      expect(screen.getByText('leg day')).toBeInTheDocument()
       expect(vibrate).toHaveBeenCalledTimes(1)
       expect(vibrate).toHaveBeenCalledWith(10)
     } finally {
@@ -71,17 +72,27 @@ describe('PostMoment', () => {
     }
   })
 
-  it('a tap jumps to the end state', () => {
+  it('a tap jumps to the end state: the overlay goes', () => {
     setPostMoment({ ...MOMENT })
     render(<PostMoment groupId={TEST_GROUP.id} />)
-    const moment = document.querySelector('[data-component="post-moment"]') as HTMLElement
-    expect(moment).toHaveAttribute('data-playing')
+    expect(document.querySelector('[data-component="post-moment-drop"]')).not.toBeNull()
     act(() => {
       fireEvent.pointerDown(document.body)
     })
     expect(getPostMoment()?.played).toBe(true)
-    expect(moment).not.toHaveAttribute('data-playing')
-    expect(moment).not.toHaveClass('animate-polaroid-drop')
+    expect(document.querySelector('[data-component="post-moment-drop"]')).toBeNull()
+  })
+
+  it('with reduced motion there is no overlay, and the announcement stays', () => {
+    installMatchMedia(true)
+    try {
+      setPostMoment({ ...MOMENT })
+      render(<PostMoment groupId={TEST_GROUP.id} />)
+      expect(document.querySelector('[data-component="post-moment-drop"]')).toBeNull()
+      expect(screen.getByRole('status')).toHaveTextContent('Posted. Run 3 of 3.')
+    } finally {
+      installMatchMedia(false)
+    }
   })
 
   it('shows nothing for another group', () => {

@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   FEED_ANCHOR_NEWER,
   FEED_ANCHOR_OLDER,
   FEED_PAGE_SIZE,
+  type FeedCheckin,
   type FeedCursor,
   type FeedPage,
 } from '@/domain/feed'
@@ -26,6 +27,11 @@ export function feedAroundKey(groupId: string, checkinId: string) {
   return [...feedKey(groupId), 'around', checkinId] as const
 }
 
+/** `['feed', groupId, 'today']`: Today's Friends today strip (refreshed with the wall's prefix). */
+export function feedTodayKey(groupId: string) {
+  return [...feedKey(groupId), 'today'] as const
+}
+
 export interface FeedRepository {
   /** A page of `FEED_PAGE_SIZE` from the newest item (null) or older than `cursor`. */
   page(groupId: string, cursor: FeedCursor | null): Promise<FeedPage>
@@ -35,6 +41,8 @@ export interface FeedRepository {
    * in another group.
    */
   around(groupId: string, checkinId: string): Promise<FeedPage>
+  /** The group's check-ins received since the member's local midnight, newest first. */
+  today(groupId: string): Promise<FeedCheckin[]>
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -71,6 +79,9 @@ export function createFeedRepository(backend: BackendPort): FeedRepository {
         hasNewer: newer.rowCount > 0,
         anchorFound: true,
       }
+    },
+    today(groupId) {
+      return backend.listFriendsToday(groupId)
     },
   }
 }
@@ -122,6 +133,25 @@ export function useFeedAround(groupId: string, checkinId: string) {
     retry: retryOnline(1),
     retryDelay: 500,
     // One per link: not worth keeping for 14 days.
+    meta: { persist: false },
+  })
+}
+
+/**
+ * Today's Friends today strip: the group's check-ins posted on the member's local day, newest first
+ * (`get_friends_today`). Refetches when Today opens and on app focus; the outbox's feed invalidation
+ * refreshes it after a post. Retries once.
+ */
+export function useFriendsToday(groupId: string) {
+  const repository = useFeedRepository('useFriendsToday')
+  return useQuery({
+    queryKey: feedTodayKey(groupId),
+    queryFn: () => repository.today(groupId),
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
+    retry: retryOnline(1),
+    retryDelay: 500,
+    // Day-scoped: a saved copy opened on a later day would show yesterday's posts.
     meta: { persist: false },
   })
 }

@@ -1,4 +1,4 @@
-import type { FeedCheckin, FeedEvent } from '@/domain/feed'
+import type { FeedCheckin, FeedEvent, FeedMiss } from '@/domain/feed'
 
 /** A check-in on `group-1`'s wall: Priya's Gym, 2 of 3, on time (override per test). */
 export function feedCheckin(overrides: Partial<FeedCheckin> = {}): FeedCheckin {
@@ -39,6 +39,25 @@ export function feedEvent(overrides: Partial<FeedEvent> = {}): FeedEvent {
     actorName: 'Sam',
     subjectId: null,
     subjectName: null,
+    ...overrides,
+  }
+}
+
+/** A miss sticky on `group-1`'s wall: Dev missed Paint on Thursday (override per test). */
+export function feedMiss(overrides: Partial<FeedMiss> = {}): FeedMiss {
+  return {
+    type: 'miss',
+    id: 'miss-1',
+    groupId: 'group-1',
+    sortAt: '2026-11-20T00:00:30.000000+00:00',
+    actorId: 'user-4',
+    actorName: 'Dev',
+    commitmentId: 'commitment-paint',
+    title: 'Paint',
+    scheduleType: 'fixed_days',
+    missCount: 1,
+    tease: 'couch_wins',
+    missedOn: '2026-11-19',
     ...overrides,
   }
 }

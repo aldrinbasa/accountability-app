@@ -6,9 +6,12 @@ import {
   checkinMeta,
   eventLine,
   formatFeedStamp,
+  missDay,
+  missLine,
   photoRenditions,
   type FeedCheckin,
   type FeedEvent,
+  type FeedMiss,
   type FeedViewer,
 } from '@/domain/feed'
 
@@ -176,5 +179,76 @@ describe('photoRenditions', () => {
         hints: { saveData: false, effectiveType: null },
       }),
     ).toBe('responsive')
+  })
+})
+
+function miss(overrides: Partial<FeedMiss> = {}): FeedMiss {
+  return {
+    type: 'miss',
+    id: 'm-1',
+    groupId: 'g-1',
+    sortAt: '2026-11-20T00:00:30Z',
+    actorId: 'dev',
+    actorName: 'Dev',
+    commitmentId: 'cm-2',
+    title: 'Paint',
+    scheduleType: 'fixed_days',
+    missCount: 1,
+    tease: 'couch_wins',
+    missedOn: '2026-11-19',
+    ...overrides,
+  }
+}
+
+describe('missLine', () => {
+  it("words another member's miss with the tease", () => {
+    expect(missLine(miss(), 'jo')).toBe('Dev missed Paint. The couch wins this round.')
+  })
+
+  it("reads 'You' for the viewer's own miss", () => {
+    expect(missLine(miss({ actorId: 'jo', tease: 'couch_regards' }), 'jo')).toBe(
+      'You missed Paint. The couch sends its regards.',
+    )
+  })
+
+  it('counts times-per-week sessions, singular and plural', () => {
+    const week = miss({ title: 'Gym', scheduleType: 'times_per_week', tease: 'couch_comfortable' })
+    expect(missLine({ ...week, missCount: 2 }, 'jo')).toBe(
+      'Dev missed 2 Gym sessions. The couch is getting comfortable.',
+    )
+    expect(missLine({ ...week, missCount: 1, tease: 'couch_thanks' }, 'jo')).toBe(
+      'Dev missed 1 Gym session. The couch says thanks for visiting.',
+    )
+  })
+
+  it('uses the task name for a task', () => {
+    expect(
+      missLine(miss({ title: 'Tax forms', scheduleType: null, tease: 'couch_loses' }), 'jo'),
+    ).toBe('Dev missed Tax forms. Next time, the couch loses.')
+  })
+
+  it('leaves an unknown tease off', () => {
+    expect(missLine(miss({ tease: 'couch_sings' }), 'jo')).toBe('Dev missed Paint.')
+    expect(missLine(miss({ tease: null }), 'jo')).toBe('Dev missed Paint.')
+  })
+})
+
+describe('missDay', () => {
+  it('shows the weekday within the last 6 days, the date when older', () => {
+    expect(missDay('2026-11-19', 'Europe/London', NOW)).toBe('Thu')
+    expect(missDay('2026-11-14', 'Europe/London', NOW)).toBe('Sat')
+    expect(missDay('2026-11-13', 'Europe/London', NOW)).toBe('13 Nov')
+  })
+
+  it('counts days in the viewer zone, and is empty without a day', () => {
+    // Friday 23:30 UTC is still Friday in London but already Saturday in Kiritimati (UTC+14).
+    const late = new Date('2026-11-20T23:30:00Z')
+    expect(missDay('2026-11-14', 'Europe/London', late)).toBe('Sat')
+    expect(missDay('2026-11-14', 'Pacific/Kiritimati', late)).toBe('14 Nov')
+    // A member ahead of the viewer: their Saturday is the viewer's tomorrow.
+    expect(missDay('2026-11-21', 'Europe/London', NOW)).toBe('Sat')
+    expect(missDay('2026-11-22', 'Europe/London', NOW)).toBe('22 Nov')
+    expect(missDay(null, 'Europe/London', NOW)).toBe('')
+    expect(missDay('soon', 'Europe/London', NOW)).toBe('')
   })
 })

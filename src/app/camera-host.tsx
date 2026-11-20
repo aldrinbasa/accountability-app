@@ -47,7 +47,7 @@ export function CameraHost({ children }: { children: ReactNode }) {
   const trigger = useRef<HTMLElement | null>(null)
   const shots = useRef(0)
   const flowBack = useRef<(() => void) | null>(null)
-  // This open ended in a post: focus goes to the post moment, not back to the trigger.
+  // This open ended in a post: focus goes to the post's mini in Friends today, not back to the trigger.
   const posted = useRef(false)
   const { group } = useFocusedGroup()
   const goToTab = useTabNavigation()
@@ -105,8 +105,8 @@ export function CameraHost({ children }: { children: ReactNode }) {
     posted.current = true
     close()
     goToTab(TODAY_PATH)
-    // After the route commits and Today renders: focus the polaroid (sent) or the outbox Banner
-    // (waiting, rejected), else the page heading.
+    // After the route commits and Today renders: focus the post's mini at the head of Friends today
+    // (sent) or the outbox Banner (waiting, rejected), else the page heading.
     const selector =
       outcome === 'sent' ? '[data-component="post-moment"]' : '[data-component="outbox-banners"]'
     requestAnimationFrame(() => requestAnimationFrame(() => focusAfterPost(selector)))
