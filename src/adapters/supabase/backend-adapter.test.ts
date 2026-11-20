@@ -1656,6 +1656,7 @@ describe('board (Stories 4.1 and 4.3)', () => {
           is_current_week: true,
           time_zone: 'Asia/Manila',
           locked: true,
+          is_winner: true,
         },
         {
           user_id: 'u2',
@@ -1704,6 +1705,7 @@ describe('board (Stories 4.1 and 4.3)', () => {
             { activityName: 'Study', scheduleType: 'fixed_days', days: [1, 3, 5], target: null },
           ],
           taskCount: 1,
+          isWinner: true,
         },
         {
           userId: 'u2',
@@ -1718,6 +1720,8 @@ describe('board (Stories 4.1 and 4.3)', () => {
           bestStreak: 0,
           plan: [],
           taskCount: 0,
+          // Missing from an older server: not a winner.
+          isWinner: false,
         },
       ],
     })
@@ -1746,6 +1750,128 @@ describe('board (Stories 4.1 and 4.3)', () => {
       status: 400,
     })
     expect(await backendCodeOf(adapter.getBoard('g1', '2026-11-16'))).toBe('not_member')
+  })
+})
+
+describe('winner (Story 4.5)', () => {
+  const weekColumns = {
+    week_start: '2026-11-09',
+    lock_at: '2026-11-18T16:00:00+00:00',
+    scored: true,
+    ranked: true,
+    winner_user_ids: ['u1', 'u2'],
+  }
+
+  it('get_winner_week maps the week and its podium, winners first', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          ...weekColumns,
+          user_id: 'u1',
+          display_name: 'Jo',
+          avatar_path: 'u1/1.webp',
+          weekly_points: 94,
+          rank: 1,
+          is_winner: true,
+        },
+        {
+          ...weekColumns,
+          user_id: 'u2',
+          display_name: 'Marco',
+          avatar_path: null,
+          weekly_points: 94,
+          rank: 2,
+          is_winner: true,
+        },
+        {
+          ...weekColumns,
+          user_id: 'u3',
+          display_name: 'Dev',
+          avatar_path: null,
+          weekly_points: 70,
+          rank: 3,
+          is_winner: false,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getWinnerWeek('g1', '2026-11-09')).toEqual({
+      weekStart: '2026-11-09',
+      lockAt: '2026-11-18T16:00:00+00:00',
+      scored: true,
+      ranked: true,
+      winnerUserIds: ['u1', 'u2'],
+      podium: [
+        {
+          userId: 'u1',
+          displayName: 'Jo',
+          avatarPath: 'u1/1.webp',
+          weeklyPoints: 94,
+          rank: 1,
+          isWinner: true,
+        },
+        {
+          userId: 'u2',
+          displayName: 'Marco',
+          avatarPath: null,
+          weeklyPoints: 94,
+          rank: 2,
+          isWinner: true,
+        },
+        {
+          userId: 'u3',
+          displayName: 'Dev',
+          avatarPath: null,
+          weeklyPoints: 70,
+          rank: 3,
+          isWinner: false,
+        },
+      ],
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_winner_week', {
+      p_group_id: 'g1',
+      p_week_start: '2026-11-09',
+    })
+  })
+
+  it('get_winner_week asks for the latest locked week with a null week, and maps no rows to null', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await adapter.getWinnerWeek('g1', null)).toBeNull()
+    expect(db.rpc).toHaveBeenLastCalledWith('get_winner_week', {
+      p_group_id: 'g1',
+      p_week_start: null,
+    })
+  })
+
+  it('a locked week with nobody on its podium keeps the week columns and an empty podium', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          ...weekColumns,
+          ranked: false,
+          winner_user_ids: [],
+          user_id: null,
+          display_name: null,
+          avatar_path: null,
+          weekly_points: null,
+          rank: null,
+          is_winner: null,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getWinnerWeek('g1', '2026-11-09')).toMatchObject({
+      ranked: false,
+      winnerUserIds: [],
+      podium: [],
+    })
+  })
+
+  it('get_winner_week maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getWinnerWeek('g1', null))).toBe('not_member')
   })
 })
 
@@ -1860,6 +1986,42 @@ describe('feed mapping', () => {
     ).toMatchObject({ title: 'Paint', scheduleType: 'fixed_days', tease: null, missedOn: null })
     // Nothing left missed: not rendered.
     expect(toFeedItem({ ...miss, miss_count: 0 })).toBeNull()
+  })
+
+  it('maps a weekly winner from its payload; a malformed one is dropped', () => {
+    const winner = feedRow({
+      item_kind: 'weekly_winner',
+      item_id: 'w-1',
+      sort_at: '2026-11-19T00:00:30+00:00',
+      actor_id: null,
+      actor_name: null,
+      commitment_id: null,
+      payload: {
+        week_start: '2026-11-09',
+        weekly_points: 94,
+        winner_user_ids: ['u-1', 'u-2'],
+        winners: [{ user_id: 'u-1', name: 'Jo' }, { user_id: 'u-2', name: 'Marco' }, 'junk'],
+      },
+    })
+    expect(toFeedItem(winner)).toEqual({
+      type: 'winner',
+      id: 'w-1',
+      groupId: winner.group_id,
+      sortAt: '2026-11-19T00:00:30+00:00',
+      weekStart: '2026-11-09',
+      weeklyPoints: 94,
+      winners: [
+        { userId: 'u-1', name: 'Jo' },
+        { userId: 'u-2', name: 'Marco' },
+      ],
+    })
+    expect(
+      toFeedItem({
+        ...winner,
+        payload: { week_start: '2026-11-09', weekly_points: 94, winners: [] },
+      }),
+    ).toBeNull()
+    expect(toFeedItem({ ...winner, payload: null })).toBeNull()
   })
 
   it('quotes the timestamp in the keyset filter', () => {

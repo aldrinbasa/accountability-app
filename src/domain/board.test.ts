@@ -34,6 +34,7 @@ function row(
     bestStreak: 0,
     plan: [],
     taskCount: 0,
+    isWinner: false,
   }
 }
 
@@ -184,6 +185,46 @@ describe('Board layout (Story 4.3)', () => {
   it('two ranked members: 1st and 2nd blocks, no rows', () => {
     const layout = boardLayout([row('a', 'Ann', 80, 1), row('b', 'Bo', 50, 2)])
     expect(layout.podium.map((block) => block.rank)).toEqual([1, 2])
+    expect(layout.rows).toEqual([])
+  })
+})
+
+describe('Board layout, locked week winners (Story 4.5)', () => {
+  const winner = (r: BoardRow): BoardRow => ({ ...r, isWinner: true })
+
+  it('co-winners split by sessions share the 1st block as rank 1; the next member keeps #3', () => {
+    const layout = boardLayout([
+      winner(row('z', 'Zed', 100, 1)),
+      winner(row('a', 'Ann', 100, 2)),
+      row('c', 'Cy', 50, 3),
+      row('d', 'Di', 40, 4),
+    ])
+    expect(
+      layout.podium.map((block) => [block.rank, block.rows.map((r) => [r.userId, r.rank])]),
+    ).toEqual([
+      [
+        1,
+        [
+          ['a', 1],
+          ['z', 1],
+        ],
+      ],
+      [3, [['c', 3]]],
+    ])
+    expect(layout.rows.map((r) => r.userId)).toEqual(['d'])
+    expect(memberSentence(layout.podium[0]?.rows[0] as BoardRow, 'last')).toBe(
+      'Ann, rank 1, weekly winner, 100 weekly points.',
+    )
+  })
+
+  it('a winner stored at rank 4 or lower still stands on the 1st block, not in the rows', () => {
+    const layout = boardLayout([
+      winner(row('a', 'Ann', 90, 1)),
+      winner(row('b', 'Bo', 90, 2)),
+      winner(row('c', 'Cy', 90, 3)),
+      winner(row('d', 'Di', 90, 4)),
+    ])
+    expect(layout.podium.map((block) => [block.rank, block.rows.length])).toEqual([[1, 4]])
     expect(layout.rows).toEqual([])
   })
 })

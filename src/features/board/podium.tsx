@@ -11,13 +11,7 @@ import { Icon } from '@/ui/icon'
 import { cn } from '@/ui/lib/utils'
 import { MemberAvatar } from '@/features/me/member-avatar'
 import { MemberMarks } from '@/features/board/member-marks'
-
-/** Block look per place (DESIGN.md `podium`): 1st coral center, 2nd lavender left, 3rd yellow right. */
-const PLACE = {
-  1: { fill: 'bg-primary', height: 'min-h-[150px]', order: 'order-2' },
-  2: { fill: 'bg-vote', height: 'min-h-[118px]', order: 'order-1' },
-  3: { fill: 'bg-sticky', height: 'min-h-[96px]', order: 'order-3' },
-} as const
+import { PODIUM_PLACE } from '@/features/board/podium-place'
 
 /** A member above the block: name, plan summary, miss marks and flame. */
 function MemberLabel({ row, week }: { row: BoardRow; week: BoardWeek }) {
@@ -37,7 +31,7 @@ function MemberLabel({ row, week }: { row: BoardRow; week: BoardWeek }) {
  * The block itself: a light object in both themes (`obj-ink` text and outline), the points in
  * numeral-lg and, when ranked, the rank. Its min-height grows with the text.
  */
-function PodiumStand({
+export function PodiumStand({
   place,
   points,
   rank,
@@ -46,7 +40,7 @@ function PodiumStand({
   points: number
   rank: number | null
 }) {
-  const look = PLACE[place]
+  const look = PODIUM_PLACE[place]
   return (
     <div
       className={cn(
@@ -66,7 +60,7 @@ function PodiumStand({
  * block. Read as one sentence per member; the drawing is hidden from screen readers.
  */
 function PodiumPlace({ block, week }: { block: PodiumBlock; week: BoardWeek }) {
-  const look = PLACE[block.rank]
+  const look = PODIUM_PLACE[block.rank]
   const first = block.rows[0]
   return (
     <li

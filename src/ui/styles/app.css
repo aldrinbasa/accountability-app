@@ -385,6 +385,21 @@ select {
   animation: chip-wobble 300ms ease-out both;
 }
 
+/* The Winner card rises into place and fades in: 300 ms (Story 4.5). A tap ends it at once. */
+@keyframes winner-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(32px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility animate-winner-rise {
+  animation: winner-rise 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
 /* Reduced motion: no transitions or animations anywhere; end states appear at once. */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -18,6 +18,11 @@ export function canShowUpdatePrompt(): boolean {
   return !cameraOpen && !uploadRunning
 }
 
+/** True while the camera overlay is open (the Winner card waits for it to close, Story 4.5). */
+export function isCameraOpen(): boolean {
+  return cameraOpen
+}
+
 /** Story 3.1: true while the camera overlay is open. */
 export function setCameraOpen(open: boolean): void {
   if (cameraOpen === open) return

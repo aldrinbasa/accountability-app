@@ -13,9 +13,10 @@
 -- recreated with every earlier column plus `is_winner`, so a locked week's co-winners stand together
 -- on the Board's 1st block (EXPERIENCE.md "Weekly winner tie (locked week)").
 --
--- Additive only: two new tables, one widened check constraint, one new RPC; private.lock_week is
--- replaced with the same signature and the 4.4 body plus the award and event writes; get_board keeps
--- its arguments and every column. The routines call now() unqualified on purpose (see
+-- Backward compatible: two new tables, one widened check constraint, one new RPC; private.lock_week
+-- is replaced with the same signature and the 4.4 body plus the award and event writes. get_board is
+-- dropped and recreated (a new output column needs that) with its arguments, every column and its
+-- grants; nothing in the database calls it, and the running app ignores the extra column. The routines call now() unqualified on purpose (see
 -- 20261204000000_misses.sql).
 
 -- 1. The badge catalog. Readable by every signed-in member; never client-writable.

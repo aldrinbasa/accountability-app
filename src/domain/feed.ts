@@ -1,4 +1,5 @@
 import { formatLateLabel, type LateLabel } from '@/domain/checkin'
+import { beatLine, joinNames } from '@/domain/winner'
 
 /**
  * The Feed wall (Story 3.4): check-ins and membership stickies, newest first. The server decides
@@ -111,7 +112,24 @@ export interface FeedMiss {
   missedOn: string | null
 }
 
-export type FeedItem = FeedCheckin | FeedEvent | FeedMiss
+/**
+ * A weekly winner sticky (Story 4.5): written once when a week with winners locks. Names and points
+ * are the payload's, as they were at the lock.
+ */
+export interface FeedWinner {
+  type: 'winner'
+  id: string
+  groupId: string
+  sortAt: string
+  /** The locked week's Monday, `YYYY-MM-DD`. */
+  weekStart: string
+  /** The winners' weekly points (co-winners share them). */
+  weeklyPoints: number
+  /** The winners by name: id and name at the lock. */
+  winners: { userId: string; name: string }[]
+}
+
+export type FeedItem = FeedCheckin | FeedEvent | FeedMiss | FeedWinner
 
 /** One keyset read: older than `before`, or newer than `after` (never both), at most `limit` rows. */
 export interface FeedRowsRequest {
@@ -373,4 +391,21 @@ export function missDay(missedOn: string | null, zone: string, now: Date): strin
   // -1: a viewer behind the member's zone can see the member's day as their own tomorrow.
   if (days >= -1 && days <= 6) return dateLabel(missedOn, { weekday: 'short' })
   return dateLabel(missedOn, { day: 'numeric', month: 'short' })
+}
+
+/**
+ * The winner sticky's line: "Last week's winner · Marco · 94 · Bow down. Or just beat Marco.";
+ * co-winners "Last week's winners · Marco & Jo · 94 each." with no tease. The winner reading their
+ * own sticky gets no tease either ("Last week's winner · Marco · 94."): it is about them.
+ */
+export function winnerStickyLine(item: FeedWinner, viewerId: string): string {
+  const names = joinNames(item.winners.map((winner) => winner.name))
+  if (item.winners.length > 1) {
+    return `Last week's winners · ${names} · ${item.weeklyPoints} each.`
+  }
+  const only = item.winners[0]
+  if (!only || only.userId === viewerId) {
+    return `Last week's winner · ${names} · ${item.weeklyPoints}.`
+  }
+  return `Last week's winner · ${names} · ${item.weeklyPoints} · ${beatLine(only.name)}`
 }

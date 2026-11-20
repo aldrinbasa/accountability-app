@@ -309,6 +309,28 @@ describe('Board week lock (Story 4.4)', () => {
     expect(places[0]).toHaveTextContent(/^Jo, rank 1, 90 weekly points/)
   })
 
+  it("a locked week's co-winners stand on the 1st block under one crown, even when sessions split them (Story 4.5)", async () => {
+    const before = testBoard({ isCurrentWeek: false, lockAt: LAST_LOCK, rows: [marco, jo] })
+    await lockWhileOpen(before, {
+      ...before,
+      locked: true,
+      rows: [
+        { ...marco, rank: 1, weeklyPoints: 90, isWinner: true },
+        { ...jo, rank: 2, weeklyPoints: 90, isWinner: true },
+        { ...dev, rank: 3 },
+      ],
+    })
+    expect(await screen.findByText('Locked')).toBeInTheDocument()
+    const places = within(
+      await screen.findByRole('list', { name: "Last week's podium" }),
+    ).getAllByRole('listitem')
+    expect(places.map((place) => place.getAttribute('data-place'))).toEqual(['1', '3'])
+    expect(places[0]).toHaveTextContent(
+      /^Jo, rank 1, weekly winner, 90 weekly points.* Marco, rank 1, weekly winner, 90 weekly points/,
+    )
+    expect(places[1]).toHaveTextContent(/^Dev, rank 3, 74 weekly points/)
+  })
+
   it('a locked week that had one member: their block, without the waiting line or Invite once the group has grown', async () => {
     const before = testBoard({ isCurrentWeek: false, lockAt: LAST_LOCK, rows: [marco, jo] })
     await lockWhileOpen(before, {

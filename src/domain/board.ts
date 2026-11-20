@@ -37,6 +37,11 @@ export interface BoardRow {
   plan: PlanItem[]
   /** Tasks with a session that week. */
   taskCount: number
+  /**
+   * One of a locked week's winners (Story 4.5, on points alone); always false for an unlocked week.
+   * Co-winners stand together on the 1st block even when sessions ranked them apart.
+   */
+  isWinner: boolean
 }
 
 /**
@@ -266,17 +271,29 @@ export interface BoardLayout {
   unscored: BoardRow[]
 }
 
-/** Podium blocks for ranks 1-3 (ties share one), leaderboard rows from rank 4, unscored rows last. */
+/**
+ * Podium blocks for ranks 1-3 (ties share one), leaderboard rows from rank 4, unscored rows last. A
+ * locked week's winners (Story 4.5) all stand on the 1st block, by name, shown as rank 1 even when
+ * sessions stored them lower; the other members keep their ranks (EXPERIENCE.md "Weekly winner tie
+ * (locked week)").
+ */
 export function boardLayout(rows: readonly BoardRow[]): BoardLayout {
+  const winners = rows
+    .filter((row) => row.isWinner)
+    .sort(byName)
+    .map((row) => ({ ...row, rank: 1 }))
+  const others = rows.filter((row) => !row.isWinner)
   const podium: PodiumBlock[] = []
+  if (winners.length > 0) podium.push({ rank: 1, rows: winners })
   for (const rank of [1, 2, 3] as const) {
-    const holders = rows.filter((row) => row.rank === rank)
+    if (rank === 1 && winners.length > 0) continue
+    const holders = others.filter((row) => row.rank === rank)
     if (holders.length > 0) podium.push({ rank, rows: holders })
   }
   return {
     podium,
-    rows: rows.filter((row) => row.rank !== null && row.rank >= 4),
-    unscored: rows.filter((row) => row.weeklyPoints === null),
+    rows: others.filter((row) => row.rank !== null && row.rank >= 4),
+    unscored: others.filter((row) => row.weeklyPoints === null),
   }
 }
 
@@ -299,12 +316,14 @@ export function unscoredText(row: BoardRow, week: BoardWeek): string {
 
 /**
  * What a screen reader reads for a member on the podium or in a row: "Marco, rank 1, 88 weekly
- * points, Gym 5x · 1 task, 2 misses this week, best current streak 8." Absent parts (no rank in a
- * waiting group, an empty plan, no misses, no streak) are left out.
+ * points, Gym 5x · 1 task, 2 misses this week, best current streak 8." A locked week's winner adds
+ * "weekly winner" after the rank. Absent parts (no rank in a waiting group, an empty plan, no
+ * misses, no streak) are left out.
  */
 export function memberSentence(row: BoardRow, week: BoardWeek): string {
   const parts = [row.displayName]
   if (row.rank !== null) parts.push(`rank ${row.rank}`)
+  if (row.isWinner) parts.push('weekly winner')
   parts.push(
     row.weeklyPoints === null ? unscoredText(row, week) : `${row.weeklyPoints} weekly points`,
   )

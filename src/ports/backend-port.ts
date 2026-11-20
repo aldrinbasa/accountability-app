@@ -1,6 +1,7 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { Board, GroupWeek } from '@/domain/board'
+import type { WinnerWeek } from '@/domain/winner'
 import type {
   CheckinPhotoSize,
   CheckinTarget,
@@ -218,6 +219,12 @@ export interface BackendPort {
    * members, with whether it is back to 0 after a reset (Story 4.2). Rejects with `not_member`.
    */
   getStreaks(groupId: string): Promise<Streak[]>
+  /**
+   * `get_winner_week`: a locked week's flags, winners, podium members and lock time (Story 4.5);
+   * `weekStart` null reads the group's most recent locked week. Null for an unknown or unlocked
+   * week (or no locked week yet). Rejects with `not_member`.
+   */
+  getWinnerWeek(groupId: string, weekStart: string | null): Promise<WinnerWeek | null>
 
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on

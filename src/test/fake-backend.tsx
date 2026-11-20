@@ -20,6 +20,7 @@ import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from 
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
+import type { WinnerWeek } from '@/domain/winner'
 import type { BackendPort } from '@/ports/backend-port'
 import type { CameraPort } from '@/ports/camera-port'
 import type { ImageEncodePort } from '@/ports/image-encode-port'
@@ -160,6 +161,7 @@ export function boardRow(
     bestStreak: 0,
     plan: [],
     taskCount: 0,
+    isWinner: false,
     ...row,
   }
 }
@@ -274,6 +276,11 @@ export function createFakeBackend(
     /** `get_group_week` per group id (default `TEST_GROUP_WEEK`). */
     groupWeeks?: Record<string, GroupWeek>
     /**
+     * `get_winner_week` per `{groupId}:{weekStart}` (locked weeks). The latest (no week asked) is the
+     * one with the greatest Monday of that group. Default none.
+     */
+    winnerWeeks?: Record<string, WinnerWeek>
+    /**
      * The server clock for `setTimeZone` (ISO instant). Default `2026-11-18T12:00:00Z`, the day of
      * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
      */
@@ -320,6 +327,7 @@ export function createFakeBackend(
   const boards: Record<string, Board> = { ...options.boards }
   const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
   const streaks: Record<string, Streak[]> = { ...options.streaks }
+  const winnerWeeks: Record<string, WinnerWeek> = { ...options.winnerWeeks }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -679,6 +687,14 @@ export function createFakeBackend(
     getStreaks: vi.fn(async (groupId: string) => {
       if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
       return streaks[groupId] ?? []
+    }),
+    getWinnerWeek: vi.fn(async (groupId: string, weekStart: string | null) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      if (weekStart !== null) return winnerWeeks[`${groupId}:${weekStart}`] ?? null
+      const latest = Object.entries(winnerWeeks)
+        .filter(([key]) => key.startsWith(`${groupId}:`))
+        .sort(([a], [b]) => (a < b ? 1 : -1))[0]
+      return latest ? latest[1] : null
     }),
     // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
     listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {

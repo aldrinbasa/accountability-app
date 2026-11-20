@@ -28,6 +28,7 @@ import {
   type FeedCursor,
   type FeedItem,
   type FeedMiss,
+  type FeedWinner,
   type FeedRows,
   type FeedRowsRequest,
 } from '@/domain/feed'
@@ -52,6 +53,7 @@ import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from 
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
+import type { WinnerPodiumMember, WinnerWeek } from '@/domain/winner'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
@@ -546,7 +548,42 @@ export function toBoard(rows: readonly BoardRpcRow[]): Board {
       bestStreak: row.best_streak ?? 0,
       plan: toPlanItems(row.plan),
       taskCount: row.task_count ?? 0,
+      isWinner: row.is_winner ?? false,
     })),
+  }
+}
+
+type WinnerRpcRow = Database['public']['Functions']['get_winner_week']['Returns'][number]
+
+/**
+ * `get_winner_week` rows as the locked week, or null when there are none (an unknown or unlocked
+ * week, or no locked week yet). The week columns repeat on every row; a row without a member (a
+ * locked week with nobody on its podium) only carries them. The generated type misses the nullable
+ * columns.
+ */
+export function toWinnerWeek(rows: readonly WinnerRpcRow[]): WinnerWeek | null {
+  const first = rows[0]
+  if (!first) return null
+  return {
+    weekStart: first.week_start,
+    lockAt: first.lock_at,
+    scored: first.scored ?? false,
+    ranked: first.ranked ?? false,
+    winnerUserIds: first.winner_user_ids ?? [],
+    podium: rows.flatMap((row): WinnerPodiumMember[] =>
+      row.user_id === null || row.rank === null
+        ? []
+        : [
+            {
+              userId: row.user_id,
+              displayName: row.display_name ?? '',
+              avatarPath: row.avatar_path ?? null,
+              weeklyPoints: row.weekly_points ?? 0,
+              rank: row.rank,
+              isWinner: row.is_winner ?? false,
+            },
+          ],
+    ),
   }
 }
 
@@ -583,6 +620,31 @@ function payloadString(payload: FeedItemRow['payload'], key: string): string | n
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
   const value = payload[key]
   return typeof value === 'string' ? value : null
+}
+
+/**
+ * A weekly winner row (Story 4.5): the payload's week, points and winners (names at the lock); null
+ * when the payload is malformed or names nobody.
+ */
+function toFeedWinner(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedWinner | null {
+  const payload = row.payload
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const weekStart = payloadString(payload, 'week_start')
+  const points = payload.weekly_points
+  const list = payload.winners
+  if (weekStart === null || typeof points !== 'number' || !Array.isArray(list)) return null
+  const winners = list.flatMap((entry) =>
+    isRecord(entry) && typeof entry.user_id === 'string' && typeof entry.name === 'string'
+      ? [{ userId: entry.user_id, name: entry.name }]
+      : [],
+  )
+  if (winners.length === 0) return null
+  return { type: 'winner', id, groupId, sortAt, weekStart, weeklyPoints: points, winners }
 }
 
 /** A miss row (Story 3.5): the live title and count, the payload's tease, day and schedule type. */
@@ -645,6 +707,7 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
     }
   }
   if (kind === 'miss') return toFeedMiss(row, id, groupId, sortAt)
+  if (kind === 'weekly_winner') return toFeedWinner(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -1190,6 +1253,16 @@ export const supabaseBackendAdapter: BackendPort = {
     })
     if (error) throw toBackendError(error, status)
     return toBoard(data ?? [])
+  },
+
+  async getWinnerWeek(groupId, weekStart) {
+    const { data, error, status } = await supabase.rpc('get_winner_week', {
+      p_group_id: groupId,
+      // SQL null reads the group's most recent locked week; the generated type misses that.
+      p_week_start: weekStart as string,
+    })
+    if (error) throw toBackendError(error, status)
+    return toWinnerWeek(data ?? [])
   },
 
   async getStreaks(groupId) {
