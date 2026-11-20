@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { Avatar } from '@/ui/avatar'
 import { AVATAR_FILLS, avatarFill, avatarInitial } from '@/ui/avatar-fill'
 
@@ -44,5 +44,39 @@ describe('Avatar', () => {
     render(<Avatar id="user-1" name="Jo" label="Jo" badge={<button type="button">Badge</button>} />)
     expect(screen.getByRole('img', { name: 'Jo' })).toHaveClass('size-[38px]')
     expect(screen.getByRole('button', { name: 'Badge' })).toBeInTheDocument()
+  })
+
+  it('shows the initial while the photo loads, the photo once loaded, the initial again on error', () => {
+    const { container, rerender } = render(
+      <Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/a.webp" />,
+    )
+    const circle = container.querySelector('[data-fill]')
+    const img = container.querySelector('img')
+    expect(circle).toHaveTextContent('J')
+    expect(img).toHaveAttribute('alt', "Jo's photo")
+    expect(img).toHaveClass('opacity-0')
+    expect(circle).not.toHaveAttribute('data-photo')
+    // While loading, the circle is the one image.
+    expect(screen.getByRole('img', { name: "Jo's photo" })).toBe(circle)
+
+    fireEvent.load(img!)
+    expect(img).toHaveClass('opacity-100')
+    expect(circle).toHaveAttribute('data-photo')
+    expect(screen.getByRole('img', { name: "Jo's photo" })).toBe(img)
+
+    rerender(<Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/b.webp" />)
+    fireEvent.error(container.querySelector('img')!)
+    expect(container.querySelector('img')).toHaveClass('opacity-0')
+    expect(circle).not.toHaveAttribute('data-photo')
+    expect(circle).toHaveTextContent('J')
+  })
+
+  it('without a photo there is no image; without a label the photo is hidden from assistive tech', () => {
+    const { container, rerender } = render(<Avatar id="user-1" name="Jo" src={null} />)
+    expect(container.querySelector('img')).toBeNull()
+    rerender(<Avatar id="user-1" name="Jo" src="https://x/a.webp" />)
+    const img = container.querySelector('img')
+    expect(img).toHaveAttribute('alt', '')
+    expect(img).toHaveAttribute('aria-hidden', 'true')
   })
 })

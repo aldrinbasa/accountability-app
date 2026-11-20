@@ -283,6 +283,8 @@ export interface GroupMember {
   membershipId: string
   userId: string
   displayName: string
+  /** The member's profile photo object in bucket `avatars` (Story 3.6), or null for the initial. */
+  avatarPath: string | null
   role: GroupRole
   /** ISO timestamp. */
   joinedAt: string

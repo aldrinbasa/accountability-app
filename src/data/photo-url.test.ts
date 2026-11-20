@@ -6,6 +6,7 @@ import {
   createPhotoSigner,
   PHOTO_URL_REFRESH_MS,
   photoUrlKey,
+  useAvatarUrl,
   usePhotoUrl,
   type PhotoUrlOptions,
 } from '@/data/photo-url'
@@ -165,5 +166,45 @@ describe('usePhotoUrl', () => {
     )
     act(() => result.current.retry())
     await waitFor(() => expect(result.current.src).toBe(signed('group-1/checkin-1/360.webp')))
+  })
+})
+
+describe('useAvatarUrl (Story 3.6)', () => {
+  function renderAvatar(backend: FakeBackend, path: string | null) {
+    const queryClient = createTestQueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      withBackend(backend, createElement('div', null, children), undefined, queryClient)
+    return { ...renderHook(() => useAvatarUrl(path), { wrapper }), queryClient }
+  }
+
+  it('signs the path in the avatars bucket, not persisted', async () => {
+    const backend = createFakeBackend()
+    const { result, queryClient } = renderAvatar(backend, 'user-1/v1.webp')
+    await waitFor(() =>
+      expect(result.current).toBe(`${FAKE_PHOTO_ORIGIN}/avatars/user-1/v1.webp?token=t`),
+    )
+    expect(backend.signAvatarPhotos).toHaveBeenCalledWith(['user-1/v1.webp'])
+    expect(backend.signCheckinPhotos).not.toHaveBeenCalled()
+    const query = queryClient
+      .getQueryCache()
+      .find({ queryKey: photoUrlKey('user-1/v1.webp', 'avatars') })
+    expect(query).toBeDefined()
+    expect(shouldPersistQuery(query!)).toBe(false)
+  })
+
+  it('no path, offline or a refused path: no URL (the initial shows)', async () => {
+    const backend = createFakeBackend()
+    expect(renderAvatar(backend, null).result.current).toBeNull()
+    expect(backend.signAvatarPhotos).not.toHaveBeenCalled()
+
+    setOnline(false)
+    expect(renderAvatar(backend, 'user-1/v1.webp').result.current).toBeNull()
+    expect(backend.signAvatarPhotos).not.toHaveBeenCalled()
+    setOnline(true)
+
+    backend.signAvatarPhotos = vi.fn(async () => ({ 'user-2/v.webp': null }))
+    const refused = renderAvatar(backend, 'user-2/v.webp')
+    await waitFor(() => expect(backend.signAvatarPhotos).toHaveBeenCalled())
+    expect(refused.result.current).toBeNull()
   })
 })

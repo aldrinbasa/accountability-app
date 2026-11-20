@@ -25,9 +25,11 @@ const db = vi.hoisted(() => {
     order: vi.fn(),
     or: vi.fn(),
     limit: vi.fn(),
+    update: vi.fn(),
     maybeSingle: vi.fn(),
   }
   query.select.mockReturnValue(query)
+  query.update.mockReturnValue(query)
   query.or.mockReturnValue(query)
   query.eq.mockReturnValue(query)
   query.is.mockReturnValue(query)
@@ -187,6 +189,62 @@ const PROFILE = {
   pendingWeekStart: '2026-11-23',
 }
 const pgError = (message: string) => ({ message, code: 'P0001', details: '', hint: '' })
+
+describe('avatars (Story 3.6)', () => {
+  it('uploads the avatar to the avatars bucket at its path, no upsert; a duplicate counts as done', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockReset()
+    storage.from.mockClear()
+    storage.bucket.upload.mockResolvedValueOnce({ data: { path: 'p' }, error: null })
+    await adapter.uploadAvatar('user-1/v1.webp', photo)
+    expect(storage.from).toHaveBeenCalledWith('avatars')
+    expect(storage.bucket.upload).toHaveBeenCalledWith(
+      'user-1/v1.webp',
+      photo,
+      expect.objectContaining({ contentType: 'image/webp', upsert: false }),
+    )
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: Object.assign(new Error('The resource already exists'), {
+        __isStorageError: true,
+        status: 409,
+      }),
+    })
+    await expect(adapter.uploadAvatar('user-1/v1.webp', photo)).resolves.toBeUndefined()
+    storage.bucket.upload.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await backendCodeOf(adapter.uploadAvatar('user-1/v1.webp', photo))).toBe('network')
+  })
+
+  it("sets the own row's avatar_path and returns the stored profile", async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.maybeSingle.mockResolvedValue({
+      data: { ...ROW, avatar_path: 'user-1/v1.webp' },
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.setAvatarPath('user-1/v1.webp')).resolves.toEqual({
+      ...PROFILE,
+      avatarPath: 'user-1/v1.webp',
+    })
+    expect(db.from).toHaveBeenCalledWith('profiles')
+    expect(db.query.update).toHaveBeenCalledWith({ avatar_path: 'user-1/v1.webp' })
+    expect(db.query.eq).toHaveBeenCalledWith('id', 'user-1')
+  })
+
+  it('signs avatar paths in the avatars bucket', async () => {
+    storage.from.mockClear()
+    storage.bucket.createSignedUrls.mockResolvedValueOnce({
+      data: [
+        { path: 'u/v.webp', signedUrl: 'https://x/sign/avatars/u/v.webp?token=a', error: null },
+      ],
+      error: null,
+    })
+    await expect(adapter.signAvatarPhotos(['u/v.webp'])).resolves.toEqual({
+      'u/v.webp': 'https://x/sign/avatars/u/v.webp?token=a',
+    })
+    expect(storage.from).toHaveBeenCalledWith('avatars')
+  })
+})
 
 describe('profiles', () => {
   it('reads the own row by the session user id', async () => {
@@ -521,14 +579,14 @@ describe('members, leave and remove', () => {
           user_id: 'user-1',
           role: 'admin',
           joined_at: '2026-11-01T10:00:00+00:00',
-          profiles: { display_name: 'Jo' },
+          profiles: { display_name: 'Jo', avatar_path: 'user-1/v1.webp' },
         },
         {
           id: 'm2',
           user_id: 'user-2',
           role: 'member',
           joined_at: '2026-11-02T10:00:00+00:00',
-          profiles: { display_name: 'Sam' },
+          profiles: { display_name: 'Sam', avatar_path: null },
         },
       ],
       error: null,
@@ -539,6 +597,7 @@ describe('members, leave and remove', () => {
         membershipId: 'm1',
         userId: 'user-1',
         displayName: 'Jo',
+        avatarPath: 'user-1/v1.webp',
         role: 'admin',
         joinedAt: '2026-11-01T10:00:00+00:00',
       },
@@ -546,6 +605,7 @@ describe('members, leave and remove', () => {
         membershipId: 'm2',
         userId: 'user-2',
         displayName: 'Sam',
+        avatarPath: null,
         role: 'member',
         joinedAt: '2026-11-02T10:00:00+00:00',
       },

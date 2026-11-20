@@ -6,8 +6,21 @@
 /** Every check-in photo is 4:3 landscape (DESIGN.md `photo-aspect`), whatever the phone orientation. */
 export const PHOTO_ASPECT = 4 / 3
 
-/** What the camera is open for. Story 3.6 adds `avatar`. */
-export type CameraMode = 'checkin'
+/** Profile photos are square (Story 3.6). */
+export const AVATAR_ASPECT = 1
+
+/** What the camera is open for: a check-in (Story 3.1) or the profile photo (Story 3.6). */
+export type CameraMode = 'checkin' | 'avatar'
+
+/** The capture crop's width / height for `mode`: 4:3 for check-ins, square for avatars. */
+export function cameraAspect(mode: CameraMode): number {
+  return mode === 'avatar' ? AVATAR_ASPECT : PHOTO_ASPECT
+}
+
+/** The camera a mode opens on: the back one for check-ins, the front one for avatars. */
+export function cameraFacing(mode: CameraMode): 'environment' | 'user' {
+  return mode === 'avatar' ? 'user' : 'environment'
+}
 
 /**
  * The commitment or task a check-in is for: pre-picked by a due row's Check in, or picked in the

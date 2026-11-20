@@ -1,4 +1,27 @@
-import { cameraPlatform, centerCrop, checkInLabel, fixItSteps, PHOTO_ASPECT } from '@/domain/camera'
+import {
+  AVATAR_ASPECT,
+  cameraAspect,
+  cameraFacing,
+  cameraPlatform,
+  centerCrop,
+  checkInLabel,
+  fixItSteps,
+  PHOTO_ASPECT,
+} from '@/domain/camera'
+
+describe('camera modes', () => {
+  it('check-ins are 4:3 on the back camera, avatars square on the front one', () => {
+    expect(cameraAspect('checkin')).toBe(PHOTO_ASPECT)
+    expect(cameraAspect('avatar')).toBe(1)
+    expect(cameraFacing('checkin')).toBe('environment')
+    expect(cameraFacing('avatar')).toBe('user')
+  })
+
+  it('a square crop takes the middle of a portrait or landscape frame', () => {
+    expect(centerCrop(720, 1280, AVATAR_ASPECT)).toEqual({ sx: 0, sy: 280, sw: 720, sh: 720 })
+    expect(centerCrop(1920, 1080, AVATAR_ASPECT)).toEqual({ sx: 420, sy: 0, sw: 1080, sh: 1080 })
+  })
+})
 
 describe('centerCrop', () => {
   it('keeps a 4:3 frame whole', () => {

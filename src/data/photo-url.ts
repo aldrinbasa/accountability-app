@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQueries } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { checkinPhotoPath } from '@/domain/checkin'
 import { BackendError, backendErrorCode } from '@/domain/error-codes'
 import { photoRenditions, type ConnectionHints } from '@/domain/feed'
@@ -30,9 +30,12 @@ export async function clearPhotoCache(): Promise<void> {
   }
 }
 
-/** `['photoUrl', path]`: one signed URL per object path. */
-export function photoUrlKey(path: string) {
-  return ['photoUrl', path] as const
+/** The private photo buckets: check-in photos (Story 3.4) and profile photos (Story 3.6). */
+export type PhotoBucket = 'checkins' | 'avatars'
+
+/** `['photoUrl', bucket, path]`: one signed URL per object path. */
+export function photoUrlKey(path: string, bucket: PhotoBucket = 'checkins') {
+  return ['photoUrl', bucket, path] as const
 }
 
 /** Re-minted this often while shown (the URL lives 10 minutes). */
@@ -50,8 +53,14 @@ interface Waiter {
   reject: (error: unknown) => void
 }
 
-/** Collects the paths asked for in one tick and signs them with one `signCheckinPhotos` call. */
-export function createPhotoSigner(backend: BackendPort): PhotoSigner {
+/**
+ * Collects the paths of `bucket` asked for in one tick and signs them with one `signCheckinPhotos`
+ * (or `signAvatarPhotos`) call.
+ */
+export function createPhotoSigner(
+  backend: BackendPort,
+  bucket: PhotoBucket = 'checkins',
+): PhotoSigner {
   let pending = new Map<string, Waiter[]>()
   let scheduled = false
 
@@ -61,7 +70,10 @@ export function createPhotoSigner(backend: BackendPort): PhotoSigner {
     pending = new Map()
     const paths = [...batch.keys()]
     try {
-      const urls = await backend.signCheckinPhotos(paths)
+      const urls =
+        bucket === 'avatars'
+          ? await backend.signAvatarPhotos(paths)
+          : await backend.signCheckinPhotos(paths)
       for (const [path, waiters] of batch) {
         const url = urls[path]
         for (const waiter of waiters) {
@@ -89,15 +101,35 @@ export function createPhotoSigner(backend: BackendPort): PhotoSigner {
   }
 }
 
-const signers = new WeakMap<BackendPort, PhotoSigner>()
+const signers = new WeakMap<BackendPort, Partial<Record<PhotoBucket, PhotoSigner>>>()
 
-function signerFor(backend: BackendPort): PhotoSigner {
-  let signer = signers.get(backend)
+function signerFor(backend: BackendPort, bucket: PhotoBucket = 'checkins'): PhotoSigner {
+  let byBucket = signers.get(backend)
+  if (!byBucket) {
+    byBucket = {}
+    signers.set(backend, byBucket)
+  }
+  let signer = byBucket[bucket]
   if (!signer) {
-    signer = createPhotoSigner(backend)
-    signers.set(backend, signer)
+    signer = createPhotoSigner(backend, bucket)
+    byBucket[bucket] = signer
   }
   return signer
+}
+
+/** One path's signed-URL query: 10-minute URLs re-minted every 9, never persisted. */
+function photoUrlQuery(signer: PhotoSigner, bucket: PhotoBucket, path: string, enabled: boolean) {
+  return {
+    queryKey: photoUrlKey(path, bucket),
+    queryFn: () => signer.sign(path),
+    enabled,
+    staleTime: PHOTO_URL_REFRESH_MS,
+    refetchInterval: PHOTO_URL_REFRESH_MS,
+    gcTime: PHOTO_URL_GC_MS,
+    retry: retryOnline(1),
+    retryDelay: 500,
+    meta: { persist: false, silentRefresh: true },
+  }
 }
 
 interface NetworkInformationLike {
@@ -160,17 +192,7 @@ export function usePhotoUrl(
   const signer = signerFor(backend)
 
   const results = useQueries({
-    queries: paths.map((path) => ({
-      queryKey: photoUrlKey(path),
-      queryFn: () => signer.sign(path),
-      enabled: online,
-      staleTime: PHOTO_URL_REFRESH_MS,
-      refetchInterval: PHOTO_URL_REFRESH_MS,
-      gcTime: PHOTO_URL_GC_MS,
-      retry: retryOnline(1),
-      retryDelay: 500,
-      meta: { persist: false, silentRefresh: true },
-    })),
+    queries: paths.map((path) => photoUrlQuery(signer, 'checkins', path, online)),
   })
 
   const retry = () => {
@@ -215,4 +237,17 @@ export function usePhotoUrl(
   }
   const failed = results.some((result) => result.isError)
   return { src: null, srcSet: undefined, fromCache: false, failed, retry }
+}
+
+/**
+ * A profile photo's signed URL (Story 3.6), from bucket `avatars` through the same batched signer
+ * and query options as check-in photos. Null without a path, while signing, after a failure and
+ * offline (the service worker caches only check-in photos): the Avatar then shows the initial.
+ */
+export function useAvatarUrl(path: string | null): string | null {
+  const { backend } = useBackendContext('useAvatarUrl')
+  const online = useOnline()
+  const signer = signerFor(backend, 'avatars')
+  const { data } = useQuery(photoUrlQuery(signer, 'avatars', path ?? '', online && path !== null))
+  return online && path !== null && data ? data : null
 }

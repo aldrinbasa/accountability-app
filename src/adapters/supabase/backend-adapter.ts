@@ -170,17 +170,18 @@ export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroupsS
 }
 
 type MemberRow = Pick<Tables<'memberships'>, 'id' | 'user_id' | 'role' | 'joined_at'> & {
-  profiles: Pick<Tables<'profiles'>, 'display_name'> | null
+  profiles: Pick<Tables<'profiles'>, 'display_name' | 'avatar_path'> | null
 }
 
-/** A group's current memberships with each member's display name. */
-const MEMBER_COLUMNS = 'id, user_id, role, joined_at, profiles(display_name)'
+/** A group's current memberships with each member's display name and avatar path. */
+const MEMBER_COLUMNS = 'id, user_id, role, joined_at, profiles(display_name, avatar_path)'
 
 export function toGroupMembers(rows: readonly MemberRow[]): GroupMember[] {
   return rows.map((row) => ({
     membershipId: row.id,
     userId: row.user_id,
     displayName: row.profiles?.display_name ?? '',
+    avatarPath: row.profiles?.avatar_path ?? null,
     role: toRole(row.role),
     joinedAt: row.joined_at,
   }))
@@ -633,6 +634,9 @@ function isStorageError(error: unknown): error is StorageErrorLike {
 /** The private bucket for check-in photos (`{group_id}/{checkin_id}/{1080|360}.webp`). */
 const CHECKINS_BUCKET = 'checkins'
 
+/** The private bucket for profile photos (`{user_id}/{version}.webp`, Story 3.6). */
+const AVATARS_BUCKET = 'avatars'
+
 /**
  * Whether a Storage upload error means the object is already there (a retried upload whose first
  * response was lost): HTTP 409, or Storage's `Duplicate` / `ResourceAlreadyExists` code.
@@ -725,9 +729,50 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 }
 
 /**
+ * Uploads one WebP object (no upsert, a year of cache). An object that already exists counts as
+ * uploaded (a retry whose first response was lost).
+ */
+async function uploadWebp(bucket: string, path: string, photo: Blob): Promise<void> {
+  let error: unknown
+  try {
+    const result = await supabase.storage.from(bucket).upload(path, photo, {
+      contentType: 'image/webp',
+      upsert: false,
+      cacheControl: '31536000',
+    })
+    error = result.error
+  } catch (thrown) {
+    error = thrown
+  }
+  if (!error || isAlreadyUploaded(error)) return
+  throw toStorageBackendError(error)
+}
+
+/** 10-minute signed URLs for `paths` in `bucket`, one request; unreadable paths map to null. */
+async function signPaths(
+  bucket: string,
+  paths: readonly string[],
+): Promise<Record<string, string | null>> {
+  if (paths.length === 0) return {}
+  const result = await supabase.storage
+    .from(bucket)
+    .createSignedUrls([...paths], PHOTO_URL_TTL_S)
+    .catch((thrown: unknown) => {
+      throw toStorageBackendError(thrown)
+    })
+  if (result.error) throw toStorageBackendError(result.error)
+  const urls: Record<string, string | null> = {}
+  for (const path of paths) urls[path] = null
+  for (const entry of result.data) {
+    if (entry.path && !entry.error && entry.signedUrl) urls[entry.path] = entry.signedUrl
+  }
+  return urls
+}
+
+/**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
  * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
- * (2.4), Today (2.5), My plan (2.6), check-ins (3.2).
+ * (2.4), Today (2.5), My plan (2.6), check-ins (3.2), avatars (3.6).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -806,6 +851,28 @@ export const supabaseBackendAdapter: BackendPort = {
     if (error) throw toBackendError(error, status)
     if (!data) throw new BackendError('unknown', 'save_profile returned no row')
     return toProfile(data)
+  },
+
+  async uploadAvatar(path, photo) {
+    await uploadWebp(AVATARS_BUCKET, path, photo)
+  },
+
+  async setAvatarPath(path) {
+    const userId = await sessionUserId('avatar')
+    // Own row only (RLS and the Story 1.4 column grant).
+    const { data, error, status } = await supabase
+      .from('profiles')
+      .update({ avatar_path: path })
+      .eq('id', userId)
+      .select(PROFILE_COLUMNS)
+      .maybeSingle()
+    if (error) throw toBackendError(error, status)
+    if (!data) throw new BackendError('unknown', 'avatar_path update returned no row')
+    return toProfile(data)
+  },
+
+  signAvatarPhotos(paths) {
+    return signPaths(AVATARS_BUCKET, paths)
   },
 
   async setTimeZone(timeZone, groupId) {
@@ -1022,21 +1089,7 @@ export const supabaseBackendAdapter: BackendPort = {
   },
 
   async uploadCheckinPhoto(groupId, checkinId, size, photo) {
-    let error: unknown
-    try {
-      const result = await supabase.storage
-        .from(CHECKINS_BUCKET)
-        .upload(checkinPhotoPath(groupId, checkinId, size), photo, {
-          contentType: 'image/webp',
-          upsert: false,
-          cacheControl: '31536000',
-        })
-      error = result.error
-    } catch (thrown) {
-      error = thrown
-    }
-    if (!error || isAlreadyUploaded(error)) return
-    throw toStorageBackendError(error)
+    await uploadWebp(CHECKINS_BUCKET, checkinPhotoPath(groupId, checkinId, size), photo)
   },
 
   async postCheckin(input) {
@@ -1086,21 +1139,8 @@ export const supabaseBackendAdapter: BackendPort = {
     return items
   },
 
-  async signCheckinPhotos(paths) {
-    if (paths.length === 0) return {}
-    const result = await supabase.storage
-      .from(CHECKINS_BUCKET)
-      .createSignedUrls([...paths], PHOTO_URL_TTL_S)
-      .catch((thrown: unknown) => {
-        throw toStorageBackendError(thrown)
-      })
-    if (result.error) throw toStorageBackendError(result.error)
-    const urls: Record<string, string | null> = {}
-    for (const path of paths) urls[path] = null
-    for (const entry of result.data) {
-      if (entry.path && !entry.error && entry.signedUrl) urls[entry.path] = entry.signedUrl
-    }
-    return urls
+  signCheckinPhotos(paths) {
+    return signPaths(CHECKINS_BUCKET, paths)
   },
 
   checkinPhotoCacheUrl(path) {

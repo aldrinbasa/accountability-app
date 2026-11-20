@@ -115,4 +115,18 @@ describe('cameraAdapter.capture', () => {
     expect(drawImage).toHaveBeenCalledWith(video, 0, 315, 1080, 810, 0, 0, 1080, 810)
     expect(capturedAt.getTime()).toBeGreaterThanOrEqual(before)
   })
+
+  it('draws a square crop for the avatar (Story 3.6)', () => {
+    const drawImage = vi.fn()
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage,
+    } as unknown as CanvasRenderingContext2D)
+    const video = document.createElement('video')
+    Object.defineProperty(video, 'videoWidth', { value: 1280 })
+    Object.defineProperty(video, 'videoHeight', { value: 720 })
+    const { canvas } = cameraAdapter.capture(video, 1)
+    expect(canvas.width).toBe(720)
+    expect(canvas.height).toBe(720)
+    expect(drawImage).toHaveBeenCalledWith(video, 280, 0, 720, 720, 0, 0, 720, 720)
+  })
 })

@@ -65,6 +65,18 @@ export interface BackendPort {
    * Rejects with `invalid_time_zone`, `profile_required`, `not_member` or `not_admin`.
    */
   setTimeZone(timeZone: string, groupId?: string): Promise<TimeZoneState>
+  /**
+   * Uploads the profile photo (one 256 px WebP) to `avatars/{path}` (`{user_id}/{version}.webp`, no
+   * upsert). An object that already exists counts as uploaded. Rejects with `network` or `unknown`.
+   */
+  uploadAvatar(path: string, photo: Blob): Promise<void>
+  /** Points the caller's own `profiles.avatar_path` at `path`. Resolves with the stored profile. */
+  setAvatarPath(path: string): Promise<Profile>
+  /**
+   * 10-minute signed URLs for avatar object paths (one request for all). A path the caller may not
+   * read maps to null.
+   */
+  signAvatarPhotos(paths: readonly string[]): Promise<Record<string, string | null>>
 
   /**
    * The signed-in member's current groups, each with its member count, plus the groups they are no
@@ -87,7 +99,10 @@ export interface BackendPort {
    */
   joinGroup(code: string): Promise<string>
 
-  /** A group's current members with display names, in handover order (earliest joined first). */
+  /**
+   * A group's current members with display names and avatar paths, in handover order (earliest
+   * joined first).
+   */
   listMembers(groupId: string): Promise<GroupMember[]>
   /** `leave_group`: ends the caller's membership. Rejects with `not_member`. */
   leaveGroup(groupId: string): Promise<void>

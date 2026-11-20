@@ -58,6 +58,7 @@ export const TEST_MEMBERS: GroupMember[] = [
     membershipId: 'm-1',
     userId: TEST_USER.id,
     displayName: 'Jo',
+    avatarPath: null,
     role: 'admin',
     joinedAt: '2026-11-01T10:00:00.000Z',
   },
@@ -65,6 +66,7 @@ export const TEST_MEMBERS: GroupMember[] = [
     membershipId: 'm-2',
     userId: 'user-2',
     displayName: 'Priya',
+    avatarPath: null,
     role: 'member',
     joinedAt: '2026-11-02T10:00:00.000Z',
   },
@@ -72,6 +74,7 @@ export const TEST_MEMBERS: GroupMember[] = [
     membershipId: 'm-3',
     userId: 'user-3',
     displayName: 'Sam',
+    avatarPath: null,
     role: 'member',
     joinedAt: '2026-11-03T10:00:00.000Z',
   },
@@ -609,6 +612,17 @@ export function createFakeBackend(
       Object.fromEntries(paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/sign/${path}?token=t`])),
     ),
     checkinPhotoCacheUrl: vi.fn((path: string) => `${FAKE_PHOTO_ORIGIN}/sign/${path}`),
+    uploadAvatar: vi.fn(async (_path: string, _photo: Blob) => {}),
+    setAvatarPath: vi.fn(async (path: string) => {
+      if (!profile) throw new BackendError('unknown', 'no profile row')
+      profile = { ...profile, avatarPath: path }
+      return profile
+    }),
+    signAvatarPhotos: vi.fn(async (paths: readonly string[]) =>
+      Object.fromEntries(
+        paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/avatars/${path}?token=t`]),
+      ),
+    ),
   }
 }
 

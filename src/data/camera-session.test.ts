@@ -268,12 +268,14 @@ describe('camera session', () => {
     expect(port.start).not.toHaveBeenCalled()
   })
 
-  it('capture hands the video to the port with the 4:3 aspect', async () => {
+  it('capture hands the video to the port with the asked aspect (4:3 or square)', async () => {
     const { port, session } = setup()
     await openLive(port, session)
     const video = document.createElement('video')
-    const shot = session.capture(video)
+    const shot = session.capture(video, 4 / 3)
     expect(port.capture).toHaveBeenCalledWith(video, 4 / 3)
     expect(shot.canvas).toBeInstanceOf(HTMLCanvasElement)
+    session.capture(video, 1)
+    expect(port.capture).toHaveBeenLastCalledWith(video, 1)
   })
 })

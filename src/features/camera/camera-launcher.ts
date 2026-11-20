@@ -1,11 +1,27 @@
 import { createContext, useContext } from 'react'
-import type { CameraMode, CameraTarget } from '@/domain/camera'
+import type { CameraTarget } from '@/domain/camera'
+import type { SavedAvatar } from '@/domain/profile'
 
-export interface CameraRequest {
-  mode: CameraMode
+/** A check-in shot (Story 3.1). */
+export interface CheckinCameraRequest {
+  mode: 'checkin'
   /** The pre-picked commitment or task (a due row's Check in); null = snap-first (Camera button). */
   target: CameraTarget | null
 }
+
+/** The profile photo (Story 3.6): front camera, square, no target chip. */
+export interface AvatarCameraRequest {
+  mode: 'avatar'
+  /**
+   * Settings: Use photo also points the profile's `avatar_path` at the upload. Setup (no profile
+   * row yet): Use photo only uploads; Continue saves the path with the name.
+   */
+  saveToProfile: boolean
+  /** The photo is in Storage (and, with `saveToProfile`, on the profile). The camera then closes. */
+  onSaved: (saved: SavedAvatar) => void
+}
+
+export type CameraRequest = CheckinCameraRequest | AvatarCameraRequest
 
 export interface CameraLauncher {
   /**

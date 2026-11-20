@@ -12,7 +12,7 @@ import { Dialog } from 'radix-ui'
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react'
 import { CameraRotate, X } from '@phosphor-icons/react'
 import { CUSTOM_ACTIVITY_ICON, presetIcon } from '@/domain/activities'
-import { CAMERA_COPY, type CameraMode, type CameraTarget } from '@/domain/camera'
+import { CAMERA_COPY, cameraAspect, type CameraMode, type CameraTarget } from '@/domain/camera'
 import type { CameraCapture, CameraSession } from '@/data/camera-session'
 import { Icon } from '@/ui/icon'
 import { cn } from '@/ui/lib/utils'
@@ -20,9 +20,10 @@ import { FixItCard } from '@/features/camera/fix-it-card'
 
 export interface CameraOverlayProps {
   open: boolean
+  /** `checkin` (4:3 viewfinder and crop) or `avatar` (square, Story 3.6). */
   mode: CameraMode
   session: CameraSession
-  /** The pre-picked target shown in the Target chip; null = snap-first (no chip). */
+  /** The pre-picked target shown in the Target chip; null = snap-first or an avatar (no chip). */
   target: CameraTarget | null
   /** `performance.now()` at the tap that opened the camera, for the first-frame timing. */
   openedAt: number | null
@@ -40,7 +41,7 @@ export interface CameraOverlayProps {
   panel?: ReactNode
   /** Changes with every flow step, so system back gets a fresh `CloseWatcher` per step. */
   backKey?: string
-  /** The mode's capture handler: the 4:3 canvas and the device capture time. */
+  /** The mode's capture handler: the 4:3 (avatar: square) canvas and the device capture time. */
   onCapture: (capture: CameraCapture) => void
   /** Where focus returns on close (the Camera button or the row's Check in). */
   returnFocusTo: () => HTMLElement | null
@@ -130,10 +131,10 @@ function Shutter({
 const BRACKET = 'pointer-events-none absolute size-[26px] border-camera-ink'
 
 /**
- * The full-screen check-in camera (Story 3.1): a modal Radix Dialog on `camera-surface` above
+ * The full-screen camera (Story 3.1; Story 3.6's avatar mode has a square frame and no chip): a modal Radix Dialog on `camera-surface` above
  * everything (`--z-camera`), `100dvh`, the 480px column centered, safe areas padded. It never touches
  * the URL, history or hash. Top row: Close camera, Target chip, Switch camera (in landscape the
- * controls move to the right edge). The 4:3 Viewfinder frame shows exactly the capture crop; the
+ * controls move to the right edge). The Viewfinder frame (4:3, square for avatars) shows exactly the capture crop; the
  * bottom row holds the "Live only" note (the dialog's description, read once on open), the Shutter
  * once the first frame is in, and an empty right slot. No gallery or file control anywhere.
  *
@@ -269,7 +270,7 @@ export function CameraOverlay({
     if (!video || !ready || shot.current || hasPanel) return
     shot.current = true
     try {
-      onCapture(session.capture(video))
+      onCapture(session.capture(video, cameraAspect(mode)))
     } catch (error) {
       // A failed capture must not leave the shutter dead.
       shot.current = false
@@ -340,7 +341,8 @@ export function CameraOverlay({
                 <>
                   <div
                     className={cn(
-                      'relative aspect-[4/3] max-h-full w-full overflow-hidden rounded-frame landscape:h-full landscape:w-auto landscape:max-w-full',
+                      'relative max-h-full w-full overflow-hidden rounded-frame landscape:h-full landscape:w-auto landscape:max-w-full',
+                      mode === 'avatar' ? 'aspect-square' : 'aspect-[4/3]',
                       status === 'prompt' && 'opacity-40',
                     )}
                     data-component="viewfinder"

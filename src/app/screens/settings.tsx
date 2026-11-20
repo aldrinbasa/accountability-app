@@ -15,6 +15,7 @@ import { IconButton } from '@/ui/icon-button'
 import { Sheet } from '@/ui/sheet'
 import { SliderSwitch } from '@/ui/slider-switch'
 import { showToast } from '@/ui/toast'
+import { ProfilePhotoRow } from '@/features/me/profile-photo-row'
 import { cameFromMe } from '@/features/me/pushed-from-me'
 import { saveZone } from '@/features/me/save-zone'
 import { TimeZoneRow, TimeZoneSheet } from '@/features/me/time-zone-sheet'
@@ -28,7 +29,8 @@ const APPEARANCE_OPTIONS = [
 /**
  * Me > Settings, a pushed screen with a back button (an installed iOS app has no browser back).
  * Story 1.3 brought Sign out; Appearance (Auto / Light / Dark, this device only) came with the Epic 1
- * polish; Story 2.7 the Time zone row and picker (changes start next week, saved optimistically).
+ * polish; Story 2.7 the Time zone row and picker (changes start next week, saved optimistically);
+ * Story 3.6 the Profile photo row at the top (the camera in avatar mode).
  * Toggles, reminders and delete account come later.
  * Sign-out ends the session; the app then clears the query cache and the gate opens /signin. With
  * photos waiting in the outbox, Sign out first opens the "Sign out?" confirm Sheet ("1 photo is still
@@ -105,6 +107,13 @@ export function SettingsScreen() {
       <h1 tabIndex={-1} className="type-headline">
         Settings
       </h1>
+      {profile ? (
+        <ul className="card flex flex-col p-0">
+          <li>
+            <ProfilePhotoRow profile={profile} />
+          </li>
+        </ul>
+      ) : null}
       <section className="flex flex-col gap-[10px]">
         <h2 id={appearanceId} className="type-label text-muted">
           {THEME_COPY.heading}

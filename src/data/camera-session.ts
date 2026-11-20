@@ -1,4 +1,3 @@
-import { PHOTO_ASPECT } from '@/domain/camera'
 import {
   CameraError,
   type CameraCapture,
@@ -37,8 +36,11 @@ export interface CameraSession {
   retry(): void
   /** Page hidden: stop every track. Visible again while open: restart (with one retry). */
   setVisible(visible: boolean): void
-  /** The live frame, center-cropped to 4:3, with the device capture time. */
-  capture(video: HTMLVideoElement): CameraCapture
+  /**
+   * The live frame, center-cropped to `aspect` (width / height: 4:3 for check-ins, 1 for avatars),
+   * with the device capture time.
+   */
+  capture(video: HTMLVideoElement, aspect: number): CameraCapture
   getSnapshot(): CameraSnapshot
   subscribe(listener: () => void): () => void
 }
@@ -199,8 +201,8 @@ export function createCameraSession(port: CameraPort): CameraSession {
       if (snapshot.status === 'denied') attempt(0)
     },
 
-    capture(video) {
-      return port.capture(video, PHOTO_ASPECT)
+    capture(video, aspect) {
+      return port.capture(video, aspect)
     },
 
     getSnapshot: () => snapshot,

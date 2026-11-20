@@ -8,10 +8,10 @@ import {
   type MyGroup,
 } from '@/domain/groups'
 import { useMembers } from '@/data/groups'
-import { Avatar } from '@/ui/avatar'
 import { Button } from '@/ui/button'
 import { InlineRetry } from '@/ui/inline-retry'
 import { RoleChip } from '@/ui/role-chip'
+import { MemberAvatar } from '@/features/me/member-avatar'
 import { RemoveMemberSheet } from '@/features/me/remove-member-sheet'
 
 /**
@@ -49,7 +49,12 @@ export function MembersList({ group }: { group: MyGroup }) {
               key={member.membershipId}
               className="flex min-h-row-min items-center gap-3 border-b-[1.5px] border-line/18 px-3 last:border-b-0"
             >
-              <Avatar id={member.userId} name={member.displayName} size={38} />
+              <MemberAvatar
+                id={member.userId}
+                name={member.displayName}
+                avatarPath={member.avatarPath}
+                size={38}
+              />
               <span className="min-w-0 flex-1 truncate type-body-strong">{member.displayName}</span>
               <RoleChip variant={member.role}>{ROLE_LABEL[member.role]}</RoleChip>
               {member.role !== 'admin' ? (

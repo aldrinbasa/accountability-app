@@ -16,6 +16,7 @@ import {
   peekPendingNext,
   savePendingNext,
 } from '@/data/pending-signin'
+import { CameraHost } from '@/app/camera-host'
 import { useFocusHeadingOnRouteChange } from '@/app/shell/use-shell-history'
 
 export const SIGN_IN_PATH = '/signin'
@@ -112,10 +113,13 @@ function FullScreenColumn({ children }: { children: ReactNode }) {
 /** Layout for /setup: the same full-screen column as sign-in, inside the auth gate. */
 export function SetupLayout() {
   useFocusHeadingOnRouteChange()
+  // Setup is outside the shell: its own camera host, for the profile photo (Story 3.6).
   return (
-    <FullScreenColumn>
-      <Outlet />
-    </FullScreenColumn>
+    <CameraHost>
+      <FullScreenColumn>
+        <Outlet />
+      </FullScreenColumn>
+    </CameraHost>
   )
 }
 
