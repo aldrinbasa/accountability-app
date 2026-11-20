@@ -13,6 +13,7 @@ import {
 } from '@/test/fake-backend'
 import { createFakeCamera } from '@/test/fake-camera'
 import { createFakeEncoder, type FakeImageEncoder } from '@/test/fake-image-encoder'
+import { waitForGroupInUrl } from '@/test/router'
 
 const GYM: TodayItem = {
   commitmentId: 'c-gym',
@@ -99,7 +100,7 @@ async function renderToday(fake: FakeBackend = backend(), encoder?: FakeImageEnc
   const camera = createFakeCamera()
   const result = renderRoutes(['/today'], fake, { camera, encoder })
   await screen.findByRole('button', { name: 'Check in Gym' })
-  await waitFor(() => expect(result.router.state.location.search).toContain('g='))
+  await waitForGroupInUrl(result.router)
   return { user, camera, ...result }
 }
 
@@ -436,7 +437,7 @@ describe('after the post', () => {
     const fake = backend()
     const user = userEvent.setup()
     const result = renderRoutes(['/feed'], fake, { camera: createFakeCamera() })
-    await waitFor(() => expect(result.router.state.location.search).toContain('g='))
+    await waitForGroupInUrl(result.router)
     await user.click(await screen.findByRole('button', { name: 'Check in' }))
     const dialog = await shoot(user)
     await user.click(await within(dialog).findByRole('button', { name: 'Gym, Fri · due' }))

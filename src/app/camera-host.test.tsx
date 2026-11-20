@@ -10,6 +10,7 @@ import {
   TEST_TODAY_SUMMARY,
 } from '@/test/fake-backend'
 import { createFakeCamera, type FakeCameraPort } from '@/test/fake-camera'
+import { waitForGroupInUrl } from '@/test/router'
 
 const toast = vi.hoisted(() => ({ showToast: vi.fn(), dismissToast: vi.fn() }))
 vi.mock('@/ui/toast', () => toast)
@@ -45,7 +46,7 @@ async function renderToday(camera: FakeCameraPort = createFakeCamera(), memberCo
   const result = renderRoutes(['/today'], backendWithGym(memberCount), { camera })
   await screen.findByRole('button', { name: 'Check in Gym' })
   // Today writes the focused group into the URL (a replace); let that settle first.
-  await waitFor(() => expect(result.router.state.location.search).toContain('g='))
+  await waitForGroupInUrl(result.router)
   return { user, camera, ...result }
 }
 

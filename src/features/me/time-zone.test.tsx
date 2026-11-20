@@ -89,6 +89,25 @@ describe('Me > Settings: Time zone', () => {
     )
   })
 
+  it('a zone whose next Monday has already started waits a week more: "from Mon 30 Nov"', async () => {
+    // Sun 22 Nov 20:00 in New York; Auckland's Mon 23 Nov 00:00 was Sun 22 Nov 11:00 UTC.
+    const user = userEvent.setup()
+    const backend = createFakeBackend(undefined, {
+      profile: { ...TEST_PROFILE, timeZone: 'America/New_York' },
+      now: '2026-11-23T01:00:00Z',
+    })
+    const { row } = await openSettings(backend)
+    await user.click(row)
+    await pick(user, 'auckland', 'GMT+12, Auckland, Wellington')
+
+    expect(backend.setTimeZone).toHaveBeenCalledWith('Pacific/Auckland')
+    await vi.waitFor(() =>
+      expect(screen.getByRole('button', { name: /^Time zone/ })).toHaveAccessibleName(
+        /, changes to GMT\+12 · Auckland, Wellington from Mon 30 Nov$/,
+      ),
+    )
+  })
+
   it('a waiting change shows under the row and is the checked zone in the picker', async () => {
     const user = userEvent.setup()
     const backend = createFakeBackend(undefined, {

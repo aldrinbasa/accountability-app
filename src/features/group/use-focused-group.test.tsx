@@ -3,6 +3,7 @@ import type { MyGroup } from '@/domain/groups'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
 import { createFakeBackend, renderRoutes } from '@/test/fake-backend'
 import { searchWithGroup } from '@/features/group/use-focused-group'
+import { waitForGroupInUrl } from '@/test/router'
 
 function group(id: string, name: string, joinedAt: string, memberCount = 2): MyGroup {
   return {
@@ -41,7 +42,7 @@ describe('focused group sync', () => {
     localStorage.setItem(FOCUSED_GROUP_KEY, 'a')
     const { router } = renderWith('/feed?g=x', [A, B])
     await switcherFor('Alpha')
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=a'))
+    await waitForGroupInUrl(router, 'a')
     expect(router.state.location.pathname).toBe('/feed')
   })
 
@@ -49,7 +50,7 @@ describe('focused group sync', () => {
     localStorage.setItem(FOCUSED_GROUP_KEY, 'b')
     const { router } = renderWith('/today', [A, B])
     await switcherFor('Bravo')
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=b'))
+    await waitForGroupInUrl(router, 'b')
     expect(router.state.historyAction).toBe('REPLACE')
   })
 
@@ -57,7 +58,7 @@ describe('focused group sync', () => {
     localStorage.setItem(FOCUSED_GROUP_KEY, 'gone')
     const { router } = renderWith('/today', [B, A])
     await switcherFor('Alpha')
-    await vi.waitFor(() => expect(router.state.location.search).toBe('?g=a'))
+    await waitForGroupInUrl(router, 'a')
     expect(localStorage.getItem(FOCUSED_GROUP_KEY)).toBe('a')
   })
 

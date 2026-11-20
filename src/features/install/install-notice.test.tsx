@@ -8,6 +8,7 @@ import {
 } from '@/data/install-state'
 import { renderRoutes } from '@/test/fake-backend'
 import { keepFakePrompt, restoreDevice, setDevice, setStandalone, UA } from '@/test/install-env'
+import { waitForGroupInUrl } from '@/test/router'
 
 const BANNER = 'Reminders need Proofy on your home screen.'
 const HINT = 'Proofy works best from your home screen. Full screen, one tap away.'
@@ -21,11 +22,9 @@ afterEach(() => {
 async function openToday() {
   const result = renderRoutes(['/today'])
   await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' })
-  // The focused group reaches the URL (`?g=`) in a replace navigation after the groups load; act
-  // only once it is there, or "Show me how" can still carry the old, empty search.
-  await vi.waitFor(() => expect(result.router.state.location.search).toBe('?g=group-1'))
-  // The router state can lead React's render; flush it so click handlers see the new search.
-  await act(async () => {})
+  // Act only once the focused group is in the URL, or "Show me how" can still carry the old,
+  // empty search.
+  await waitForGroupInUrl(result.router, 'group-1')
   return result
 }
 
