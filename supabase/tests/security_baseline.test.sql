@@ -1,7 +1,9 @@
 -- Security baseline (Story 1.1, AD-16): the private schema is closed to anon, and objects created
 -- after the baseline migration get no default privileges for client roles.
--- Story 1.6 gives authenticated USAGE on private and EXECUTE on exactly three RLS helpers
--- (is_member, is_admin, shares_group); nothing else in private is executable by a client role.
+-- Story 1.6 gives authenticated USAGE on private and EXECUTE on three RLS helpers (is_member,
+-- is_admin, shares_group); Story 2.2 adds the helpers that RLS, group_activity_options and
+-- plan_preview call (commitment_is_active, member_time_zone, membership_is_current,
+-- prorated_target, week_start_of). Nothing else in private is executable by a client role.
 begin;
 select plan(20);
 
@@ -14,8 +16,9 @@ select is(
    from pg_catalog.pg_proc p
    where p.pronamespace = 'private'::regnamespace
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
-  array['is_admin', 'is_member', 'shares_group']::text[],
-  'authenticated can execute only is_admin, is_member and shares_group in private'
+  array['commitment_is_active', 'is_admin', 'is_member', 'member_time_zone', 'membership_is_current',
+        'prorated_target', 'shares_group', 'week_start_of']::text[],
+  'authenticated can execute only the RLS, view and plan_preview helpers in private'
 );
 select is(
   (select count(*)::integer from pg_catalog.pg_proc p

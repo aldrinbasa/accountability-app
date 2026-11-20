@@ -8,6 +8,8 @@ const GYM: MyGroup = {
   id: 'gym',
   name: 'Gym Rats',
   timeZone: 'Asia/Manila',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
   role: 'admin',
   joinedAt: '2026-11-01T10:00:00Z',
   memberCount: 5,
@@ -16,6 +18,8 @@ const RESET: MyGroup = {
   id: 'reset',
   name: 'Sunday Reset',
   timeZone: 'Europe/Paris',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
   role: 'member',
   joinedAt: '2026-11-03T10:00:00Z',
   memberCount: 1,
@@ -52,7 +56,8 @@ describe('Me > My groups', () => {
     expect(router.state.location.search).toBe('?g=gym')
     expect(screen.getByRole('heading', { level: 1, name: 'Sunday Reset' })).toBeInTheDocument()
     expect(screen.getByText('Group time zone')).toBeInTheDocument()
-    expect(screen.getByText('Europe/Paris')).toBeInTheDocument()
+    expect(screen.getByText('GMT+1 · Paris, Berlin, Rome')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Group time zone/ })).not.toBeInTheDocument()
     expect(
       screen.getByText('Sets the week lock and winner for everyone. Changes start next week.'),
     ).toBeInTheDocument()

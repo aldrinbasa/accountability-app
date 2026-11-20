@@ -27,6 +27,12 @@ export interface SheetProps {
   description?: ReactNode
   /** The sheet holds unsaved input: closing asks "Discard this?" first. */
   dirty?: boolean
+  /**
+   * Where focus returns on close, asked at close time: for a sheet that replaces another one (the
+   * opener is not what has focus as it opens), or an opener that may be gone by then. Default: the
+   * element focused when the sheet opened.
+   */
+  returnFocusTo?: () => HTMLElement | null
   className?: string
 }
 
@@ -43,6 +49,7 @@ export function Sheet({
   children,
   description,
   dirty = false,
+  returnFocusTo,
   className,
 }: SheetProps) {
   const [confirming, setConfirming] = useState(false)
@@ -175,7 +182,7 @@ export function Sheet({
           }}
           onCloseAutoFocus={(event) => {
             event.preventDefault()
-            const opener = returnFocusRef.current
+            const opener = returnFocusTo ? returnFocusTo() : returnFocusRef.current
             returnFocusRef.current = null
             if (opener?.isConnected) opener.focus()
           }}

@@ -1,6 +1,23 @@
+import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
+import type {
+  CommitmentDetails,
+  MyPlanItem,
+  UpdateCommitmentInput,
+  UpdateCommitmentResult,
+} from '@/domain/my-plan'
+import type {
+  AddCommitmentInput,
+  AddCommitmentResult,
+  AddTaskInput,
+  AddTaskResult,
+  PlanPreview,
+  TaskDetails,
+} from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TimeZoneState } from '@/domain/time-zones'
+import type { TodayItem, TodaySummary } from '@/domain/today'
 
 /**
  * The app's one backend contract (AD-1). Story 1.3 adds the auth surface; later stories add reads,
@@ -35,6 +52,12 @@ export interface BackendPort {
    * name (the zone is kept). Resolves with the stored profile.
    */
   saveProfile(displayName: string, timeZone: string): Promise<Profile>
+  /**
+   * `set_time_zone`: the caller's zone (no `groupId`) or a group's zone (admin only), from the next
+   * Monday; the current zone clears a waiting change. Resolves with the row's zones after the change.
+   * Rejects with `invalid_time_zone`, `profile_required`, `not_member` or `not_admin`.
+   */
+  setTimeZone(timeZone: string, groupId?: string): Promise<TimeZoneState>
 
   /**
    * The signed-in member's current groups, each with its member count, plus the groups they are no
@@ -66,4 +89,69 @@ export interface BackendPort {
    * `cannot_remove_self` or `not_member`.
    */
   removeMember(groupId: string, userId: string): Promise<void>
+
+  /** The 20 global preset activities, in display order (`preset_activities` by `sort`). */
+  listPresetActivities(): Promise<PresetActivity[]>
+  /**
+   * A group's activities (`group_activity_options`): its preset rows and its members' custom
+   * activities. Current members only (RLS); anyone else reads an empty list.
+   */
+  listGroupActivities(groupId: string): Promise<GroupActivity[]>
+
+  /**
+   * `plan_preview`: the member's today, current week, a new commitment's first Monday, the earliest
+   * end date and, for a times-per-week `target` with an `endDate` that cuts the last week short, its
+   * pro-rated target. Rejects with `not_member` or `invalid_plan`.
+   */
+  planPreview(groupId: string, target: number | null, endDate: string | null): Promise<PlanPreview>
+  /**
+   * `add_commitment`: starts next Monday in the member's zone. Rejects with `not_member`,
+   * `invalid_plan`, `invalid_activity`, `invalid_end_date` or `schedule_type_locked`.
+   */
+  addCommitment(input: AddCommitmentInput): Promise<AddCommitmentResult>
+
+  /**
+   * `add_task`: a one-off task that counts this week at once (its single session is written now).
+   * Rejects with `not_member`, `invalid_plan` (name), `invalid_deadline` or `invalid_activity`.
+   */
+  addTask(input: AddTaskInput): Promise<AddTaskResult>
+  /** `get_task`: one of the caller's own tasks for edit mode. Rejects with `not_found`. */
+  getTask(commitmentId: string): Promise<TaskDetails>
+  /**
+   * `rename_task`: until the task's session ends. Rejects with `not_found`, `invalid_plan` or
+   * `task_locked`.
+   */
+  renameTask(commitmentId: string, name: string): Promise<void>
+  /** `delete_task`: before the deadline day starts. Rejects with `not_found` or `task_locked`. */
+  deleteTask(commitmentId: string): Promise<void>
+
+  /**
+   * `get_today_items`: the member's Today rows in a group, each placed by the server in
+   * `due_today`, `this_week` or `starts_next_week`, in display order. Rejects with `not_member`.
+   */
+  getTodayItems(groupId: string): Promise<TodayItem[]>
+  /**
+   * `get_today_summary`: the member-local today and week, the week number and this week's planned,
+   * done and left counts. Rejects with `not_member`.
+   */
+  getTodaySummary(groupId: string): Promise<TodaySummary>
+
+  /**
+   * `get_my_plan`: the member's commitments and tasks in a group, each with the server's section
+   * (`current` / `past`), state and dates, in display order. Rejects with `not_member`.
+   */
+  getMyPlan(groupId: string): Promise<MyPlanItem[]>
+  /** `get_commitment`: one of the caller's own commitments for edit mode. Rejects with `not_found`. */
+  getCommitment(commitmentId: string): Promise<CommitmentDetails>
+  /**
+   * `update_commitment`: a new version from the member's next Monday (replacing a pending one).
+   * Rejects with `not_found`, `commitment_ended`, `invalid_plan` or `invalid_end_date`.
+   */
+  updateCommitment(input: UpdateCommitmentInput): Promise<UpdateCommitmentResult>
+  /**
+   * `end_commitment`: sessions continue through this Sunday (a commitment that has not started
+   * ends at once). Resolves with the last week that has sessions' Monday. Rejects with `not_found`
+   * or `commitment_ended`.
+   */
+  endCommitment(commitmentId: string): Promise<{ endsAfterWeekStart: string }>
 }

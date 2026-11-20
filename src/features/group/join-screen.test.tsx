@@ -31,6 +31,8 @@ const SUNDAY: MyGroup = {
   id: TEST_INVITE_PREVIEW.groupId,
   name: TEST_INVITE_PREVIEW.groupName,
   timeZone: 'UTC',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
   role: 'member',
   joinedAt: '2026-11-10T10:00:00.000Z',
   memberCount: 4,

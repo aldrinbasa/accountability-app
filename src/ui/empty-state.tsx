@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react'
 import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
@@ -8,7 +9,7 @@ export interface EmptyStateAction {
   onClick: () => void
 }
 
-export interface EmptyStateProps {
+interface EmptyStateBaseProps {
   /** Phosphor doodle, drawn at 64px Duotone. */
   icon: PhosphorIcon
   /** The handwritten line (`hand-lg`). */
@@ -18,13 +19,22 @@ export interface EmptyStateProps {
    * says everything (e.g. "You're not in Sunday Reset anymore.").
    */
   body?: string
-  /** At most one primary action. */
-  action?: EmptyStateAction
   className?: string
 }
 
+/** At most one action: a primary button (`action`) or a ready-made element (`actionSlot`). */
+export type EmptyStateProps = EmptyStateBaseProps &
+  (
+    | { action?: EmptyStateAction; actionSlot?: never }
+    | {
+        action?: never
+        /** A ready-made action element (e.g. a button that opens a sheet). */
+        actionSlot?: ReactNode
+      }
+  )
+
 /** Empty state (DESIGN.md `empty-state`): centered doodle, a hand line, a meaning sentence, one action. */
-export function EmptyState({ icon, line, body, action, className }: EmptyStateProps) {
+export function EmptyState({ icon, line, body, action, actionSlot, className }: EmptyStateProps) {
   return (
     <div
       className={cn('flex flex-col items-center gap-2 px-2 py-[28px] text-center', className)}
@@ -37,7 +47,9 @@ export function EmptyState({ icon, line, body, action, className }: EmptyStatePr
         <Button variant="primary" className="mt-2" onClick={action.onClick}>
           {action.label}
         </Button>
-      ) : null}
+      ) : (
+        actionSlot
+      )}
     </div>
   )
 }

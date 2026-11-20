@@ -1,11 +1,17 @@
 import type { RpcErrorCode } from '@/domain/error-codes'
 
-/** A member's profile (`public.profiles`). Story 3.6 fills `avatarPath`; Story 2.7 edits `timeZone`. */
+/**
+ * A member's profile (`public.profiles`). Story 3.6 fills `avatarPath`. `timeZone` changes only
+ * through `set_time_zone` (Story 2.7): a waiting change has `pendingTimeZone` and the Monday it
+ * starts, `pendingWeekStart` (both null otherwise).
+ */
 export interface Profile {
   id: string
   displayName: string
   avatarPath: string | null
   timeZone: string
+  pendingTimeZone: string | null
+  pendingWeekStart: string | null
 }
 
 /** Display names are trimmed and 1 to 24 characters (the same rule as the database check). */

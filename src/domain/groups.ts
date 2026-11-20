@@ -6,8 +6,11 @@ export type GroupRole = 'admin' | 'member'
 export interface MyGroup {
   id: string
   name: string
-  /** The group time zone (week lock and winner). Read-only until Story 2.7. */
+  /** The group time zone (week lock and winner). Admins change it with `set_time_zone`. */
   timeZone: string
+  /** A waiting zone change and the Monday it starts (`YYYY-MM-DD`), or both null. */
+  pendingTimeZone: string | null
+  pendingWeekStart: string | null
   /** The member's own role in the group. */
   role: GroupRole
   /** When the member joined (ISO timestamp). Breaks focus ties: earliest joined wins. */

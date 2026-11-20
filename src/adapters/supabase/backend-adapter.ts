@@ -5,6 +5,12 @@ import {
   type Session,
   type User,
 } from '@supabase/supabase-js'
+import {
+  isActivityCategory,
+  isScheduleType,
+  type GroupActivity,
+  type PresetActivity,
+} from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
@@ -16,10 +22,21 @@ import {
   type MyGroup,
   type MyGroupsSnapshot,
 } from '@/domain/groups'
+import {
+  isCommitmentState,
+  isMyPlanSection,
+  isMyPlanState,
+  type CommitmentDetails,
+  type MyPlanItem,
+  type UpdateCommitmentInput,
+} from '@/domain/my-plan'
+import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TimeZoneState } from '@/domain/time-zones'
+import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase } from '@/adapters/supabase/client'
-import type { Tables } from '@/adapters/supabase/database.types'
+import type { Database, Tables } from '@/adapters/supabase/database.types'
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key]
@@ -43,9 +60,13 @@ function toAuthUser(user: User): AuthUser {
   return { id: user.id, email: user.email ?? null, ...(givenName ? { givenName } : {}) }
 }
 
-type ProfileRow = Pick<Tables<'profiles'>, 'id' | 'display_name' | 'avatar_path' | 'time_zone'>
+type ProfileRow = Pick<
+  Tables<'profiles'>,
+  'id' | 'display_name' | 'avatar_path' | 'time_zone' | 'pending_time_zone' | 'pending_week_start'
+>
 
-const PROFILE_COLUMNS = 'id, display_name, avatar_path, time_zone'
+const PROFILE_COLUMNS =
+  'id, display_name, avatar_path, time_zone, pending_time_zone, pending_week_start'
 
 function toProfile(row: ProfileRow): Profile {
   return {
@@ -53,6 +74,21 @@ function toProfile(row: ProfileRow): Profile {
     displayName: row.display_name,
     avatarPath: row.avatar_path,
     timeZone: row.time_zone,
+    pendingTimeZone: row.pending_time_zone,
+    pendingWeekStart: row.pending_week_start,
+  }
+}
+
+type TimeZoneRow = Pick<
+  Tables<'profiles'>,
+  'time_zone' | 'pending_time_zone' | 'pending_week_start'
+>
+
+export function toTimeZoneState(row: TimeZoneRow): TimeZoneState {
+  return {
+    timeZone: row.time_zone,
+    pendingTimeZone: row.pending_time_zone,
+    pendingWeekStart: row.pending_week_start,
   }
 }
 
@@ -60,7 +96,10 @@ type MembershipRow = Pick<
   Tables<'memberships'>,
   'id' | 'user_id' | 'role' | 'joined_at' | 'ended_at' | 'end_reason'
 >
-type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
+type GroupRow = Pick<
+  Tables<'groups'>,
+  'id' | 'name' | 'time_zone' | 'pending_time_zone' | 'pending_week_start'
+> & {
   memberships: MembershipRow[]
 }
 
@@ -69,7 +108,7 @@ type GroupRow = Pick<Tables<'groups'>, 'id' | 'name' | 'time_zone'> & {
  * each the member's own rows plus, while they are a current member, everyone's current rows.
  */
 const GROUP_COLUMNS =
-  'id, name, time_zone, memberships(id, user_id, role, joined_at, ended_at, end_reason)'
+  'id, name, time_zone, pending_time_zone, pending_week_start, memberships(id, user_id, role, joined_at, ended_at, end_reason)'
 
 function toRole(role: string): GroupRole {
   return role === 'admin' ? 'admin' : 'member'
@@ -104,6 +143,8 @@ export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroupsS
       id: row.id,
       name: row.name,
       timeZone: row.time_zone,
+      pendingTimeZone: row.pending_time_zone,
+      pendingWeekStart: row.pending_week_start,
       role: toRole(mine.role),
       joinedAt: mine.joined_at,
       memberCount: current.length,
@@ -127,6 +168,248 @@ export function toGroupMembers(rows: readonly MemberRow[]): GroupMember[] {
     role: toRole(row.role),
     joinedAt: row.joined_at,
   }))
+}
+
+type PresetRow = Pick<Tables<'preset_activities'>, 'key' | 'name' | 'category' | 'sort'>
+
+const PRESET_COLUMNS = 'key, name, category, sort'
+
+/** Preset rows as domain presets. A row with an unknown category is a server bug: fail loudly. */
+export function toPresetActivities(rows: readonly PresetRow[]): PresetActivity[] {
+  return rows.map((row) => {
+    if (!isActivityCategory(row.category)) {
+      throw new BackendError('unknown', `preset ${row.key} has category ${row.category}`)
+    }
+    return { key: row.key, name: row.name, category: row.category, sort: row.sort }
+  })
+}
+
+type GroupActivityRow = Pick<
+  Tables<'group_activity_options'>,
+  'id' | 'group_id' | 'preset_key' | 'custom_name' | 'created_by' | 'locked_schedule_type'
+>
+
+const GROUP_ACTIVITY_COLUMNS =
+  'id, group_id, preset_key, custom_name, created_by, locked_schedule_type'
+
+/** Group activity rows as domain rows. An unknown schedule type is a server bug: fail loudly. */
+export function toGroupActivities(rows: readonly GroupActivityRow[]): GroupActivity[] {
+  return rows.map((row) => {
+    const locked = row.locked_schedule_type
+    if (locked !== null && !isScheduleType(locked)) {
+      throw new BackendError('unknown', `group activity ${row.id} has schedule type ${locked}`)
+    }
+    return {
+      id: row.id,
+      groupId: row.group_id,
+      presetKey: row.preset_key,
+      customName: row.custom_name,
+      createdBy: row.created_by,
+      lockedScheduleType: locked,
+    }
+  })
+}
+
+type PlanPreviewRow = Database['public']['Functions']['plan_preview']['Returns'][number]
+
+/** The `plan_preview` row as a domain preview (dates stay `YYYY-MM-DD` strings). */
+export function toPlanPreview(row: PlanPreviewRow): PlanPreview {
+  return {
+    memberToday: row.member_today,
+    weekStart: row.week_start,
+    weekEnd: row.week_end,
+    startsOn: row.starts_on,
+    minEndDate: row.min_end_date,
+    lastWeekTarget: row.last_week_target ?? null,
+  }
+}
+
+/** `add_commitment` arguments: only the fields that apply are sent (the rest default to null). */
+export function toAddCommitmentArgs(input: AddCommitmentInput) {
+  const { activity } = input
+  return {
+    p_group_id: input.groupId,
+    ...(activity.kind === 'preset' ? { p_preset_key: activity.presetKey } : {}),
+    ...(activity.kind === 'group' ? { p_group_activity_id: activity.groupActivityId } : {}),
+    ...(activity.kind === 'custom' ? { p_custom_name: activity.name } : {}),
+    p_schedule_type: input.scheduleType,
+    ...(input.days !== null ? { p_days: input.days } : {}),
+    ...(input.target !== null ? { p_target: input.target } : {}),
+    ...(input.endDate !== null ? { p_end_date: input.endDate } : {}),
+  }
+}
+
+/** `add_task` arguments: the one activity field that applies, the name and the deadline. */
+export function toAddTaskArgs(input: AddTaskInput) {
+  const { activity } = input
+  return {
+    p_group_id: input.groupId,
+    ...(activity.kind === 'preset' ? { p_preset_key: activity.presetKey } : {}),
+    ...(activity.kind === 'group' ? { p_group_activity_id: activity.groupActivityId } : {}),
+    ...(activity.kind === 'custom' ? { p_custom_name: activity.name } : {}),
+    p_name: input.name,
+    p_deadline: input.deadline,
+  }
+}
+
+type TaskRow = Database['public']['Functions']['get_task']['Returns'][number]
+
+/** The `get_task` row as domain task details (the generated type misses the nullable columns). */
+export function toTaskDetails(row: TaskRow): TaskDetails {
+  return {
+    commitmentId: row.commitment_id,
+    groupId: row.group_id,
+    presetKey: row.preset_key ?? null,
+    customName: row.custom_name ?? null,
+    name: row.name,
+    deadline: row.deadline,
+    canDelete: row.can_delete,
+    canRename: row.can_rename,
+  }
+}
+
+type TodayItemRow = Database['public']['Functions']['get_today_items']['Returns'][number]
+
+/**
+ * `get_today_items` rows as domain items, in the server's order. The generated type misses the
+ * nullable columns. An unknown section, kind or schedule type is a server bug: fail loudly.
+ */
+export function toTodayItems(rows: readonly TodayItemRow[]): TodayItem[] {
+  return rows.map((row) => {
+    const scheduleType = row.schedule_type ?? null
+    if (!isTodaySection(row.section)) {
+      throw new BackendError(
+        'unknown',
+        `today item ${row.commitment_id} has section ${row.section}`,
+      )
+    }
+    if (row.kind !== 'commitment' && row.kind !== 'task') {
+      throw new BackendError('unknown', `today item ${row.commitment_id} has kind ${row.kind}`)
+    }
+    if (scheduleType !== null && !isScheduleType(scheduleType)) {
+      throw new BackendError(
+        'unknown',
+        `today item ${row.commitment_id} has schedule type ${scheduleType}`,
+      )
+    }
+    return {
+      commitmentId: row.commitment_id,
+      kind: row.kind,
+      section: row.section,
+      presetKey: row.preset_key ?? null,
+      customName: row.custom_name ?? null,
+      activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+      name: row.name ?? null,
+      scheduleType,
+      days: row.days ?? null,
+      target: row.target ?? null,
+      counted: row.counted ?? 0,
+      deadline: row.deadline ?? null,
+      startsOn: row.starts_on ?? null,
+      canDelete: row.can_delete ?? false,
+    }
+  })
+}
+
+type TodaySummaryRow = Database['public']['Functions']['get_today_summary']['Returns'][number]
+
+/** The `get_today_summary` row as a domain summary (dates stay `YYYY-MM-DD` strings). */
+export function toTodaySummary(row: TodaySummaryRow): TodaySummary {
+  return {
+    memberToday: row.member_today,
+    weekStart: row.week_start,
+    weekNumber: row.week_number,
+    planned: row.planned,
+    done: row.done,
+    left: row.left,
+    hasPlan: row.has_plan,
+  }
+}
+
+type MyPlanRow = Database['public']['Functions']['get_my_plan']['Returns'][number]
+
+/**
+ * `get_my_plan` rows as domain items, in the server's order. The generated type misses the
+ * nullable columns. An unknown section, state, kind or schedule type is a server bug: fail loudly.
+ */
+export function toMyPlanItems(rows: readonly MyPlanRow[]): MyPlanItem[] {
+  return rows.map((row) => {
+    const scheduleType = row.schedule_type ?? null
+    if (!isMyPlanSection(row.section)) {
+      throw new BackendError('unknown', `plan item ${row.commitment_id} has section ${row.section}`)
+    }
+    if (!isMyPlanState(row.state)) {
+      throw new BackendError('unknown', `plan item ${row.commitment_id} has state ${row.state}`)
+    }
+    if (row.kind !== 'commitment' && row.kind !== 'task') {
+      throw new BackendError('unknown', `plan item ${row.commitment_id} has kind ${row.kind}`)
+    }
+    if (scheduleType !== null && !isScheduleType(scheduleType)) {
+      throw new BackendError(
+        'unknown',
+        `plan item ${row.commitment_id} has schedule type ${scheduleType}`,
+      )
+    }
+    return {
+      commitmentId: row.commitment_id,
+      kind: row.kind,
+      section: row.section,
+      state: row.state,
+      presetKey: row.preset_key ?? null,
+      customName: row.custom_name ?? null,
+      activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+      name: row.name ?? null,
+      scheduleType,
+      days: row.days ?? null,
+      target: row.target ?? null,
+      endDate: row.end_date ?? null,
+      deadline: row.deadline ?? null,
+      startsOn: row.starts_on ?? null,
+      endsOn: row.ends_on ?? null,
+      canEdit: row.can_edit ?? false,
+      canDelete: row.can_delete ?? false,
+    }
+  })
+}
+
+type CommitmentRow = Database['public']['Functions']['get_commitment']['Returns'][number]
+
+/** The `get_commitment` row as domain details. An unknown type or state is a server bug. */
+export function toCommitmentDetails(row: CommitmentRow): CommitmentDetails {
+  if (!isScheduleType(row.schedule_type)) {
+    throw new BackendError(
+      'unknown',
+      `commitment ${row.commitment_id} has schedule type ${row.schedule_type}`,
+    )
+  }
+  if (!isCommitmentState(row.state)) {
+    throw new BackendError('unknown', `commitment ${row.commitment_id} has state ${row.state}`)
+  }
+  return {
+    commitmentId: row.commitment_id,
+    groupId: row.group_id,
+    presetKey: row.preset_key ?? null,
+    customName: row.custom_name ?? null,
+    activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+    scheduleType: row.schedule_type,
+    days: row.days ?? null,
+    target: row.target ?? null,
+    endDate: row.end_date ?? null,
+    changesFrom: row.changes_from,
+    minEndDate: row.min_end_date,
+    state: row.state,
+    canEdit: row.can_edit,
+  }
+}
+
+/** `update_commitment` arguments: only the fields that apply are sent (the rest default to null). */
+export function toUpdateCommitmentArgs(input: UpdateCommitmentInput) {
+  return {
+    p_commitment_id: input.commitmentId,
+    ...(input.days !== null ? { p_days: input.days } : {}),
+    ...(input.target !== null ? { p_target: input.target } : {}),
+    ...(input.endDate !== null ? { p_end_date: input.endDate } : {}),
+  }
 }
 
 /**
@@ -188,7 +471,8 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
- * members, leave and remove (1.8).
+ * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
+ * (2.4), Today (2.5), My plan (2.6).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -269,6 +553,17 @@ export const supabaseBackendAdapter: BackendPort = {
     return toProfile(data)
   },
 
+  async setTimeZone(timeZone, groupId) {
+    const { data, error, status } = await supabase.rpc('set_time_zone', {
+      p_time_zone: timeZone,
+      ...(groupId === undefined ? {} : { p_group_id: groupId }),
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'set_time_zone returned no row')
+    return toTimeZoneState(row)
+  },
+
   async listMyGroups() {
     const userId = await sessionUserId('groups')
     const { data, error, status } = await supabase.from('groups').select(GROUP_COLUMNS)
@@ -341,5 +636,125 @@ export const supabaseBackendAdapter: BackendPort = {
       p_user_id: userId,
     })
     if (error) throw toBackendError(error, status)
+  },
+
+  async listPresetActivities() {
+    const { data, error, status } = await supabase
+      .from('preset_activities')
+      .select(PRESET_COLUMNS)
+      .order('sort')
+    if (error) throw toBackendError(error, status)
+    return toPresetActivities(data ?? [])
+  },
+
+  async listGroupActivities(groupId) {
+    const { data, error, status } = await supabase
+      .from('group_activity_options')
+      .select(GROUP_ACTIVITY_COLUMNS)
+      .eq('group_id', groupId)
+    if (error) throw toBackendError(error, status)
+    return toGroupActivities(data ?? [])
+  },
+
+  async planPreview(groupId, target, endDate) {
+    const { data, error, status } = await supabase.rpc('plan_preview', {
+      p_group_id: groupId,
+      ...(target !== null ? { p_target: target } : {}),
+      ...(endDate !== null ? { p_end_date: endDate } : {}),
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'plan_preview returned no row')
+    return toPlanPreview(row)
+  },
+
+  async addCommitment(input) {
+    const { data, error, status } = await supabase.rpc('add_commitment', toAddCommitmentArgs(input))
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'add_commitment returned no row')
+    return { commitmentId: row.commitment_id, startsOn: row.starts_on }
+  },
+
+  async addTask(input) {
+    const { data, error, status } = await supabase.rpc('add_task', toAddTaskArgs(input))
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'add_task returned no row')
+    return { commitmentId: row.commitment_id }
+  },
+
+  async getTask(commitmentId) {
+    const { data, error, status } = await supabase.rpc('get_task', {
+      p_commitment_id: commitmentId,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_task returned no row')
+    return toTaskDetails(row)
+  },
+
+  async renameTask(commitmentId, name) {
+    const { error, status } = await supabase.rpc('rename_task', {
+      p_commitment_id: commitmentId,
+      p_name: name,
+    })
+    if (error) throw toBackendError(error, status)
+  },
+
+  async deleteTask(commitmentId) {
+    const { error, status } = await supabase.rpc('delete_task', { p_commitment_id: commitmentId })
+    if (error) throw toBackendError(error, status)
+  },
+
+  async getTodayItems(groupId) {
+    const { data, error, status } = await supabase.rpc('get_today_items', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toTodayItems(data ?? [])
+  },
+
+  async getTodaySummary(groupId) {
+    const { data, error, status } = await supabase.rpc('get_today_summary', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_today_summary returned no row')
+    return toTodaySummary(row)
+  },
+
+  async getMyPlan(groupId) {
+    const { data, error, status } = await supabase.rpc('get_my_plan', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toMyPlanItems(data ?? [])
+  },
+
+  async getCommitment(commitmentId) {
+    const { data, error, status } = await supabase.rpc('get_commitment', {
+      p_commitment_id: commitmentId,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_commitment returned no row')
+    return toCommitmentDetails(row)
+  },
+
+  async updateCommitment(input) {
+    const { data, error, status } = await supabase.rpc(
+      'update_commitment',
+      toUpdateCommitmentArgs(input),
+    )
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'update_commitment returned no row')
+    return { changesFrom: row.changes_from }
+  },
+
+  async endCommitment(commitmentId) {
+    const { data, error, status } = await supabase.rpc('end_commitment', {
+      p_commitment_id: commitmentId,
+    })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'end_commitment returned no row')
+    return { endsAfterWeekStart: row.ends_after_week_start }
   },
 }

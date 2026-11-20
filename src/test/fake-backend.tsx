@@ -2,10 +2,15 @@ import type { ReactNode } from 'react'
 import { render } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
+import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
+import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
+import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
+import type { TimeZoneState } from '@/domain/time-zones'
+import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { BackendProvider } from '@/data/backend-context'
 import { INSTALLED_KEY } from '@/data/install-state'
@@ -18,6 +23,8 @@ export const TEST_PROFILE: Profile = {
   displayName: 'Jo',
   avatarPath: null,
   timeZone: 'Asia/Manila',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
 }
 
 /** The default group: active (3 members), the test user is its admin. */
@@ -25,6 +32,8 @@ export const TEST_GROUP: MyGroup = {
   id: 'group-1',
   name: 'Gym Rats',
   timeZone: 'Asia/Manila',
+  pendingTimeZone: null,
+  pendingWeekStart: null,
   role: 'admin',
   joinedAt: '2026-11-01T10:00:00.000Z',
   memberCount: 3,
@@ -67,6 +76,92 @@ export const TEST_INVITE_PREVIEW: InvitePreview = {
   status: 'valid',
 }
 
+const PRESET_ROWS: [string, string, PresetActivity['category']][] = [
+  ['gym', 'Gym', 'fitness'],
+  ['run', 'Run', 'fitness'],
+  ['walk', 'Walk', 'fitness'],
+  ['yoga', 'Yoga', 'fitness'],
+  ['sports', 'Sports', 'fitness'],
+  ['study', 'Study', 'mind'],
+  ['read', 'Read', 'mind'],
+  ['meditate', 'Meditate', 'mind'],
+  ['journal', 'Journal', 'mind'],
+  ['language_practice', 'Language practice', 'mind'],
+  ['paint', 'Paint', 'creative'],
+  ['draw', 'Draw', 'creative'],
+  ['music_practice', 'Music practice', 'creative'],
+  ['write', 'Write', 'creative'],
+  ['photography', 'Photography', 'creative'],
+  ['side_business', 'Side business', 'life_work'],
+  ['cook_at_home', 'Cook at home', 'life_work'],
+  ['clean', 'Clean', 'life_work'],
+  ['groceries', 'Groceries', 'life_work'],
+  ['sleep_early', 'Sleep early', 'life_work'],
+]
+
+/** The 20 seeded presets, as `preset_activities` holds them (migration 20261119200000). */
+export const TEST_PRESETS: PresetActivity[] = PRESET_ROWS.map(([key, name, category], index) => ({
+  key,
+  name,
+  category,
+  sort: index + 1,
+}))
+
+/**
+ * The default `plan_preview`: a Wednesday in the week of Mon 16 Nov 2026, so a new commitment starts
+ * Mon 23 Nov and the earliest end date is Sun 29 Nov.
+ */
+export const TEST_PLAN_PREVIEW: PlanPreview = {
+  memberToday: '2026-11-18',
+  weekStart: '2026-11-16',
+  weekEnd: '2026-11-22',
+  startsOn: '2026-11-23',
+  minEndDate: '2026-11-29',
+  lastWeekTarget: null,
+}
+
+/**
+ * The fake's pro-rated last week: ISO weekday of the end date (Monday = 1) as the days of that week.
+ * Test-only stand-in for the server's rule.
+ */
+function fakeLastWeekTarget(target: number | null, endDate: string | null, minEndDate: string) {
+  if (target === null || endDate === null || endDate < minEndDate) return null
+  const day = new Date(`${endDate}T00:00:00Z`).getUTCDay()
+  const days = day === 0 ? 7 : day
+  return days === 7 ? null : Math.max(1, Math.floor((target * days) / 7))
+}
+
+/** The default `get_today_summary`: Friday 20 Nov 2026, week 3, nothing planned. */
+export const TEST_TODAY_SUMMARY: TodaySummary = {
+  memberToday: '2026-11-20',
+  weekStart: '2026-11-16',
+  weekNumber: 3,
+  planned: 0,
+  done: 0,
+  left: 0,
+  hasPlan: false,
+}
+
+/**
+ * A commitment of the test user's for edit mode: Gym 3 times per week in `TEST_GROUP`, started, no
+ * end date; an edit takes effect Mon 23 Nov (earliest end date Sun 29 Nov).
+ */
+export const TEST_COMMITMENT: CommitmentDetails = {
+  commitmentId: 'c-gym',
+  groupId: TEST_GROUP.id,
+  presetKey: 'gym',
+  customName: null,
+  activityName: 'Gym',
+  scheduleType: 'times_per_week',
+  days: null,
+  target: 3,
+  endDate: null,
+  changesFrom: '2026-11-23',
+  minEndDate: '2026-11-29',
+  state: 'active',
+  canEdit: true,
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -88,6 +183,18 @@ export function createFakeBackend(
     ended?: EndedMembership[]
     /** Current members per group id; default `TEST_MEMBERS` for `TEST_GROUP`. */
     members?: Record<string, GroupMember[]>
+    /** Activities per group id (default none). */
+    groupActivities?: Record<string, GroupActivity[]>
+    /** The `plan_preview` dates (default `TEST_PLAN_PREVIEW`). */
+    planPreview?: Omit<PlanPreview, 'lastWeekTarget'>
+    /** The member's own tasks that `getTask` knows (default none; `addTask` adds to them). */
+    tasks?: TaskDetails[]
+    /** Today's rows and summary per group id (default: no rows, `TEST_TODAY_SUMMARY`). */
+    today?: Record<string, { items: TodayItem[]; summary?: TodaySummary }>
+    /** My plan rows per group id (default: none). */
+    myPlan?: Record<string, MyPlanItem[]>
+    /** The member's own commitments that `getCommitment` knows (default none). */
+    commitments?: CommitmentDetails[]
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -98,8 +205,17 @@ export function createFakeBackend(
   const members: Record<string, GroupMember[]> = options.members ?? {
     [TEST_GROUP.id]: TEST_MEMBERS,
   }
+  const groupActivities: Record<string, GroupActivity[]> = options.groupActivities ?? {}
+  const planPreview = options.planPreview ?? TEST_PLAN_PREVIEW
   let created = 0
   let invitesMade = 0
+  let commitmentsMade = 0
+  const tasks = new Map<string, TaskDetails>((options.tasks ?? []).map((t) => [t.commitmentId, t]))
+  const today = options.today ?? {}
+  const myPlan = options.myPlan ?? {}
+  const commitments = new Map<string, CommitmentDetails>(
+    (options.commitments ?? []).map((c) => [c.commitmentId, c]),
+  )
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -131,6 +247,8 @@ export function createFakeBackend(
         displayName,
         avatarPath: profile?.avatarPath ?? null,
         timeZone: profile?.timeZone ?? timeZone,
+        pendingTimeZone: profile?.pendingTimeZone ?? null,
+        pendingWeekStart: profile?.pendingWeekStart ?? null,
       }
       return profile
     }),
@@ -144,6 +262,8 @@ export function createFakeBackend(
           id,
           name: name.trim(),
           timeZone: profile?.timeZone ?? 'UTC',
+          pendingTimeZone: null,
+          pendingWeekStart: null,
           role: 'admin',
           joinedAt: new Date().toISOString(),
           memberCount: 1,
@@ -174,6 +294,8 @@ export function createFakeBackend(
             id: invite.groupId,
             name: invite.groupName,
             timeZone: 'UTC',
+            pendingTimeZone: null,
+            pendingWeekStart: null,
             role: 'member',
             joinedAt: new Date().toISOString(),
             memberCount: invite.memberCount + 1,
@@ -212,6 +334,164 @@ export function createFakeBackend(
       if (!current.some((member) => member.userId === userId)) throw new BackendError('not_member')
       members[groupId] = current.filter((member) => member.userId !== userId)
       groups = groups.map((g) => (g.id === groupId ? { ...g, memberCount: g.memberCount - 1 } : g))
+    }),
+    listPresetActivities: vi.fn(async () => TEST_PRESETS),
+    // RLS: a non-member reads an empty list, not an error.
+    listGroupActivities: vi.fn(async (groupId: string) =>
+      groups.some((group) => group.id === groupId) ? (groupActivities[groupId] ?? []) : [],
+    ),
+    planPreview: vi.fn(async (groupId: string, target: number | null, endDate: string | null) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return {
+        ...planPreview,
+        lastWeekTarget: fakeLastWeekTarget(target, endDate, planPreview.minEndDate),
+      }
+    }),
+    // Enforces membership, the end date and the schedule-type lock of the group's activities.
+    addCommitment: vi.fn(async (input: AddCommitmentInput) => {
+      if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
+      if (input.endDate !== null && input.endDate < planPreview.minEndDate) {
+        throw new BackendError('invalid_end_date')
+      }
+      const { activity } = input
+      const row = (groupActivities[input.groupId] ?? []).find((r) =>
+        activity.kind === 'preset'
+          ? r.presetKey === activity.presetKey
+          : activity.kind === 'group' && r.id === activity.groupActivityId,
+      )
+      if (row?.lockedScheduleType && row.lockedScheduleType !== input.scheduleType) {
+        throw new BackendError('schedule_type_locked')
+      }
+      commitmentsMade += 1
+      return { commitmentId: `commitment-${commitmentsMade}`, startsOn: planPreview.startsOn }
+    }),
+    // Enforces membership, the name and the deadline window of the preview's week.
+    addTask: vi.fn(async (input: AddTaskInput) => {
+      if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
+      const name = input.name.trim()
+      if (name.length === 0 || name.length > 40) throw new BackendError('invalid_plan')
+      if (input.deadline < planPreview.memberToday || input.deadline > planPreview.weekEnd) {
+        throw new BackendError('invalid_deadline')
+      }
+      commitmentsMade += 1
+      const commitmentId = `commitment-${commitmentsMade}`
+      const { activity } = input
+      const row =
+        activity.kind === 'group'
+          ? (groupActivities[input.groupId] ?? []).find((r) => r.id === activity.groupActivityId)
+          : undefined
+      tasks.set(commitmentId, {
+        commitmentId,
+        groupId: input.groupId,
+        presetKey: activity.kind === 'preset' ? activity.presetKey : (row?.presetKey ?? null),
+        customName: activity.kind === 'custom' ? activity.name.trim() : (row?.customName ?? null),
+        name,
+        deadline: input.deadline,
+        canDelete: input.deadline > planPreview.memberToday,
+        canRename: true,
+      })
+      return { commitmentId }
+    }),
+    getTask: vi.fn(async (commitmentId: string) => {
+      const task = tasks.get(commitmentId)
+      if (!task) throw new BackendError('not_found')
+      return task
+    }),
+    renameTask: vi.fn(async (commitmentId: string, name: string) => {
+      const task = tasks.get(commitmentId)
+      if (!task) throw new BackendError('not_found')
+      const trimmed = name.trim()
+      if (trimmed.length === 0 || trimmed.length > 40) throw new BackendError('invalid_plan')
+      if (!task.canRename) throw new BackendError('task_locked')
+      tasks.set(commitmentId, { ...task, name: trimmed })
+    }),
+    deleteTask: vi.fn(async (commitmentId: string) => {
+      const task = tasks.get(commitmentId)
+      if (!task) throw new BackendError('not_found')
+      if (!task.canDelete) throw new BackendError('task_locked')
+      tasks.delete(commitmentId)
+    }),
+    getTodayItems: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return today[groupId]?.items ?? []
+    }),
+    getTodaySummary: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return today[groupId]?.summary ?? TEST_TODAY_SUMMARY
+    }),
+    getMyPlan: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return myPlan[groupId] ?? []
+    }),
+    getCommitment: vi.fn(async (commitmentId: string) => {
+      const commitment = commitments.get(commitmentId)
+      if (!commitment) throw new BackendError('not_found')
+      return commitment
+    }),
+    // Enforces ownership, the end, the schedule type's own field and the end date.
+    updateCommitment: vi.fn(async (input: UpdateCommitmentInput) => {
+      const commitment = commitments.get(input.commitmentId)
+      if (!commitment) throw new BackendError('not_found')
+      if (!commitment.canEdit) throw new BackendError('commitment_ended')
+      const fixed = commitment.scheduleType === 'fixed_days'
+      if (
+        fixed
+          ? input.target !== null || input.days === null || input.days.length === 0
+          : input.days !== null || input.target === null || input.target < 1 || input.target > 7
+      ) {
+        throw new BackendError('invalid_plan')
+      }
+      if (input.endDate !== null && input.endDate < commitment.minEndDate) {
+        throw new BackendError('invalid_end_date')
+      }
+      commitments.set(input.commitmentId, {
+        ...commitment,
+        days: input.days,
+        target: input.target,
+        endDate: input.endDate,
+        state: commitment.state === 'starts_next_week' ? 'starts_next_week' : 'pending_change',
+      })
+      return { changesFrom: commitment.changesFrom }
+    }),
+    endCommitment: vi.fn(async (commitmentId: string) => {
+      const commitment = commitments.get(commitmentId)
+      if (!commitment) throw new BackendError('not_found')
+      if (!commitment.canEdit) throw new BackendError('commitment_ended')
+      const started = commitment.state !== 'starts_next_week'
+      commitments.set(commitmentId, {
+        ...commitment,
+        state: started ? 'ending' : 'ended',
+        canEdit: false,
+      })
+      return { endsAfterWeekStart: started ? planPreview.weekStart : '2026-11-09' }
+    }),
+    setTimeZone: vi.fn(async (timeZone: string, groupId?: string) => {
+      // The server's rule: the current zone clears a waiting change; another zone waits from the
+      // next Monday (the waiting change's Monday when there is one).
+      const next = <T extends TimeZoneState>(row: T): T =>
+        timeZone === row.timeZone
+          ? { ...row, pendingTimeZone: null, pendingWeekStart: null }
+          : {
+              ...row,
+              pendingTimeZone: timeZone,
+              pendingWeekStart: row.pendingWeekStart ?? planPreview.startsOn,
+            }
+      const state = (row: TimeZoneState): TimeZoneState => ({
+        timeZone: row.timeZone,
+        pendingTimeZone: row.pendingTimeZone,
+        pendingWeekStart: row.pendingWeekStart,
+      })
+      if (groupId === undefined) {
+        if (!profile) throw new BackendError('profile_required')
+        profile = next(profile)
+        return state(profile)
+      }
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      if (group.role !== 'admin') throw new BackendError('not_admin')
+      const updated = next(group)
+      groups = groups.map((g) => (g.id === groupId ? updated : g))
+      return state(updated)
     }),
   }
 }

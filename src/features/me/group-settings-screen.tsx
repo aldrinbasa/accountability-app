@@ -9,7 +9,7 @@ import {
   type MyGroup,
 } from '@/domain/groups'
 import { useAuthSession } from '@/data/auth-session'
-import { useEndedMemberships, useMembers, useMyGroups } from '@/data/groups'
+import { useEndedMemberships, useMembers, useMyGroups, useSetGroupTimeZone } from '@/data/groups'
 import { EmptyState } from '@/ui/empty-state'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
@@ -20,10 +20,13 @@ import { useMoveFocusAfterLeave } from '@/features/group/use-focused-group'
 import { LeaveGroupSheet } from '@/features/me/leave-group-sheet'
 import { MembersList } from '@/features/me/members-list'
 import { cameFromMe } from '@/features/me/pushed-from-me'
+import { saveZone } from '@/features/me/save-zone'
+import { TimeZoneRow, TimeZoneSheet } from '@/features/me/time-zone-sheet'
 
 /**
  * `/me/groups/{groupId}`, pushed from Me > My groups: the group name, the Members list and the
- * Invite panel (admin only), a read-only "Group time zone" row (editing arrives in Story 2.7) and
+ * Invite panel (admin only), the "Group time zone" row (admins open the picker, Story 2.7; others
+ * read it) and
  * the destructive "Leave group" row, which opens the confirm Sheet. After leaving, focus moves to
  * the next current group (or the create screen) on Today.
  * A group the member left or was removed from shows "You're not in {Group} anymore." with Go to
@@ -79,6 +82,8 @@ export function GroupSettingsScreen() {
 
 function GroupSettings({ group, onLeaving }: { group: MyGroup; onLeaving: () => void }) {
   const [leaving, setLeaving] = useState(false)
+  const [pickingZone, setPickingZone] = useState(false)
+  const setTimeZone = useSetGroupTimeZone(group.id)
   const moveFocus = useMoveFocusAfterLeave()
   const userId = useAuthSession().user?.id
   const isAdmin = group.role === 'admin'
@@ -98,11 +103,24 @@ function GroupSettings({ group, onLeaving }: { group: MyGroup; onLeaving: () => 
       </h1>
       <MembersList group={group} />
       <InvitePanel group={group} />
-      <div className="card flex flex-col gap-1">
-        <h2 className="type-body-strong">{GROUP_COPY.timeZoneLabel}</h2>
-        <p className="type-body">{group.timeZone}</p>
-        <p className="type-body-sm text-muted">{GROUP_COPY.timeZoneNote}</p>
+      <div className="card flex flex-col gap-1 p-0 pb-3">
+        <TimeZoneRow
+          label={GROUP_COPY.timeZoneLabel}
+          zones={group}
+          onOpen={isAdmin ? () => setPickingZone(true) : undefined}
+        />
+        <p className="px-3 type-body-sm text-muted">{GROUP_COPY.timeZoneNote}</p>
       </div>
+      {isAdmin ? (
+        <TimeZoneSheet
+          open={pickingZone}
+          onOpenChange={setPickingZone}
+          title={GROUP_COPY.timeZoneLabel}
+          note={GROUP_COPY.timeZoneNote}
+          zones={group}
+          onChoose={(zone) => saveZone((z) => setTimeZone.mutateAsync(z), zone)}
+        />
+      ) : null}
       <div className="card p-0">
         <button
           type="button"

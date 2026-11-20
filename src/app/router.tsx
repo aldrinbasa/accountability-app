@@ -13,6 +13,7 @@ import { JoinScreen } from '@/features/group/join-screen'
 import { GroupSettingsScreen } from '@/features/me/group-settings-screen'
 import { SetupScreen } from '@/features/me/setup-screen'
 import { InstallScreen } from '@/features/install/install-screen'
+import { MyPlanScreen } from '@/features/plan/my-plan-screen'
 
 export const routes: RouteObject[] = [
   // Pre-auth screens, outside the shell. Signed in, they forward to `next` or /today.
@@ -50,6 +51,8 @@ export const routes: RouteObject[] = [
           { path: 'board', element: <BoardScreen /> },
           { path: 'me', element: <MeScreen /> },
           { path: 'me/settings', element: <SettingsScreen /> },
+          { path: 'me/plan', element: <MyPlanScreen /> },
+          { path: 'me/plan/:commitmentId', element: <MyPlanScreen /> },
           { path: 'me/groups/:groupId', element: <GroupSettingsScreen /> },
         ],
       },

@@ -153,8 +153,22 @@ async function backendCodeOf(promise: Promise<unknown>): Promise<BackendErrorCod
   throw new Error('expected a rejection')
 }
 
-const ROW = { id: 'user-1', display_name: 'Jo', avatar_path: null, time_zone: 'Asia/Manila' }
-const PROFILE = { id: 'user-1', displayName: 'Jo', avatarPath: null, timeZone: 'Asia/Manila' }
+const ROW = {
+  id: 'user-1',
+  display_name: 'Jo',
+  avatar_path: null,
+  time_zone: 'Asia/Manila',
+  pending_time_zone: 'Europe/London',
+  pending_week_start: '2026-11-23',
+}
+const PROFILE = {
+  id: 'user-1',
+  displayName: 'Jo',
+  avatarPath: null,
+  timeZone: 'Asia/Manila',
+  pendingTimeZone: 'Europe/London',
+  pendingWeekStart: '2026-11-23',
+}
 const pgError = (message: string) => ({ message, code: 'P0001', details: '', hint: '' })
 
 describe('profiles', () => {
@@ -163,6 +177,9 @@ describe('profiles', () => {
     db.query.maybeSingle.mockResolvedValue({ data: ROW, error: null, status: 200 })
     await expect(adapter.getMyProfile()).resolves.toEqual(PROFILE)
     expect(db.from).toHaveBeenCalledWith('profiles')
+    expect(db.query.select).toHaveBeenCalledWith(
+      'id, display_name, avatar_path, time_zone, pending_time_zone, pending_week_start',
+    )
     expect(db.query.eq).toHaveBeenCalledWith('id', 'user-1')
   })
 
@@ -228,6 +245,52 @@ describe('profiles', () => {
     })
     expect(await backendCodeOf(adapter.saveProfile('Jo', 'UTC'))).toBe('network')
   })
+  it('set_time_zone sends the zone (and the group only when given) and maps the returned row', async () => {
+    const row = {
+      time_zone: 'Europe/London',
+      pending_time_zone: 'America/New_York',
+      pending_week_start: '2026-11-23',
+    }
+    const state = {
+      timeZone: 'Europe/London',
+      pendingTimeZone: 'America/New_York',
+      pendingWeekStart: '2026-11-23',
+    }
+    db.rpc.mockResolvedValueOnce({ data: [row], error: null, status: 200 })
+    await expect(adapter.setTimeZone('America/New_York')).resolves.toEqual(state)
+    expect(db.rpc).toHaveBeenLastCalledWith('set_time_zone', { p_time_zone: 'America/New_York' })
+    db.rpc.mockResolvedValueOnce({ data: [row], error: null, status: 200 })
+    await expect(adapter.setTimeZone('America/New_York', 'g1')).resolves.toEqual(state)
+    expect(db.rpc).toHaveBeenLastCalledWith('set_time_zone', {
+      p_time_zone: 'America/New_York',
+      p_group_id: 'g1',
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ time_zone: 'Europe/London', pending_time_zone: null, pending_week_start: null }],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.setTimeZone('Europe/London')).resolves.toEqual({
+      timeZone: 'Europe/London',
+      pendingTimeZone: null,
+      pendingWeekStart: null,
+    })
+  })
+
+  it('set_time_zone maps its error codes, no response and an empty result', async () => {
+    for (const code of ['invalid_time_zone', 'profile_required', 'not_member', 'not_admin']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.setTimeZone('Mars/Base', 'g1'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.setTimeZone('UTC'))).toBe('network')
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.setTimeZone('UTC'))).toBe('unknown')
+  })
 })
 
 describe('groups', () => {
@@ -255,6 +318,8 @@ describe('groups', () => {
             id: 'g1',
             name: 'Gym Rats',
             time_zone: 'Asia/Manila',
+            pending_time_zone: 'Europe/London',
+            pending_week_start: '2026-11-23',
             memberships: [
               member('user-1', 'admin'),
               member('user-2', 'member'),
@@ -266,6 +331,8 @@ describe('groups', () => {
             id: 'g2',
             name: 'Old crew',
             time_zone: 'UTC',
+            pending_time_zone: null,
+            pending_week_start: null,
             memberships: [
               member('user-1', 'member', '2026-11-03T00:00:00+00:00', 'left', 'm-old'),
               member('user-1', 'member', '2026-11-05T00:00:00+00:00', 'removed', 'm-last'),
@@ -276,6 +343,8 @@ describe('groups', () => {
             id: 'g3',
             name: 'Back again',
             time_zone: 'UTC',
+            pending_time_zone: null,
+            pending_week_start: null,
             memberships: [
               member('user-1', 'member', '2026-11-03T00:00:00+00:00'),
               member('user-1', 'member'),
@@ -292,6 +361,8 @@ describe('groups', () => {
           id: 'g1',
           name: 'Gym Rats',
           timeZone: 'Asia/Manila',
+          pendingTimeZone: 'Europe/London',
+          pendingWeekStart: '2026-11-23',
           role: 'admin',
           joinedAt: '2026-11-01T10:00:00+00:00',
           memberCount: 2,
@@ -300,6 +371,8 @@ describe('groups', () => {
           id: 'g3',
           name: 'Back again',
           timeZone: 'UTC',
+          pendingTimeZone: null,
+          pendingWeekStart: null,
           role: 'member',
           joinedAt: '2026-11-01T10:00:00+00:00',
           memberCount: 1,
@@ -489,5 +562,657 @@ describe('members, leave and remove', () => {
       db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
       expect(await backendCodeOf(adapter.removeMember('g1', 'user-2'))).toBe(code)
     }
+  })
+})
+
+describe('activities', () => {
+  it('lists the presets ordered by sort', async () => {
+    db.query.order.mockResolvedValueOnce({
+      data: [
+        { key: 'gym', name: 'Gym', category: 'fitness', sort: 1 },
+        { key: 'study', name: 'Study', category: 'mind', sort: 6 },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.listPresetActivities()).resolves.toEqual([
+      { key: 'gym', name: 'Gym', category: 'fitness', sort: 1 },
+      { key: 'study', name: 'Study', category: 'mind', sort: 6 },
+    ])
+    expect(db.from).toHaveBeenCalledWith('preset_activities')
+    expect(db.query.order).toHaveBeenCalledWith('sort')
+  })
+
+  it('a preset with an unknown category is an error; no response → network', async () => {
+    db.query.order.mockResolvedValueOnce({
+      data: [{ key: 'gym', name: 'Gym', category: 'cardio', sort: 1 }],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.listPresetActivities())).toBe('unknown')
+    db.query.order.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.listPresetActivities())).toBe('network')
+  })
+
+  it("lists a group's activities from group_activity_options", async () => {
+    db.query.eq.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'a1',
+          group_id: 'g1',
+          preset_key: 'gym',
+          custom_name: null,
+          created_by: 'user-1',
+          locked_schedule_type: 'times_per_week',
+        },
+        {
+          id: 'a2',
+          group_id: 'g1',
+          preset_key: null,
+          custom_name: 'Pottery',
+          created_by: 'user-2',
+          locked_schedule_type: null,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.listGroupActivities('g1')).resolves.toEqual([
+      {
+        id: 'a1',
+        groupId: 'g1',
+        presetKey: 'gym',
+        customName: null,
+        createdBy: 'user-1',
+        lockedScheduleType: 'times_per_week',
+      },
+      {
+        id: 'a2',
+        groupId: 'g1',
+        presetKey: null,
+        customName: 'Pottery',
+        createdBy: 'user-2',
+        lockedScheduleType: null,
+      },
+    ])
+    expect(db.from).toHaveBeenCalledWith('group_activity_options')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g1')
+  })
+
+  it('a group activity with an unknown schedule type is an error; no response → network', async () => {
+    db.query.eq.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'a1',
+          group_id: 'g1',
+          preset_key: 'gym',
+          custom_name: null,
+          created_by: 'user-1',
+          locked_schedule_type: 'daily',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.listGroupActivities('g1'))).toBe('unknown')
+    db.query.eq.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.listGroupActivities('g1'))).toBe('network')
+  })
+})
+
+describe('plan', () => {
+  const PREVIEW_ROW = {
+    member_today: '2026-11-18',
+    week_start: '2026-11-16',
+    week_end: '2026-11-22',
+    starts_on: '2026-11-23',
+    min_end_date: '2026-11-29',
+    last_week_target: 2,
+  }
+
+  it('plan_preview sends only the inputs it has and maps the row', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [PREVIEW_ROW], error: null, status: 200 })
+    expect(await adapter.planPreview('g1', 3, '2026-12-04')).toEqual({
+      memberToday: '2026-11-18',
+      weekStart: '2026-11-16',
+      weekEnd: '2026-11-22',
+      startsOn: '2026-11-23',
+      minEndDate: '2026-11-29',
+      lastWeekTarget: 2,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('plan_preview', {
+      p_group_id: 'g1',
+      p_target: 3,
+      p_end_date: '2026-12-04',
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ...PREVIEW_ROW, last_week_target: null }],
+      error: null,
+      status: 200,
+    })
+    expect((await adapter.planPreview('g1', null, null)).lastWeekTarget).toBeNull()
+    expect(db.rpc).toHaveBeenLastCalledWith('plan_preview', { p_group_id: 'g1' })
+  })
+
+  it('plan_preview maps its error codes; no row is an error', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.planPreview('g1', null, null))).toBe('not_member')
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.planPreview('g1', null, null))).toBe('unknown')
+  })
+
+  it('add_commitment sends the activity and only the schedule fields of its type', async () => {
+    db.rpc.mockResolvedValue({
+      data: [{ commitment_id: 'c1', starts_on: '2026-11-23' }],
+      error: null,
+      status: 200,
+    })
+    expect(
+      await adapter.addCommitment({
+        groupId: 'g1',
+        activity: { kind: 'preset', presetKey: 'gym' },
+        scheduleType: 'times_per_week',
+        days: null,
+        target: 3,
+        endDate: '2026-12-04',
+      }),
+    ).toEqual({ commitmentId: 'c1', startsOn: '2026-11-23' })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_commitment', {
+      p_group_id: 'g1',
+      p_preset_key: 'gym',
+      p_schedule_type: 'times_per_week',
+      p_target: 3,
+      p_end_date: '2026-12-04',
+    })
+    await adapter.addCommitment({
+      groupId: 'g1',
+      activity: { kind: 'group', groupActivityId: 'ga-1' },
+      scheduleType: 'fixed_days',
+      days: [1, 3],
+      target: null,
+      endDate: null,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_commitment', {
+      p_group_id: 'g1',
+      p_group_activity_id: 'ga-1',
+      p_schedule_type: 'fixed_days',
+      p_days: [1, 3],
+    })
+    await adapter.addCommitment({
+      groupId: 'g1',
+      activity: { kind: 'custom', name: 'Pottery' },
+      scheduleType: 'fixed_days',
+      days: [7],
+      target: null,
+      endDate: null,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_commitment', {
+      p_group_id: 'g1',
+      p_custom_name: 'Pottery',
+      p_schedule_type: 'fixed_days',
+      p_days: [7],
+    })
+    db.rpc.mockReset()
+  })
+
+  it('add_commitment maps its error codes; no response → network', async () => {
+    const input = {
+      groupId: 'g1',
+      activity: { kind: 'preset', presetKey: 'gym' } as const,
+      scheduleType: 'fixed_days' as const,
+      days: [1],
+      target: null,
+      endDate: null,
+    }
+    for (const code of [
+      'not_member',
+      'invalid_plan',
+      'invalid_activity',
+      'invalid_end_date',
+      'schedule_type_locked',
+    ]) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.addCommitment(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.addCommitment(input))).toBe('network')
+  })
+})
+
+describe('tasks', () => {
+  const TASK_ROW = {
+    commitment_id: 't1',
+    group_id: 'g1',
+    preset_key: 'groceries',
+    custom_name: null,
+    name: 'Grocery run',
+    deadline: '2026-11-22',
+    can_delete: true,
+    can_rename: true,
+  }
+
+  it('add_task sends the one activity field, the name and the deadline', async () => {
+    db.rpc.mockResolvedValue({ data: [{ commitment_id: 't1' }], error: null, status: 200 })
+    expect(
+      await adapter.addTask({
+        groupId: 'g1',
+        activity: { kind: 'preset', presetKey: 'groceries' },
+        name: 'Grocery run',
+        deadline: '2026-11-22',
+      }),
+    ).toEqual({ commitmentId: 't1' })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_task', {
+      p_group_id: 'g1',
+      p_preset_key: 'groceries',
+      p_name: 'Grocery run',
+      p_deadline: '2026-11-22',
+    })
+    await adapter.addTask({
+      groupId: 'g1',
+      activity: { kind: 'group', groupActivityId: 'ga-1' },
+      name: 'Leg day',
+      deadline: '2026-11-20',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_task', {
+      p_group_id: 'g1',
+      p_group_activity_id: 'ga-1',
+      p_name: 'Leg day',
+      p_deadline: '2026-11-20',
+    })
+    await adapter.addTask({
+      groupId: 'g1',
+      activity: { kind: 'custom', name: 'Errands' },
+      name: 'Post office',
+      deadline: '2026-11-21',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('add_task', {
+      p_group_id: 'g1',
+      p_custom_name: 'Errands',
+      p_name: 'Post office',
+      p_deadline: '2026-11-21',
+    })
+    db.rpc.mockReset()
+  })
+
+  it('add_task maps its error codes; no row is an error', async () => {
+    const input = {
+      groupId: 'g1',
+      activity: { kind: 'preset', presetKey: 'groceries' } as const,
+      name: 'Grocery run',
+      deadline: '2026-11-22',
+    }
+    for (const code of ['not_member', 'invalid_plan', 'invalid_deadline', 'invalid_activity']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.addTask(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.addTask(input))).toBe('unknown')
+  })
+
+  it('get_task maps the row (null activity fields stay null)', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [TASK_ROW], error: null, status: 200 })
+    expect(await adapter.getTask('t1')).toEqual({
+      commitmentId: 't1',
+      groupId: 'g1',
+      presetKey: 'groceries',
+      customName: null,
+      name: 'Grocery run',
+      deadline: '2026-11-22',
+      canDelete: true,
+      canRename: true,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_task', { p_commitment_id: 't1' })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_found'), status: 400 })
+    expect(await backendCodeOf(adapter.getTask('t1'))).toBe('not_found')
+  })
+
+  it('rename_task and delete_task send the id and map task_locked and not_found', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.renameTask('t1', 'Big shop')
+    expect(db.rpc).toHaveBeenLastCalledWith('rename_task', {
+      p_commitment_id: 't1',
+      p_name: 'Big shop',
+    })
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.deleteTask('t1')
+    expect(db.rpc).toHaveBeenLastCalledWith('delete_task', { p_commitment_id: 't1' })
+    for (const code of ['task_locked', 'not_found']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.deleteTask('t1'))).toBe(code)
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.renameTask('t1', 'x'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.deleteTask('t1'))).toBe('network')
+  })
+})
+
+describe('today', () => {
+  const TASK_ROW = {
+    commitment_id: 't1',
+    kind: 'task',
+    section: 'due_today',
+    preset_key: 'groceries',
+    custom_name: null,
+    activity_name: 'Groceries',
+    name: 'Grocery run',
+    schedule_type: null,
+    days: null,
+    target: 1,
+    counted: 0,
+    deadline: '2026-11-20',
+    starts_on: null,
+    can_delete: false,
+  }
+  const RING_ROW = {
+    commitment_id: 'c1',
+    kind: 'commitment',
+    section: 'this_week',
+    preset_key: null,
+    custom_name: 'Pottery',
+    activity_name: 'Pottery',
+    name: null,
+    schedule_type: 'times_per_week',
+    days: null,
+    target: 3,
+    counted: 0,
+    deadline: null,
+    starts_on: null,
+    can_delete: false,
+  }
+
+  it('get_today_items maps the rows in the server order, nulls kept', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [TASK_ROW, RING_ROW], error: null, status: 200 })
+    expect(await adapter.getTodayItems('g1')).toEqual([
+      {
+        commitmentId: 't1',
+        kind: 'task',
+        section: 'due_today',
+        presetKey: 'groceries',
+        customName: null,
+        activityName: 'Groceries',
+        name: 'Grocery run',
+        scheduleType: null,
+        days: null,
+        target: 1,
+        counted: 0,
+        deadline: '2026-11-20',
+        startsOn: null,
+        canDelete: false,
+      },
+      {
+        commitmentId: 'c1',
+        kind: 'commitment',
+        section: 'this_week',
+        presetKey: null,
+        customName: 'Pottery',
+        activityName: 'Pottery',
+        name: null,
+        scheduleType: 'times_per_week',
+        days: null,
+        target: 3,
+        counted: 0,
+        deadline: null,
+        startsOn: null,
+        canDelete: false,
+      },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_today_items', { p_group_id: 'g1' })
+  })
+
+  it('get_today_items fails loudly on an unknown section and maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ...TASK_ROW, section: 'later' }],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getTodayItems('g1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getTodayItems('g1'))).toBe('not_member')
+  })
+
+  it('get_today_summary maps the row; no row is an error', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          member_today: '2026-11-20',
+          week_start: '2026-11-16',
+          week_number: 4,
+          planned: 9,
+          done: 0,
+          left: 9,
+          has_plan: true,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getTodaySummary('g1')).toEqual({
+      memberToday: '2026-11-20',
+      weekStart: '2026-11-16',
+      weekNumber: 4,
+      planned: 9,
+      done: 0,
+      left: 9,
+      hasPlan: true,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_today_summary', { p_group_id: 'g1' })
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.getTodaySummary('g1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getTodaySummary('g1'))).toBe('not_member')
+  })
+})
+
+describe('my plan', () => {
+  const PENDING_ROW = {
+    commitment_id: 'c1',
+    kind: 'commitment',
+    section: 'current',
+    state: 'pending_change',
+    preset_key: 'gym',
+    custom_name: null,
+    activity_name: 'Gym',
+    name: null,
+    schedule_type: 'times_per_week',
+    days: null,
+    target: 4,
+    end_date: null,
+    deadline: null,
+    starts_on: '2026-11-23',
+    ends_on: null,
+    can_edit: true,
+    can_delete: false,
+  }
+  const PAST_TASK_ROW = {
+    ...PENDING_ROW,
+    commitment_id: 't1',
+    kind: 'task',
+    section: 'past',
+    state: 'past',
+    preset_key: 'clean',
+    activity_name: 'Clean',
+    name: 'Garage',
+    schedule_type: null,
+    target: null,
+    deadline: '2026-11-17',
+    starts_on: null,
+    can_edit: false,
+  }
+  const COMMITMENT_ROW = {
+    commitment_id: 'c1',
+    group_id: 'g1',
+    preset_key: null,
+    custom_name: 'Pottery',
+    activity_name: 'Pottery',
+    schedule_type: 'fixed_days',
+    days: [1, 3],
+    target: null,
+    end_date: '2026-12-20',
+    changes_from: '2026-11-23',
+    min_end_date: '2026-11-29',
+    state: 'active',
+    can_edit: true,
+  }
+
+  it('get_my_plan maps the rows in the server order, nulls kept', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [PENDING_ROW, PAST_TASK_ROW], error: null, status: 200 })
+    expect(await adapter.getMyPlan('g1')).toEqual([
+      {
+        commitmentId: 'c1',
+        kind: 'commitment',
+        section: 'current',
+        state: 'pending_change',
+        presetKey: 'gym',
+        customName: null,
+        activityName: 'Gym',
+        name: null,
+        scheduleType: 'times_per_week',
+        days: null,
+        target: 4,
+        endDate: null,
+        deadline: null,
+        startsOn: '2026-11-23',
+        endsOn: null,
+        canEdit: true,
+        canDelete: false,
+      },
+      {
+        commitmentId: 't1',
+        kind: 'task',
+        section: 'past',
+        state: 'past',
+        presetKey: 'clean',
+        customName: null,
+        activityName: 'Clean',
+        name: 'Garage',
+        scheduleType: null,
+        days: null,
+        target: null,
+        endDate: null,
+        deadline: '2026-11-17',
+        startsOn: null,
+        endsOn: null,
+        canEdit: false,
+        canDelete: false,
+      },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_my_plan', { p_group_id: 'g1' })
+  })
+
+  it('get_my_plan fails loudly on an unknown section or state and maps not_member', async () => {
+    for (const bad of [{ section: 'later' }, { state: 'paused' }, { kind: 'habit' }]) {
+      db.rpc.mockResolvedValueOnce({ data: [{ ...PENDING_ROW, ...bad }], error: null, status: 200 })
+      expect(await backendCodeOf(adapter.getMyPlan('g1'))).toBe('unknown')
+    }
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getMyPlan('g1'))).toBe('not_member')
+  })
+
+  it('get_commitment maps the row and not_found; an unknown state is an error', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [COMMITMENT_ROW], error: null, status: 200 })
+    expect(await adapter.getCommitment('c1')).toEqual({
+      commitmentId: 'c1',
+      groupId: 'g1',
+      presetKey: null,
+      customName: 'Pottery',
+      activityName: 'Pottery',
+      scheduleType: 'fixed_days',
+      days: [1, 3],
+      target: null,
+      endDate: '2026-12-20',
+      changesFrom: '2026-11-23',
+      minEndDate: '2026-11-29',
+      state: 'active',
+      canEdit: true,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_commitment', { p_commitment_id: 'c1' })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ...COMMITMENT_ROW, state: 'paused' }],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getCommitment('c1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_found'), status: 400 })
+    expect(await backendCodeOf(adapter.getCommitment('c1'))).toBe('not_found')
+  })
+
+  it('update_commitment sends only the fields of the type and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ changes_from: '2026-11-23' }],
+      error: null,
+      status: 200,
+    })
+    expect(
+      await adapter.updateCommitment({
+        commitmentId: 'c1',
+        days: null,
+        target: 4,
+        endDate: null,
+      }),
+    ).toEqual({ changesFrom: '2026-11-23' })
+    expect(db.rpc).toHaveBeenLastCalledWith('update_commitment', {
+      p_commitment_id: 'c1',
+      p_target: 4,
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [{ changes_from: '2026-11-23' }],
+      error: null,
+      status: 200,
+    })
+    await adapter.updateCommitment({
+      commitmentId: 'c1',
+      days: [1, 3, 5],
+      target: null,
+      endDate: '2026-12-20',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('update_commitment', {
+      p_commitment_id: 'c1',
+      p_days: [1, 3, 5],
+      p_end_date: '2026-12-20',
+    })
+    const input = { commitmentId: 'c1', days: null, target: 4, endDate: null }
+    for (const code of ['not_found', 'commitment_ended', 'invalid_plan', 'invalid_end_date']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.updateCommitment(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.updateCommitment(input))).toBe('unknown')
+  })
+
+  it('end_commitment sends the id, returns the last week and maps its error codes', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ ends_after_week_start: '2026-11-16' }],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.endCommitment('c1')).toEqual({ endsAfterWeekStart: '2026-11-16' })
+    expect(db.rpc).toHaveBeenLastCalledWith('end_commitment', { p_commitment_id: 'c1' })
+    for (const code of ['not_found', 'commitment_ended']) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.endCommitment('c1'))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '', details: '', hint: '' },
+      status: 0,
+    })
+    expect(await backendCodeOf(adapter.endCommitment('c1'))).toBe('network')
   })
 })

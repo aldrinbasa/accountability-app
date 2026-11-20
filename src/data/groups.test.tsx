@@ -19,6 +19,7 @@ import {
   useJoinGroup,
   useMyGroups,
   useNewInvite,
+  useSetGroupTimeZone,
 } from '@/data/groups'
 import {
   createFakeBackend,
@@ -211,5 +212,45 @@ describe('members, leave and remove data', () => {
       2,
     )
     expect(getLastSeenCount('group-1')).toBe(2)
+  })
+
+  it("useSetGroupTimeZone shows the choice at once, then the server's zones", async () => {
+    const { backend, queryClient, wrapper } = setup()
+    const other = { ...TEST_GROUP, id: 'group-2', name: 'Other' }
+    queryClient.setQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY, {
+      groups: [TEST_GROUP, other],
+      ended: [],
+    })
+    let resolve: () => void = () => {}
+    const gate = new Promise<void>((r) => (resolve = r))
+    const set = backend.setTimeZone
+    backend.setTimeZone = vi.fn(async (zone: string, groupId?: string) => {
+      await gate
+      return set(zone, groupId)
+    })
+    const { result } = renderHook(() => useSetGroupTimeZone(TEST_GROUP.id), { wrapper })
+    const done = result.current.mutateAsync('Europe/London')
+    await waitFor(() =>
+      expect(queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)?.groups[0]).toMatchObject({
+        pendingTimeZone: 'Europe/London',
+        pendingWeekStart: null,
+      }),
+    )
+    resolve()
+    await done
+    expect(backend.setTimeZone).toHaveBeenCalledWith('Europe/London', TEST_GROUP.id)
+    expect(queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)?.groups).toEqual([
+      { ...TEST_GROUP, pendingTimeZone: 'Europe/London', pendingWeekStart: '2026-11-23' },
+      other,
+    ])
+  })
+
+  it("useSetGroupTimeZone puts the group's zones back when the call fails", async () => {
+    const { backend, queryClient, wrapper } = setup()
+    queryClient.setQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY, { groups: [TEST_GROUP], ended: [] })
+    backend.setTimeZone = vi.fn().mockRejectedValue(new BackendError('not_admin'))
+    const { result } = renderHook(() => useSetGroupTimeZone(TEST_GROUP.id), { wrapper })
+    await expect(result.current.mutateAsync('Europe/London')).rejects.toThrow()
+    expect(queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)?.groups).toEqual([TEST_GROUP])
   })
 })

@@ -39,7 +39,16 @@ import {
 } from '@/domain/groups'
 
 function group(id: string, joinedAt: string, memberCount = 2): MyGroup {
-  return { id, name: id.toUpperCase(), timeZone: 'UTC', role: 'member', joinedAt, memberCount }
+  return {
+    id,
+    name: id.toUpperCase(),
+    timeZone: 'UTC',
+    pendingTimeZone: null,
+    pendingWeekStart: null,
+    role: 'member',
+    joinedAt,
+    memberCount,
+  }
 }
 
 const A = group('a', '2026-11-01T10:00:00Z')
