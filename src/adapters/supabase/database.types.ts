@@ -131,6 +131,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"feed_events": {
+                  Row: {
+                    "actor_id": string | null,"created_at": string,"group_id": string,"id": string,"kind": string,"payload": NonNullable<Json>,"subject_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actor_id"?: string | null,"created_at"?: string,"group_id": string,"id"?: string,"kind": string,"payload"?: NonNullable<Json>,"subject_id"?: string | null
+                  }
+                  Update: {
+                    "actor_id"?: string | null,"created_at"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"payload"?: NonNullable<Json>,"subject_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "feed_events_actor_id_fkey"
+      columns: ["actor_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feed_events_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feed_events_subject_id_fkey"
+      columns: ["subject_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"group_activities": {
                   Row: {
                     "created_at": string,"created_by": string,"custom_name": string | null,"group_id": string,"id": string,"preset_key": string | null,"schedule_type": string | null,"updated_at": string
@@ -338,7 +370,15 @@ isOneToOne: false
                 }
           }
           Views: {
-            "group_activity_options": {
+            "feed_items": {
+                  Row: {
+                    "activity_name": string | null,"actor_avatar_path": string | null,"actor_id": string | null,"actor_name": string | null,"caption": string | null,"captured_at": string | null,"commitment_id": string | null,"commitment_kind": string | null,"counted_position": number | null,"full_pruned_at": string | null,"group_id": string | null,"is_extra": boolean | null,"is_late": boolean | null,"item_id": string | null,"item_kind": string | null,"payload": Json | null,"preset_key": string | null,"received_at": string | null,"sort_at": string | null,"subject_id": string | null,"subject_name": string | null,"target": number | null,"task_name": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"group_activity_options": {
                   Row: {
                     "created_by": string,"custom_name": string | null,"group_id": string,"id": string,"locked_schedule_type": string | null,"preset_key": string | null
                   }
