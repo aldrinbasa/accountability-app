@@ -42,6 +42,10 @@ test('the Board shows a locked last week with its frozen results', async ({ page
             s.starts_at - interval '7 days', s.ends_at - interval '7 days'
      from public.sessions s
      where s.group_id = '${groupId}';`,
+    // The test runs within seconds of sign-up; a lock just in the past must still come after the
+    // join, or Ada was not a member at the lock and gets no stored row.
+    `update public.memberships set joined_at = joined_at - interval '1 hour'
+     where group_id = '${groupId}';`,
     `insert into public.group_weeks (group_id, week_start, lock_at)
      values ('${groupId}', ${lastWeek}, now() + interval '10 minutes')
      on conflict (group_id, week_start) do update set lock_at = excluded.lock_at;`,
