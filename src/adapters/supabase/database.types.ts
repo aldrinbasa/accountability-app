@@ -388,7 +388,7 @@ isOneToOne: false
                            },
 "get_today_summary":
 { Args: { "p_group_id": string }; Returns: {
-              "done": number,"left": number,"member_today": string,"planned": number,"week_number": number,"week_start": string
+              "done": number,"has_plan": boolean,"left": number,"member_today": string,"planned": number,"week_number": number,"week_start": string
             }[]
                            },
 "join_group":
