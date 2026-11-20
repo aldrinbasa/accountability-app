@@ -1,4 +1,5 @@
 import { formatShortDate } from '@/domain/plan'
+import { PROFILE_COPY } from '@/domain/profile'
 
 /**
  * A member's or a group's zones after `set_time_zone` (Story 2.7): the zone in effect now and, when a
@@ -17,7 +18,7 @@ export const TIME_ZONE_COPY = {
   search: 'Search time zones',
   searchPlaceholder: 'City or GMT+8',
   noMatch: 'No time zone matches that.',
-  offline: "Couldn't save. You're offline.",
+  offline: PROFILE_COPY.offline,
   saveFailed: "Couldn't save your time zone.",
   retry: 'Retry',
   /** Read before a waiting zone (visually hidden). */

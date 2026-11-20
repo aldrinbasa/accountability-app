@@ -1,3 +1,4 @@
+import { DAY_SHORT, MONTH_SHORT } from '@/domain/dates'
 import type { RpcErrorCode } from '@/domain/error-codes'
 
 export type GroupRole = 'admin' | 'member'
@@ -236,26 +237,10 @@ export function inviteExpired(expiresAt: string, now: number | Date): boolean {
   return (typeof now === 'number' ? now : now.getTime()) >= end
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
-const MONTHS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-] as const
-
 /** "Expires Tue 24 Nov", in the device's local time zone. */
 export function inviteExpiryText(expiresAt: string): string {
   const date = new Date(expiresAt)
-  return `Expires ${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}`
+  return `Expires ${DAY_SHORT[date.getDay()]} ${date.getDate()} ${MONTH_SHORT[date.getMonth()]}`
 }
 
 /** The code spelled out for screen readers: "K 7 Q X 2 M". */

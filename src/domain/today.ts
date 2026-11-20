@@ -1,4 +1,5 @@
 import type { ScheduleType } from '@/domain/activities'
+import { DAY_LONG, DAY_SHORT, parseIsoDate } from '@/domain/dates'
 import { formatShortDate, PLAN_COPY } from '@/domain/plan'
 
 /** Where `get_today_items` placed a row. */
@@ -89,29 +90,15 @@ export const TODAY_COPY = {
   edit: 'Edit',
 } as const
 
-const DAY_SHORT_BY_ISO = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const DAY_LONG_BY_UTC_DAY = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-]
-
 function utcDay(value: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!match) return null
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-  return Number.isNaN(date.getTime()) ? null : date.getUTCDay()
+  return parseIsoDate(value)?.getUTCDay() ?? null
 }
 
 /** "Mon" for a server date (`YYYY-MM-DD`). Formatting only: the date comes from the server. */
 export function shortDayName(value: string): string {
   const day = utcDay(value)
   if (day === null) return value
-  return DAY_SHORT_BY_ISO[(day + 6) % 7] ?? value
+  return DAY_SHORT[day] ?? value
 }
 
 /**
@@ -124,7 +111,7 @@ export function todayDayName(
 ): string {
   if (memberToday) {
     const day = utcDay(memberToday)
-    if (day !== null) return DAY_LONG_BY_UTC_DAY[day] ?? memberToday
+    if (day !== null) return DAY_LONG[day] ?? memberToday
   }
   return new Intl.DateTimeFormat('en', { weekday: 'long' }).format(now)
 }
@@ -133,7 +120,7 @@ export function todayDayName(
 export function daysText(days: readonly number[]): string {
   return [...days]
     .sort((a, b) => a - b)
-    .map((iso) => DAY_SHORT_BY_ISO[iso - 1])
+    .map((iso): string | undefined => (iso >= 1 && iso <= 7 ? DAY_SHORT[iso % 7] : undefined))
     .filter((name): name is string => typeof name === 'string')
     .join(' ')
 }

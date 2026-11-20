@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { ActivitySelection, ScheduleType } from '@/domain/activities'
-import { backendErrorCode, errorCopy } from '@/domain/error-codes'
+import { errorCopy } from '@/domain/error-codes'
 import { MY_PLAN_COPY } from '@/domain/my-plan'
 import {
   addedToast,
@@ -28,13 +28,14 @@ import {
   validateCommitment,
   WEEKDAYS,
   type AddCommitmentInput,
+  type AddCommitmentResult,
   type CommitmentErrors,
   type CommitmentForm,
   type PlanKind,
 } from '@/domain/plan'
 import { useGroupActivities, usePresetActivities } from '@/data/activities'
-import { isOffline } from '@/data/connectivity'
 import { useAddCommitment, usePlanPreview } from '@/data/plan'
+import { useSaveFlow, type SaveFailure } from '@/data/save-flow'
 import { Button } from '@/ui/button'
 import { DateField } from '@/ui/date-field'
 import { FieldError } from '@/ui/field-error'
@@ -60,9 +61,7 @@ const WEEKDAY_OPTIONS: readonly WeekdayOption[] = WEEKDAYS.map((day) => ({
 
 type ErrorKey = keyof CommitmentErrors
 
-/** Why a save did not go through: offline, or anything else (codes with a field go to the field). */
-type SaveFailure = 'offline' | 'failed'
-
+/** Inline retry copy: codes with a field go to the field, so only offline and failed show here. */
 function failureText(failure: SaveFailure): string {
   return failure === 'offline' ? PLAN_COPY.offline : PLAN_COPY.failed
 }
@@ -221,12 +220,35 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
   const [serverEndDateError, setServerEndDateError] = useState(false)
   // The server answered schedule_type_locked for this activity: the type it must be.
   const [serverLock, setServerLock] = useState<{ key: string; type: ScheduleType } | null>(null)
-  const [failure, setFailure] = useState<SaveFailure | null>(null)
-  const [busy, setBusy] = useState(false)
-  // The guard itself: Retry and Save can race within one render.
-  const busyRef = useRef(false)
-  const lastInput = useRef<AddCommitmentInput | null>(null)
-  const mounted = useRef(true)
+  const flow = useSaveFlow<AddCommitmentInput, AddCommitmentResult>({
+    run: (input) => addCommitment.mutateAsync(input),
+    onSaved: (result, input, live) => {
+      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
+      showToast(
+        addedToast(selectionName(input.activity, presets, groupActivities), result.startsOn),
+      )
+      // Stays busy while the sheet closes.
+      if (live) onSaved()
+    },
+    onError: (code, input) => {
+      if (code === 'schedule_type_locked') {
+        setServerLock({
+          key: selectionKey(input.activity) ?? '',
+          type: otherScheduleType(input.scheduleType),
+        })
+        return null
+      }
+      if (code === 'invalid_end_date') {
+        setServerEndDateError(true)
+        setShown((prev) => new Set([...prev, 'endDate']))
+        focusError('endDate')
+        return null
+      }
+      return 'failed'
+    },
+    holdBusyOnSaved: true,
+  })
+  const { failure, busy } = flow
   const [focusTick, setFocusTick] = useState(0)
   const [focusKey, setFocusKey] = useState<ErrorKey | null>(null)
 
@@ -258,13 +280,6 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
   const validation = validateCommitment(effective, minEndDate)
 
   useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
-  useEffect(() => {
     onDirtyChange(isCommitmentFormDirty(form))
   }, [form, onDirtyChange])
 
@@ -284,8 +299,7 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
     const next = { ...form, ...patch }
     setForm(next)
     // An edit makes the failed request stale: Retry must not save what the form no longer shows.
-    setFailure(null)
-    lastInput.current = null
+    flow.reset()
     const keepServerEndDate = serverEndDateError && !('endDate' in patch)
     if ('endDate' in patch) setServerEndDateError(false)
     const nextKey = selectionKey(next.activity)
@@ -311,61 +325,16 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
 
   function save(event?: FormEvent) {
     event?.preventDefault()
-    if (busyRef.current) return
+    if (flow.isBusy()) return
     if (hasErrors(validation) || form.activity === null) {
       const keys = COMMITMENT_ERROR_ORDER.filter((k) => validation[k] !== undefined)
       setShown(new Set(keys))
-      setFailure(null)
+      flow.setFailure(null)
       const first = keys[0]
       if (first) focusError(first)
       return
     }
-    void send(toAddCommitmentInput(groupId, { ...effective, activity: form.activity }))
-  }
-
-  async function send(input: AddCommitmentInput) {
-    if (busyRef.current) return
-    lastInput.current = input
-    if (isOffline()) {
-      setFailure('offline')
-      return
-    }
-    busyRef.current = true
-    setBusy(true)
-    setFailure(null)
-    try {
-      const result = await addCommitment.mutateAsync(input)
-      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
-      showToast(
-        addedToast(selectionName(input.activity, presets, groupActivities), result.startsOn),
-      )
-      if (!mounted.current) return
-      // Stays busy while the sheet closes.
-      onSaved()
-    } catch (error) {
-      busyRef.current = false
-      if (!mounted.current) return
-      setBusy(false)
-      const code = backendErrorCode(error)
-      if (code === 'network') {
-        setFailure('offline')
-      } else if (code === 'schedule_type_locked') {
-        setServerLock({
-          key: selectionKey(input.activity) ?? '',
-          type: otherScheduleType(input.scheduleType),
-        })
-      } else if (code === 'invalid_end_date') {
-        setServerEndDateError(true)
-        setShown((prev) => new Set([...prev, 'endDate']))
-        focusError('endDate')
-      } else {
-        setFailure('failed')
-      }
-    }
-  }
-
-  function retry() {
-    if (lastInput.current) void send(lastInput.current)
+    void flow.send(toAddCommitmentInput(groupId, { ...effective, activity: form.activity }))
   }
 
   const activityError = shown.has('activity') ? validation.activity : undefined
@@ -473,7 +442,7 @@ function CommitmentFormView({ groupId, onDirtyChange, onSaved }: CommitmentFormV
 
       <div className="sticky bottom-0 flex flex-col gap-3 bg-card pt-[14px]">
         {failure ? (
-          <InlineRetry onRetry={retry} retryLabel={PLAN_COPY.retry}>
+          <InlineRetry onRetry={() => void flow.retry()} retryLabel={PLAN_COPY.retry}>
             {failureText(failure)}
           </InlineRetry>
         ) : null}

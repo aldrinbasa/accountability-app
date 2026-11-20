@@ -1,16 +1,17 @@
 -- The member's current week and zone (Epic 2 retro A4, D1, F5): private.member_current_week, its
--- shape and grants, the zone rule with and without a pending zone, and plan_preview while a pending
--- zone ahead is due but not yet promoted by tick step 2.
+-- shape and grants, the zone rule with and without a pending zone, and plan_preview,
+-- get_today_summary and add_task while a pending zone ahead is due but not yet promoted by tick
+-- step 2.
 --
 -- Cast: alice (Europe/London) creates "Crew"; bob (Pacific/Auckland) and dave (Europe/London) are
 -- in no group; erin has no profile. The week under test: Mon 16 Nov to Sun 22 Nov 2026; next
 -- Monday is 23 Nov. November is GMT in London and NZDT (UTC+13) in Auckland, so Auckland's Monday
 -- 23 Nov 00:00 is Sun 22 Nov 11:00 UTC. Pending zones are written directly (as the table owner);
 -- set_time_zone is covered by time_zones.test.sql. The helper takes the instant as a parameter, so
--- only plan_preview needs the frozen clock (its search_path is pointed at test_overrides, rolled
--- back with everything else).
+-- only the RPCs need the frozen clock (their search_path is pointed at test_overrides, rolled back
+-- with everything else).
 begin;
-select plan(18);
+select plan(23);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -95,6 +96,8 @@ select is(pg_temp.cw('bob', '2026-11-22 10:00:00+00'), '2026-11-16|Pacific/Auckl
   'move behind, before the old zone''s Monday (Auckland Sun 23:00): the current zone');
 select is(pg_temp.cw('bob', '2026-11-22 12:00:00+00'), '2026-11-16|Europe/London',
   'move behind, old-zone Monday came: the new zone, still in its week of 16 Nov (as before)');
+select is(pg_temp.cw('bob', '2026-11-22 11:00:00+00'), '2026-11-16|Europe/London',
+  'move behind, exactly at Auckland Mon 00:00: the new zone''s week of 16 Nov (the old two-step rule)');
 
 -- ===== No profile =====
 select is(pg_temp.cw('erin', '2026-11-18 12:00:00+00'), '-', 'no profile: no row');
@@ -133,6 +136,39 @@ select is(
    from public.plan_preview(current_setting('test.g1')::uuid) p),
   '2026-11-23|2026-11-23|2026-11-30',
   'plan_preview with the move ahead due but not promoted: Auckland''s today and week of 23 Nov'
+);
+
+-- ===== get_today_summary and add_task in the same window =====
+reset role;
+alter function public.get_today_summary(uuid) set search_path = test_overrides, pg_catalog;
+alter function public.add_task(uuid, text, uuid, text, text, date) set search_path = test_overrides, pg_catalog;
+
+select tests.freeze_time('2026-11-22 11:30:00+00');
+select tests.authenticate_as('alice');
+select is(
+  (select s.member_today::text || '|' || s.week_start::text
+   from public.get_today_summary(current_setting('test.g1')::uuid) s),
+  '2026-11-23|2026-11-23',
+  'get_today_summary with the move ahead due but not promoted: Auckland''s today and week of 23 Nov'
+);
+select lives_ok(
+  $$select pg_catalog.set_config('test.t1', (select a.commitment_id::text
+      from public.add_task(current_setting('test.g1')::uuid, p_preset_key => 'clean',
+        p_name => 'Groceries', p_deadline => '2026-11-23') a), true)$$,
+  'add_task with deadline Mon 23 Nov succeeds in the new zone''s week'
+);
+
+reset role;
+select is(
+  (select c.deadline::text from public.commitments c where c.id = current_setting('test.t1')::uuid),
+  '2026-11-23',
+  'the task is written with its deadline'
+);
+select is(
+  (select s.week_start::text from public.sessions s
+   where s.commitment_id = current_setting('test.t1')::uuid),
+  '2026-11-23',
+  'its session is in the week of 23 Nov'
 );
 
 select * from finish();
