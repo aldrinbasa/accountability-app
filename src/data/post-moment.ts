@@ -19,6 +19,14 @@ export interface PostMoment {
   counted: boolean
   /** A late post may have counted on an earlier day: its row is left to the refetch. */
   isLate: boolean
+  /** `post_checkin`'s weekly points after the post (Story 4.1); never cached (AD-4, AD-12). */
+  weeklyPoints: number | null
+  /** `post_checkin`'s rank after the post, null when unranked. */
+  rank: number | null
+  /** Members the post passed: the rank chip reads "#1 · passed Jo" until the next open of Today. */
+  passedUserIds: string[]
+  /** The Today mount that first showed the passed chip; a later mount no longer shows it. */
+  passedShownIn: number | null
   /** A local URL of the 1080 rendition, or null where object URLs don't exist. */
   photoUrl: string | null
   caption: string | null
@@ -69,6 +77,31 @@ export function markPostMomentAnnounced(checkinId: string): void {
   emit()
 }
 
+/** The passed chip was first shown by Today mount `mountId`: later mounts drop it. */
+export function markPassedShown(checkinId: string, mountId: number): void {
+  if (!current || current.checkinId !== checkinId || current.passedShownIn !== null) return
+  current = { ...current, passedShownIn: mountId }
+  emit()
+}
+
+let todayMounts = 0
+
+/** A new id per Today mount ("an open of Today"), for `markPassedShown`. */
+export function nextTodayMountId(): number {
+  todayMounts += 1
+  return todayMounts
+}
+
+/**
+ * The members the moment passed, while the passed chip still shows on Today mount `mountId`: from
+ * the post until the next open of Today.
+ */
+export function passedForMount(moment: PostMoment | null, mountId: number): string[] {
+  if (!moment || moment.passedUserIds.length === 0) return []
+  if (moment.passedShownIn !== null && moment.passedShownIn !== mountId) return []
+  return moment.passedUserIds
+}
+
 /** Sign-out: forget the moment and release its photo. */
 export function clearPostMoment(): void {
   revoke(current)
@@ -91,6 +124,19 @@ function subscribe(listener: () => void): () => void {
 export function usePostMoment(groupId: string): PostMoment | null {
   const moment = useSyncExternalStore(subscribe, getPostMoment)
   return moment?.groupId === groupId ? moment : null
+}
+
+/**
+ * The Score sticker's optimistic value (Story 4.1): the moment's weekly points and rank until board
+ * data fetched after the post arrives (`dataUpdatedAt` newer than `postedAt`), then null (the
+ * board's own values stand). Kept in memory only, so the persisted cache never holds it.
+ */
+export function optimisticScore(
+  moment: PostMoment | null,
+  boardUpdatedAt: number,
+): { weeklyPoints: number | null; rank: number | null } | null {
+  if (!moment || boardUpdatedAt > moment.postedAt) return null
+  return { weeklyPoints: moment.weeklyPoints, rank: moment.rank }
 }
 
 /**

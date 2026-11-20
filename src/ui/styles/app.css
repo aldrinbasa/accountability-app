@@ -344,6 +344,28 @@ select {
   animation: count-bump 400ms ease-out both;
 }
 
+/* The rank chip swaps in with a short wobble: 300 ms (Story 4.1). */
+@keyframes chip-wobble {
+  0% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-3deg);
+  }
+  60% {
+    transform: rotate(2.5deg);
+  }
+  85% {
+    transform: rotate(-1deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@utility animate-chip-wobble {
+  animation: chip-wobble 300ms ease-out both;
+}
+
 /* Reduced motion: no transitions or animations anywhere; end states appear at once. */
 @media (prefers-reduced-motion: reduce) {
   *,

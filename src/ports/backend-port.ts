@@ -1,5 +1,6 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type { Board, GroupWeek } from '@/domain/board'
 import type {
   CheckinPhotoSize,
   CheckinTarget,
@@ -196,9 +197,21 @@ export interface BackendPort {
    * `post_checkin`: the server sets the timing, matches a session (or stores an extra) and returns
    * the week's counts. The same id and payload again return the stored result. Rejects with
    * `bad_capture_time`, `not_member`, `commitment_ended`, `week_locked`, `photo_missing`,
-   * `checkin_conflict` or `invalid_caption`.
+   * `checkin_conflict` or `invalid_caption`. Story 4.1 adds the member's weekly points, rank and
+   * the members the post passed.
    */
   postCheckin(input: PostCheckinInput): Promise<PostCheckinResult>
+
+  /**
+   * `get_group_week`: the group's current week (Monday and lock time) from its `group_weeks` row
+   * (AD-11). Rejects with `not_member`.
+   */
+  getGroupWeek(groupId: string): Promise<GroupWeek>
+  /**
+   * `get_board`: the group's ranking for a week (`weekStart` = a `getGroupWeek` Monday), ranked rows
+   * first, plus whether the group is waiting. Rejects with `not_member`.
+   */
+  getBoard(groupId: string, weekStart: string): Promise<Board>
 
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on

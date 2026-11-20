@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type { Board, GroupWeek } from '@/domain/board'
 import type {
   CheckinPhotoSize,
   CheckinTarget,
@@ -137,6 +138,12 @@ export const TEST_PLAN_PREVIEW: PlanPreview = {
   lastWeekTarget: null,
 }
 
+/** The group's current week the fake answers by default (the week of `TEST_PLAN_PREVIEW`). */
+export const TEST_GROUP_WEEK: GroupWeek = {
+  weekStart: '2026-11-16',
+  lockAt: '2026-11-25T16:00:00.000Z',
+}
+
 /**
  * The fake's pro-rated last week: ISO weekday of the end date (Monday = 1) as the days of that week.
  * Test-only stand-in for the server's rule.
@@ -223,6 +230,10 @@ export function createFakeBackend(
     feed?: Record<string, FeedItem[]>
     /** Friends today per group id, newest first as given. Default none. */
     friendsToday?: Record<string, FeedCheckin[]>
+    /** `get_board` per group id (default: no rows, `waiting` from the group's member count). */
+    board?: Record<string, Board>
+    /** `get_group_week` per group id (default `TEST_GROUP_WEEK`). */
+    groupWeeks?: Record<string, GroupWeek>
     /**
      * The server clock for `setTimeZone` (ISO instant). Default `2026-11-18T12:00:00Z`, the day of
      * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
@@ -260,9 +271,14 @@ export function createFakeBackend(
       isLate: false,
       doneCount: 1,
       target: 1,
+      weeklyPoints: null,
+      rank: null,
+      passedUserIds: [],
     }))
   const feed = options.feed ?? {}
   const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
+  const board: Record<string, Board> = { ...options.board }
+  const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -605,6 +621,15 @@ export function createFakeBackend(
         ...(friendsToday[input.groupId] ?? []).filter((item) => item.id !== input.id),
       ]
       return result
+    }),
+    getGroupWeek: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return groupWeeks[groupId] ?? TEST_GROUP_WEEK
+    }),
+    getBoard: vi.fn(async (groupId: string, _weekStart: string) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      return board[groupId] ?? { waiting: group.memberCount < 2, rows: [] }
     }),
     // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
     listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {

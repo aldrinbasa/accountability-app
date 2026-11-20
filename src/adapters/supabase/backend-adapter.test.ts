@@ -1481,6 +1481,9 @@ describe('check-ins', () => {
           is_late: false,
           done_count: 2,
           target: 3,
+          weekly_points: 67,
+          rank: 2,
+          passed_user_ids: ['u2'],
         },
       ],
       error: null,
@@ -1500,6 +1503,9 @@ describe('check-ins', () => {
       isLate: false,
       doneCount: 2,
       target: 3,
+      weeklyPoints: 67,
+      rank: 2,
+      passedUserIds: ['u2'],
     })
     expect(db.rpc).toHaveBeenLastCalledWith('post_checkin', {
       p_id: 'k1',
@@ -1607,6 +1613,97 @@ function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_it
     ...overrides,
   }
 }
+
+describe('board (Story 4.1)', () => {
+  it('get_group_week maps the current week', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ week_start: '2026-11-16', lock_at: '2026-11-25T16:00:00+00:00' }],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getGroupWeek('g1')).toEqual({
+      weekStart: '2026-11-16',
+      lockAt: '2026-11-25T16:00:00+00:00',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_group_week', { p_group_id: 'g1' })
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.getGroupWeek('g1'))).toBe('unknown')
+  })
+
+  it('get_board maps the rows in the server order, waiting and the nullable columns', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          user_id: 'u1',
+          display_name: 'Jo',
+          avatar_path: 'u1/1.webp',
+          weekly_points: 67,
+          sessions_done: 4,
+          sessions_planned: 6,
+          sessions_frozen: 0,
+          rank: 1,
+          waiting: false,
+        },
+        {
+          user_id: 'u2',
+          display_name: 'Sam',
+          avatar_path: null,
+          weekly_points: null,
+          sessions_done: 0,
+          sessions_planned: 0,
+          sessions_frozen: 0,
+          rank: null,
+          waiting: false,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({
+      waiting: false,
+      rows: [
+        {
+          userId: 'u1',
+          displayName: 'Jo',
+          avatarPath: 'u1/1.webp',
+          weeklyPoints: 67,
+          sessionsDone: 4,
+          sessionsPlanned: 6,
+          sessionsFrozen: 0,
+          rank: 1,
+        },
+        {
+          userId: 'u2',
+          displayName: 'Sam',
+          avatarPath: null,
+          weeklyPoints: null,
+          sessionsDone: 0,
+          sessionsPlanned: 0,
+          sessionsFrozen: 0,
+          rank: null,
+        },
+      ],
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_board', {
+      p_group_id: 'g1',
+      p_week_start: '2026-11-16',
+    })
+  })
+
+  it('get_board with no rows counts as waiting', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({ waiting: true, rows: [] })
+  })
+
+  it('get_board maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: pgError('not_member'),
+      status: 400,
+    })
+    expect(await backendCodeOf(adapter.getBoard('g1', '2026-11-16'))).toBe('not_member')
+  })
+})
 
 describe('feed mapping', () => {
   it('maps check-ins and stickies, drops kinds the app does not render, keeps the raw cursors', () => {

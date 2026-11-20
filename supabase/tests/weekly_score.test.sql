@@ -17,7 +17,7 @@
 -- pointed at test_overrides so tests.freeze_time moves their clock.
 begin;
 set local timezone = 'UTC';
-select plan(37);
+select plan(38);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -444,12 +444,34 @@ select is(
   'post_checkin in a waiting group: no rank and passed_user_ids empty'
 );
 
--- The ranking after the posts: carol (late) ties bob, gus 4th, dave 5th.
+-- hank plans Journal Fri Sat (0 of 2: 0, rank 6), then checks in on time for Friday: 1 of 2 = 50
+-- with 1 done ties gus at #4 (a tie is not a pass) and passes dave (33, now #6).
+reset role;
+select pg_catalog.set_config('test.journal', pg_temp.add_plan('hank', 'g1', 'journal', array[5, 6]::smallint[], null)::text, true);
+select pg_temp.add_session('journal', '2026-11-16', 5, true);
+select pg_temp.add_session('journal', '2026-11-16', 6, true);
+select pg_catalog.set_config('test.p4', '00000000-0000-4000-a000-0000000041a4', true);
+set local role service_role;
+insert into storage.objects (bucket_id, name, owner_id)
+select 'checkins', current_setting('test.g1') || '/' || current_setting('test.p4') || '/' || s.size || '.webp',
+       tests.get_supabase_uid('hank')::text
+from (values ('1080'), ('360')) s(size);
+reset role;
+select tests.authenticate_as('hank');
+select is(
+  (select r.weekly_points || '|' || r.rank || '|' || r.passed_user_ids::text
+   from public.post_checkin(current_setting('test.p4')::uuid, current_setting('test.journal')::uuid,
+     '2026-11-20 11:59:00+00', null) r),
+  '50|4|{' || tests.get_supabase_uid('dave') || '}',
+  'post_checkin: a member tied by the post is not passed; the one now ranked below is'
+);
+
+-- The ranking after the posts: carol (late) ties bob, gus and hank share 4th, dave 6th.
 select tests.authenticate_as('alice');
 select is(
   (select pg_catalog.array_agg(b.display_name || ':' || coalesce(b.rank::text, '-') order by b.rank nulls last, b.display_name)
    from public.get_board(current_setting('test.g1')::uuid, '2026-11-16') b),
-  array['Alice:1', 'Bob:2', 'Carol:2', 'Gus:4', 'Dave:5', 'Hank:-'],
+  array['Alice:1', 'Bob:2', 'Carol:2', 'Gus:4', 'Hank:4', 'Dave:6'],
   'get_board after the posts reflects them'
 );
 

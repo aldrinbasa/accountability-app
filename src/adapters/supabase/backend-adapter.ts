@@ -12,6 +12,7 @@ import {
   type PresetActivity,
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
+import type { Board, BoardRow, GroupWeek } from '@/domain/board'
 import {
   checkinPhotoPath,
   isWontCount,
@@ -484,6 +485,38 @@ export function toPostCheckinResult(row: PostCheckinRow): PostCheckinResult {
     isLate: row.is_late,
     doneCount: row.done_count,
     target: row.target,
+    weeklyPoints: row.weekly_points ?? null,
+    rank: row.rank ?? null,
+    passedUserIds: row.passed_user_ids ?? [],
+  }
+}
+
+type GroupWeekRow = Database['public']['Functions']['get_group_week']['Returns'][number]
+
+/** The `get_group_week` row as the group's current week. */
+export function toGroupWeek(row: GroupWeekRow): GroupWeek {
+  return { weekStart: row.week_start, lockAt: row.lock_at }
+}
+
+type BoardRpcRow = Database['public']['Functions']['get_board']['Returns'][number]
+
+/**
+ * `get_board` rows as a board, in the server's order. `waiting` repeats on every row; a board with
+ * no rows (never for a member) counts as waiting. The generated type misses the nullable columns.
+ */
+export function toBoard(rows: readonly BoardRpcRow[]): Board {
+  return {
+    waiting: rows[0]?.waiting ?? true,
+    rows: rows.map((row): BoardRow => ({
+      userId: row.user_id,
+      displayName: row.display_name,
+      avatarPath: row.avatar_path ?? null,
+      weeklyPoints: row.weekly_points ?? null,
+      sessionsDone: row.sessions_done,
+      sessionsPlanned: row.sessions_planned,
+      sessionsFrozen: row.sessions_frozen,
+      rank: row.rank ?? null,
+    })),
   }
 }
 
@@ -1098,6 +1131,23 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'post_checkin returned no row')
     return toPostCheckinResult(row)
+  },
+
+  async getGroupWeek(groupId) {
+    const { data, error, status } = await supabase.rpc('get_group_week', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_group_week returned no row')
+    return toGroupWeek(row)
+  },
+
+  async getBoard(groupId, weekStart) {
+    const { data, error, status } = await supabase.rpc('get_board', {
+      p_group_id: groupId,
+      p_week_start: weekStart,
+    })
+    if (error) throw toBackendError(error, status)
+    return toBoard(data ?? [])
   },
 
   async listFeed(groupId, request: FeedRowsRequest) {

@@ -3,7 +3,11 @@ import {
   clearPostMoment,
   getPostMoment,
   markPostMomentAnnounced,
+  markPassedShown,
   markPostMomentPlayed,
+  nextTodayMountId,
+  optimisticScore,
+  passedForMount,
   setPostMoment,
   withPostMoment,
   type PostMoment,
@@ -50,6 +54,10 @@ const MOMENT: PostMoment = {
   target: 3,
   counted: true,
   isLate: false,
+  weeklyPoints: null,
+  rank: null,
+  passedUserIds: [],
+  passedShownIn: null,
   photoUrl: null,
   caption: null,
   postedAt: 1000,
@@ -89,5 +97,31 @@ describe('post moment store', () => {
     expect(getPostMoment()).toMatchObject({ played: true, announced: true })
     clearPostMoment()
     expect(getPostMoment()).toBeNull()
+  })
+})
+
+describe('score after a post (Story 4.1)', () => {
+  const SCORED: PostMoment = { ...MOMENT, weeklyPoints: 67, rank: 1, passedUserIds: ['u2'] }
+
+  it('optimisticScore holds the post values until a board fetched after the post', () => {
+    expect(optimisticScore(SCORED, 999)).toEqual({ weeklyPoints: 67, rank: 1 })
+    expect(optimisticScore(SCORED, 1000)).toEqual({ weeklyPoints: 67, rank: 1 })
+    expect(optimisticScore(SCORED, 1001)).toBeNull()
+    expect(optimisticScore(null, 0)).toBeNull()
+  })
+
+  it('the passed list lasts until the next open of Today', () => {
+    const first = nextTodayMountId()
+    const second = nextTodayMountId()
+    expect(second).toBeGreaterThan(first)
+    expect(passedForMount(SCORED, first)).toEqual(['u2'])
+    setPostMoment(SCORED)
+    markPassedShown('k1', first)
+    markPassedShown('k1', second)
+    expect(getPostMoment()?.passedShownIn).toBe(first)
+    expect(passedForMount(getPostMoment(), first)).toEqual(['u2'])
+    expect(passedForMount(getPostMoment(), second)).toEqual([])
+    expect(passedForMount({ ...SCORED, passedUserIds: [] }, first)).toEqual([])
+    clearPostMoment()
   })
 })

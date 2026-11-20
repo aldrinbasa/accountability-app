@@ -1,5 +1,6 @@
 import { THEME_STORAGE_KEY } from '@/domain/theme'
 import { clearAccountDeviceState } from '@/data/account-device-state'
+import { getLastSeenRank, lastSeenRankKey, setLastSeenRank } from '@/data/board'
 import {
   FOCUSED_GROUP_KEY,
   getStoredFocusedGroup,
@@ -21,10 +22,11 @@ afterEach(() => {
 })
 
 describe('clearAccountDeviceState', () => {
-  it('forgets the focused group and every last-seen count; keeps device-wide keys', () => {
+  it('forgets the focused group, every last-seen count and rank; keeps device-wide keys', () => {
     setStoredFocusedGroup('group-1')
     setLastSeenCount('group-1', 3)
     setLastSeenCount('group-2', 1)
+    setLastSeenRank('group-1', 2)
     markRemovedNoticeSeen('m-1')
     localStorage.setItem(THEME_STORAGE_KEY, 'dark')
     localStorage.setItem(INSTALLED_KEY, '1')
@@ -38,6 +40,8 @@ describe('clearAccountDeviceState', () => {
     expect(localStorage.getItem(lastSeenCountKey('group-1'))).toBeNull()
     expect(getLastSeenCount('group-1')).toBeNull()
     expect(getLastSeenCount('group-2')).toBeNull()
+    expect(localStorage.getItem(lastSeenRankKey('group-1'))).toBeNull()
+    expect(getLastSeenRank('group-1')).toBeNull()
     expect(localStorage.getItem(removedNoticeKey('m-1'))).toBe('1')
     expect(hasSeenRemovedNotice('m-1')).toBe(true)
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark')
@@ -53,14 +57,17 @@ describe('clearAccountDeviceState', () => {
     vi.spyOn(localStorage, 'setItem').mockImplementation(block)
     setStoredFocusedGroup('group-1')
     setLastSeenCount('group-1', 3)
+    setLastSeenRank('group-1', 2)
     markRemovedNoticeSeen('m-1')
     expect(getStoredFocusedGroup()).toBe('group-1')
     expect(getLastSeenCount('group-1')).toBe(3)
+    expect(getLastSeenRank('group-1')).toBe(2)
 
     clearAccountDeviceState()
 
     expect(getStoredFocusedGroup()).toBeNull()
     expect(getLastSeenCount('group-1')).toBeNull()
+    expect(getLastSeenRank('group-1')).toBeNull()
     expect(hasSeenRemovedNotice('m-1')).toBe(true)
   })
 })
