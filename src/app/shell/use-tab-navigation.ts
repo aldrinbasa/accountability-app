@@ -6,12 +6,14 @@ import {
   type TabLocationState,
   type TabPath,
 } from '@/app/shell/tabs'
+import { cameFromMe } from '@/features/me/pushed-from-me'
 
 /**
  * Tab switching that never stacks tabs in history. History holds at most `[/today, /tab]`:
  * - Today -> tab: push (marked `fromToday`), so system back from the tab lands on Today.
  * - tab -> tab: replace.
- * - tab -> Today: go back one entry when Today sits behind. If the group changed on the tab, that
+ * - tab -> Today: go back to the Today entry when it sits behind (one entry, or two from a screen
+ *   pushed from Me, like My plan, whose Me entry sits in between). If the group changed on the tab, that
  *   entry still holds the old `?g=`, so it is then replaced with the current one (see
  *   `useFinishTodayReturn`). With no Today behind, replace.
  * - re-tapping the active tab scrolls to the top.
@@ -44,7 +46,7 @@ export function useTabNavigation(): (to: TabPath) => void {
           return
         }
         if (behind !== search) pendingTodaySearch = search
-        void navigate(-1)
+        void navigate(cameFromMe(location.state) ? -2 : -1)
         return
       }
       // Tab -> tab keeps what sits behind (the Today entry and its search).

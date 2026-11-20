@@ -69,6 +69,22 @@ describe('bottom nav', () => {
     expect(router.state.historyAction).toBe('POP')
   })
 
+  it('Today from a screen pushed from Me (My plan) goes back past Me to the Today entry', async () => {
+    const user = userEvent.setup()
+    const router = renderAt('/today')
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+
+    await user.click(tab('Me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(router.state.historyAction).toBe('POP')
+    expect(router.state.location.search).toBe('?g=group-1')
+  })
+
   it('system back on a non-Today tab lands on Today', async () => {
     const user = userEvent.setup()
     const router = renderAt('/today')
