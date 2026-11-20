@@ -439,6 +439,11 @@ isOneToOne: false
               "ends_after_week_start": string
             }[]
                            },
+"get_board":
+{ Args: { "p_group_id": string,"p_week_start": string }; Returns: {
+              "avatar_path": string,"display_name": string,"rank": number,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"user_id": string,"waiting": boolean,"weekly_points": number
+            }[]
+                           },
 "get_checkin_targets":
 { Args: { "p_group_id": string }; Returns: {
               "activity_name": string,"commitment_id": string,"custom_name": string,"deadline": string,"done_count": number,"due_today": boolean,"kind": string,"member_today": string,"name": string,"preset_key": string,"schedule_type": string,"target": number,"wont_count": string
@@ -482,6 +487,11 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"get_group_week":
+{ Args: { "p_group_id": string }; Returns: {
+              "lock_at": string,"week_start": string
+            }[]
+                           },
 "get_invite":
 { Args: { "p_code": string }; Returns: {
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
@@ -520,7 +530,7 @@ isOneToOne: false
                            },
 "post_checkin":
 { Args: { "p_caption"?: string,"p_captured_at": string,"p_commitment_id": string,"p_id": string }; Returns: {
-              "checkin_id": string,"counted": boolean,"done_count": number,"is_late": boolean,"session_id": string,"target": number
+              "checkin_id": string,"counted": boolean,"done_count": number,"is_late": boolean,"passed_user_ids": (string)[],"rank": number,"session_id": string,"target": number,"weekly_points": number
             }[]
                            },
 "remove_member":
