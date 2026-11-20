@@ -15,7 +15,7 @@
 -- test_overrides so tests.freeze_time moves their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(76);
+select plan(82);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -143,6 +143,7 @@ alter function public.add_commitment(uuid, text, uuid, text, text, integer[], in
   set search_path = test_overrides, pg_catalog;
 alter function private.commitment_is_active(public.commitments) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
+alter function public.end_commitment(uuid) set search_path = test_overrides, pg_catalog;
 
 -- Ids. Every check-in id below is fixed; photos are keyed by them.
 select pg_catalog.set_config('test.e1', '00000000-0000-4000-a000-0000000000e1', true);
@@ -165,6 +166,8 @@ select pg_catalog.set_config('test.b1', '00000000-0000-4000-a000-0000000000b1', 
 select pg_catalog.set_config('test.b2', '00000000-0000-4000-a000-0000000000b2', true);
 select pg_catalog.set_config('test.b3', '00000000-0000-4000-a000-0000000000b3', true);
 select pg_catalog.set_config('test.b4', '00000000-0000-4000-a000-0000000000b4', true);
+select pg_catalog.set_config('test.b5', '00000000-0000-4000-a000-0000000000b5', true);
+select pg_catalog.set_config('test.b6', '00000000-0000-4000-a000-0000000000b6', true);
 select pg_catalog.set_config('test.m1', '00000000-0000-4000-a000-000000000101', true);
 select pg_catalog.set_config('test.m2', '00000000-0000-4000-a000-000000000102', true);
 select pg_catalog.set_config('test.m3', '00000000-0000-4000-a000-000000000103', true);
@@ -180,6 +183,7 @@ from (values ('e1', 'erin'), ('e2', 'erin'), ('a1', 'alice'), ('a3', 'alice'), (
              ('a5', 'alice'), ('a6', 'alice'), ('a7', 'alice'), ('a8', 'alice'), ('a9', 'alice'),
              ('t1', 'alice'), ('t2', 'alice'), ('c1', 'carol'), ('c2', 'carol'), ('r1', 'alice'),
              ('x1', 'alice'), ('b1', 'bob'), ('b2', 'bob'), ('b3', 'bob'), ('b4', 'bob'),
+             ('b5', 'bob'), ('b6', 'bob'),
              ('m3', 'bob')) p(id, owner)
 cross join (values ('1080'), ('360')) s(size);
 insert into storage.objects (bucket_id, name, owner_id)
@@ -242,6 +246,12 @@ select tests.authenticate_as('bob');
 select pg_catalog.set_config('test.walk', (select a.commitment_id::text
   from public.add_commitment(current_setting('test.g1')::uuid, p_preset_key => 'walk',
     p_schedule_type => 'times_per_week', p_target => 7) a), true);
+select pg_catalog.set_config('test.sports', (select a.commitment_id::text
+  from public.add_commitment(current_setting('test.g1')::uuid, p_preset_key => 'sports',
+    p_schedule_type => 'fixed_days', p_days => array[1, 2, 3, 4, 5, 6, 7]) a), true);
+select pg_catalog.set_config('test.yoga', (select a.commitment_id::text
+  from public.add_commitment(current_setting('test.g1')::uuid, p_preset_key => 'yoga',
+    p_schedule_type => 'fixed_days', p_days => array[1, 2, 3, 4, 5, 6, 7]) a), true);
 select tests.authenticate_as('carol');
 select pg_catalog.set_config('test.study', (select a.commitment_id::text
   from public.add_commitment(current_setting('test.g1')::uuid, p_preset_key => 'study',
@@ -344,6 +354,23 @@ select throws_ok(
     tests.get_supabase_uid('alice'), current_setting('test.gym')),
   '42501', null, 'authenticated cannot insert into checkins'
 );
+
+-- ===== Wed 18 Nov 08:45: open rows before done rows in a section =====
+select tests.freeze_time('2026-11-18 08:45:00+00');
+select tests.authenticate_as('bob');
+select * from public.post_checkin(current_setting('test.b5')::uuid, current_setting('test.sports')::uuid,
+  '2026-11-18 08:44:00+00', null);
+select is(
+  (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
+   from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
+     as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
+  'due_today:Yoga, due_today:Walk, due_today:Sports',
+  'Today: a done row (Sports, checked in today) sorts below the open rows of its section'
+);
+-- Bob ends Yoga: its sessions run through this Sunday, then it is over.
+select public.end_commitment(current_setting('test.yoga')::uuid);
 
 -- ===== Wed 18 Nov 09:00-10:00: times per week, one count per day =====
 select tests.freeze_time('2026-11-18 09:00:00+00');
@@ -630,6 +657,11 @@ select is(
 );
 select tests.freeze_time('2026-11-26 00:00:00+00');
 select throws_ok(
+  format('select * from public.post_checkin(%L, %L, %L, null)', current_setting('test.b6'),
+    current_setting('test.yoga'), '2026-11-25 23:59:30+00'),
+  'P0001', 'commitment_ended', 'commitment_ended: a commitment ended last week'
+);
+select throws_ok(
   format('select * from public.post_checkin(%L, %L, %L, null)', current_setting('test.b4'),
     current_setting('test.walk'), '2026-11-22 12:00:00+00'),
   'P0001', 'week_locked', 'week_locked: at lock_at'
@@ -685,6 +717,33 @@ select is(
      and o.name like current_setting('test.g1') || '/%'),
   0,
   'storage: a non-member reads no photos of the group'
+);
+
+select tests.authenticate_as('bob');
+select is(
+  (select count(*)::integer from storage.objects o
+   where o.bucket_id = 'checkins' and o.name like current_setting('test.g1') || '/' || current_setting('test.a1') || '/%'),
+  2,
+  'storage: another current member reads the photos of a visible check-in'
+);
+select is(
+  (select count(*)::integer from storage.objects o
+   where o.bucket_id = 'checkins' and o.name like current_setting('test.g1') || '/' || current_setting('test.c1') || '/%'),
+  0,
+  'storage: a left member''s photos disappear for the group'
+);
+select is(
+  (select count(*)::integer from storage.objects o
+   where o.bucket_id = 'checkins' and o.name like current_setting('test.g1') || '/00000000-0000-4000-a000-000000000201/%'),
+  0,
+  'storage: another member cannot read a pending upload with no check-in row'
+);
+select tests.authenticate_as('alice');
+select is(
+  (select count(*)::integer from storage.objects o
+   where o.bucket_id = 'checkins' and o.name like current_setting('test.g1') || '/00000000-0000-4000-a000-000000000201/%'),
+  1,
+  'storage: the owner reads their own pending upload'
 );
 
 select * from finish();

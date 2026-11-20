@@ -17,6 +17,8 @@ export interface PostMoment {
   target: number
   /** It completed a session (false for an extra). */
   counted: boolean
+  /** A late post may have counted on an earlier day: its row is left to the refetch. */
+  isLate: boolean
   /** A local URL of the 1080 rendition, or null where object URLs don't exist. */
   photoUrl: string | null
   caption: string | null
@@ -93,14 +95,15 @@ export function usePostMoment(groupId: string): PostMoment | null {
 
 /**
  * Today's rows with the moment's counts on its row, until Today data fetched after the post arrives
- * (`dataUpdatedAt` newer than `postedAt`): from then on the server's counts stand alone.
+ * (`dataUpdatedAt` newer than `postedAt`): from then on the server's counts stand alone. A late post
+ * (counted at its capture time, maybe another day) is not applied: "counted today" would be a guess.
  */
 export function withPostMoment(
   data: TodayData,
   moment: PostMoment | null,
   dataUpdatedAt: number,
 ): TodayData {
-  if (!moment || !moment.counted || dataUpdatedAt > moment.postedAt) return data
+  if (!moment || !moment.counted || moment.isLate || dataUpdatedAt > moment.postedAt) return data
   if (!data.items.some((item) => item.commitmentId === moment.commitmentId)) return data
   return {
     ...data,

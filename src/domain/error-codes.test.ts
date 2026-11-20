@@ -92,7 +92,7 @@ describe('BackendError', () => {
 
   it('maps the check-in codes to copy (Story 3.2)', () => {
     expect(errorCopy('bad_capture_time')).toBe(
-      "Your phone's clock is ahead. Fix its date and time, then try again.",
+      "Your phone's clock is ahead. Fix its date and time, then retake the photo.",
     )
     expect(errorCopy('week_locked')).toBe("That week has locked, so this photo can't count.")
     expect(errorCopy('photo_missing')).toBe("The photo didn't finish uploading. Tap Retry.")

@@ -49,6 +49,7 @@ const MOMENT: PostMoment = {
   doneCount: 3,
   target: 3,
   counted: true,
+  isLate: false,
   photoUrl: null,
   caption: null,
   postedAt: 1000,
@@ -65,6 +66,10 @@ describe('withPostMoment', () => {
 
   it('drops the override once Today was fetched after the post', () => {
     expect(withPostMoment(DATA, MOMENT, 1001)).toBe(DATA)
+  })
+
+  it('leaves the row to the refetch for a late post (it may have counted on another day)', () => {
+    expect(withPostMoment(DATA, { ...MOMENT, isLate: true }, 999)).toBe(DATA)
   })
 
   it('changes nothing for an extra, no moment or a row that is gone', () => {

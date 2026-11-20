@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CHECKIN_PHOTO_QUALITY,
+  CHECKIN_PHOTO_SIZES,
   normalizeCaption,
   type CheckinPhotoSize,
   type CheckinTarget,
@@ -158,7 +159,7 @@ export function usePostCheckin({
       }
       renditions.current ??= await encodeRenditions(encoder, photo.canvas)
       const blobs = renditions.current
-      for (const size of [1080, 360] as const) {
+      for (const size of CHECKIN_PHOTO_SIZES) {
         if (uploaded.current.has(size)) continue
         await repository.upload(input.groupId, input.id, size, blobs[size])
         uploaded.current.add(size)

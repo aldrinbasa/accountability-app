@@ -73,6 +73,8 @@ export function CheckinPreview({
 
   const failure = flow.failure
   const retryable = failure !== null && isRetryablePostError(failure)
+  // A final code fails the same way for this photo every time: no Post, only Retake and Close.
+  const final = failure !== null && !retryable
 
   return (
     <div
@@ -144,15 +146,17 @@ export function CheckinPreview({
             >
               {CHECKIN_COPY.retake}
             </Button>
-            <Button
-              variant="primary"
-              className="flex-1"
-              busy={flow.busy}
-              busyLabel={CHECKIN_COPY.posting}
-              onClick={() => flow.post(caption)}
-            >
-              {CHECKIN_COPY.post}
-            </Button>
+            {final ? null : (
+              <Button
+                variant="primary"
+                className="flex-1"
+                busy={flow.busy}
+                busyLabel={CHECKIN_COPY.posting}
+                onClick={() => flow.post(caption)}
+              >
+                {CHECKIN_COPY.post}
+              </Button>
+            )}
           </div>
         </div>
       </section>

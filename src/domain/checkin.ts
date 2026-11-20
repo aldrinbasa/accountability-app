@@ -136,9 +136,6 @@ export const CHECKIN_COPY = {
   loadFailed: "Can't reach Proofy right now.",
   retry: 'Retry',
   preview: 'Your photo',
-  done: 'Done',
-  countedToday: 'counted today',
-  targetMet: 'target met',
 } as const
 
 /** The won't-count note, which replaces the picker row's normal status. */

@@ -1371,7 +1371,7 @@ describe('check-ins', () => {
     await expect(adapter.uploadCheckinPhoto('g1', 'k1', 360, photo)).resolves.toBeUndefined()
   })
 
-  it('an upload with no response is network; a refused one is unknown', async () => {
+  it('an upload with no response is network; a policy refusal (403) is not_member; else unknown', async () => {
     const photo = new Blob(['x'], { type: 'image/webp' })
     storage.bucket.upload.mockResolvedValueOnce({
       data: null,
@@ -1383,6 +1383,20 @@ describe('check-ins', () => {
     storage.bucket.upload.mockResolvedValueOnce({
       data: null,
       error: storageError('new row violates row-level security policy', 403, '403'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe(
+      'not_member',
+    )
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Unauthorized', 400, '403'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe(
+      'not_member',
+    )
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Internal error', 500, '500'),
     })
     expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('unknown')
   })

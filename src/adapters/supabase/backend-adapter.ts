@@ -521,11 +521,14 @@ export function isAlreadyUploaded(error: unknown): boolean {
 
 /**
  * Maps a Storage upload error onto a `BackendError`: no response at all (the fetch threw, so there
- * is no HTTP status) is `network`, anything else `unknown`.
+ * is no HTTP status) is `network`; a 403 (the INSERT policy refused: no longer a current member) is
+ * `not_member`, which is final; anything else `unknown`.
  */
 export function toStorageBackendError(error: unknown): BackendError {
   const message = error instanceof Error ? error.message : String(error)
   const status = isStorageError(error) ? error.status : undefined
+  const statusCode = isStorageError(error) ? error.statusCode : undefined
+  if (status === 403 || statusCode === '403') return new BackendError('not_member', message)
   if (status === undefined || status === 0) return new BackendError('network', message)
   return new BackendError('unknown', message)
 }

@@ -4,7 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
-import type { CheckinTarget, PostCheckinInput, PostCheckinResult } from '@/domain/checkin'
+import type {
+  CheckinPhotoSize,
+  CheckinTarget,
+  PostCheckinInput,
+  PostCheckinResult,
+} from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
@@ -523,7 +528,7 @@ export function createFakeBackend(
       return checkinTargets[groupId] ?? []
     }),
     uploadCheckinPhoto: vi.fn(
-      async (_groupId: string, _checkinId: string, _size: 1080 | 360, _photo: Blob) => {},
+      async (_groupId: string, _checkinId: string, _size: CheckinPhotoSize, _photo: Blob) => {},
     ),
     postCheckin: vi.fn(async (input: PostCheckinInput) => {
       if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')

@@ -5,6 +5,7 @@ import { App } from '@/app/app'
 import { THEME_STORAGE_KEY } from '@/domain/theme'
 import { FOCUSED_GROUP_KEY } from '@/data/focused-group'
 import { lastSeenCountKey, removedNoticeKey } from '@/data/group-notices'
+import { getPostMoment, setPostMoment } from '@/data/post-moment'
 import type { FakeBackend } from '@/test/fake-backend'
 
 // Signed in through a fake backend: no Supabase client in tests.
@@ -13,7 +14,14 @@ vi.mock('@/app/composition', async () => {
   const { createFakeBackend } = await import('@/test/fake-backend')
   fake.backend = createFakeBackend()
   const { createFakeCamera } = await import('@/test/fake-camera')
-  return { adapters: { backend: fake.backend, camera: createFakeCamera() } }
+  const { createFakeEncoder } = await import('@/test/fake-image-encoder')
+  return {
+    adapters: {
+      backend: fake.backend,
+      camera: createFakeCamera(),
+      imageEncoder: createFakeEncoder(),
+    },
+  }
 })
 
 const sw = vi.hoisted(() => ({ needRefresh: false, updateServiceWorker: vi.fn() }))
@@ -64,8 +72,25 @@ describe('App', () => {
       localStorage.setItem(lastSeenCountKey('group-1'), '3')
       localStorage.setItem(removedNoticeKey('m-1'), '1')
       localStorage.setItem(THEME_STORAGE_KEY, 'dark')
+      setPostMoment({
+        checkinId: 'k1',
+        groupId: 'group-1',
+        commitmentId: 'c1',
+        title: 'Gym',
+        doneCount: 1,
+        target: 3,
+        counted: true,
+        isLate: false,
+        photoUrl: null,
+        caption: null,
+        postedAt: Date.now(),
+        played: true,
+        announced: true,
+      })
 
       act(() => fake.backend.emit(null))
+      // The session-only post moment goes with the account.
+      expect(getPostMoment()).toBeNull()
       expect(clear).toHaveBeenCalledTimes(1)
       expect(localStorage.getItem(FOCUSED_GROUP_KEY)).toBeNull()
       expect(localStorage.getItem(lastSeenCountKey('group-1'))).toBeNull()

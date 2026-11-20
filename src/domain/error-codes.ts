@@ -22,7 +22,7 @@ export const ERROR_COPY = {
   task_locked: "This task's deadline has passed. It can't change now.",
   not_found: "That's not on your plan anymore.",
   commitment_ended: "That's already wrapped up.",
-  bad_capture_time: "Your phone's clock is ahead. Fix its date and time, then try again.",
+  bad_capture_time: "Your phone's clock is ahead. Fix its date and time, then retake the photo.",
   week_locked: "That week has locked, so this photo can't count.",
   photo_missing: "The photo didn't finish uploading. Tap Retry.",
   checkin_conflict: 'That photo was already posted.',

@@ -343,7 +343,7 @@ describe('posting', () => {
     expect(fake.uploadCheckinPhoto).toHaveBeenCalledTimes(4)
   })
 
-  it('a final code shows its copy with no Retry; Retake still works', async () => {
+  it('a final code shows its copy with no Retry and no Post; Retake still works', async () => {
     const fake = backend()
     vi.mocked(fake.postCheckin).mockRejectedValueOnce(new BackendError('week_locked'))
     const { user } = await renderToday(fake)
@@ -352,8 +352,45 @@ describe('posting', () => {
     const alert = await within(dialog).findByRole('alert')
     expect(alert).toHaveTextContent("That week has locked, so this photo can't count.")
     expect(within(alert).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+    // Resending the frozen payload would fail the same way: Post is gone, Close camera stays.
+    expect(within(dialog).queryByRole('button', { name: 'Post' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Close camera' })).toBeInTheDocument()
+    expect(fake.postCheckin).toHaveBeenCalledTimes(1)
     await user.click(within(dialog).getByRole('button', { name: 'Retake' }))
     expect(await within(dialog).findByRole('button', { name: 'Take photo' })).toBeInTheDocument()
+  })
+})
+
+describe('after the post', () => {
+  it("focus goes to the post moment (the row's Check in is gone once it is Done)", async () => {
+    const fake = backend()
+    const { user } = await renderToday(fake)
+    const dialog = await preview(user)
+    vi.mocked(fake.getTodayItems).mockResolvedValue([{ ...GYM, counted: 2, countedToday: true }])
+    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => {
+      const active = document.activeElement
+      const moment = document.querySelector('[data-component="post-moment"]')
+      const heading = document.querySelector('main h1')
+      expect(active !== null && (active === moment || active === heading)).toBe(true)
+    })
+  })
+
+  it('a snap-first post from another tab ends on Today with the post moment', async () => {
+    const fake = backend()
+    const user = userEvent.setup()
+    const result = renderRoutes(['/feed'], fake, { camera: createFakeCamera() })
+    await waitFor(() => expect(result.router.state.location.search).toContain('g='))
+    await user.click(await screen.findByRole('button', { name: 'Check in' }))
+    const dialog = await shoot(user)
+    await user.click(await within(dialog).findByRole('button', { name: 'Gym, Fri · due' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(result.router.state.location.pathname).toBe('/today'))
+    await waitFor(() =>
+      expect(document.querySelector('[data-component="post-moment"]')).not.toBeNull(),
+    )
   })
 })
 

@@ -88,8 +88,12 @@ export function CameraHost({ children }: { children: ReactNode }) {
   }
 
   function onBack() {
-    if (shot !== null && flowBack.current) flowBack.current()
-    else close()
+    // With a shot, back belongs to the flow (even before its handler is registered): never close.
+    if (shot !== null) {
+      flowBack.current?.()
+      return
+    }
+    close()
   }
 
   const retake = useCallback(() => setShot(null), [])
@@ -103,6 +107,7 @@ export function CameraHost({ children }: { children: ReactNode }) {
       doneCount: result.doneCount,
       target: result.target,
       counted: result.counted,
+      isLate: result.isLate,
       photoUrl: localPhotoUrl(fullPhoto),
       caption: input.caption,
       postedAt: Date.now(),
@@ -111,6 +116,18 @@ export function CameraHost({ children }: { children: ReactNode }) {
     })
     close()
     goToTab(TODAY_PATH)
+  }
+
+  /**
+   * The trigger, or when it is gone (a posted row turned Done) the post moment's polaroid, else the
+   * page heading.
+   */
+  function returnFocus(): HTMLElement | null {
+    if (trigger.current?.isConnected) return trigger.current
+    const moment = document.querySelector<HTMLElement>('[data-component="post-moment"]')
+    const fallback = moment ?? document.querySelector<HTMLElement>('main h1')
+    if (fallback && !fallback.hasAttribute('tabindex')) fallback.tabIndex = -1
+    return fallback
   }
 
   const launcher = useMemo<CameraLauncher>(() => ({ openCamera }), [openCamera])
@@ -144,7 +161,7 @@ export function CameraHost({ children }: { children: ReactNode }) {
             ) : null
           }
           onCapture={onCapture}
-          returnFocusTo={() => trigger.current}
+          returnFocusTo={returnFocus}
         />
       ) : null}
     </CameraLauncherContext.Provider>
