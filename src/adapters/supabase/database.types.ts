@@ -441,7 +441,7 @@ isOneToOne: false
                            },
 "get_board":
 { Args: { "p_group_id": string,"p_week_start": string }; Returns: {
-              "avatar_path": string,"display_name": string,"rank": number,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"user_id": string,"waiting": boolean,"weekly_points": number
+              "avatar_path": string,"best_streak": number,"display_name": string,"is_current_week": boolean,"lock_at": string,"miss_count": number,"plan": Json,"rank": number,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"task_count": number,"time_zone": string,"user_id": string,"waiting": boolean,"weekly_points": number
             }[]
                            },
 "get_checkin_targets":
