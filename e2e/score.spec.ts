@@ -7,7 +7,8 @@ async function addTaskToday(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: 'Add a commitment or task' }).click()
   const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
   await sheet.getByRole('radio', { name: 'Task' }).click()
-  await sheet.getByRole('radio', { name: 'Groceries' }).click()
+  // Once the group has used Groceries it is listed twice (the group's activities, then the presets).
+  await sheet.getByRole('radio', { name: 'Groceries' }).first().click()
   await sheet.getByRole('textbox', { name: 'Name' }).fill(name)
   await sheet.getByRole('radio', { name: 'Today' }).click()
   await sheet.getByRole('button', { name: 'Save' }).click()
