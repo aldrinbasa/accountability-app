@@ -1655,6 +1655,7 @@ describe('board (Stories 4.1 and 4.3)', () => {
           lock_at: '2026-11-25T16:00:00+00:00',
           is_current_week: true,
           time_zone: 'Asia/Manila',
+          locked: true,
         },
         {
           user_id: 'u2',
@@ -1673,6 +1674,7 @@ describe('board (Stories 4.1 and 4.3)', () => {
           lock_at: '2026-11-25T16:00:00+00:00',
           is_current_week: true,
           time_zone: 'Asia/Manila',
+          locked: true,
         },
       ],
       error: null,
@@ -1683,6 +1685,7 @@ describe('board (Stories 4.1 and 4.3)', () => {
       lockAt: '2026-11-25T16:00:00+00:00',
       isCurrentWeek: true,
       timeZone: 'Asia/Manila',
+      locked: true,
       rows: [
         {
           userId: 'u1',
@@ -1732,6 +1735,7 @@ describe('board (Stories 4.1 and 4.3)', () => {
       lockAt: null,
       isCurrentWeek: false,
       timeZone: null,
+      locked: false,
     })
   })
 

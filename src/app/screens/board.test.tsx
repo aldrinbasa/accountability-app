@@ -272,3 +272,54 @@ describe('Board (Story 4.3)', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('Board week lock (Story 4.4)', () => {
+  /** Opens Last week with `before`, then answers `after` for last week and refetches. */
+  async function lockWhileOpen(before: Board, after: Board) {
+    const user = userEvent.setup()
+    const backend = createFakeBackend(undefined, {
+      boards: {
+        [`${TEST_GROUP.id}:${THIS_WEEK}`]: FULL,
+        [`${TEST_GROUP.id}:${LAST_WEEK}`]: before,
+      },
+    })
+    const { queryClient } = renderRoutes(['/board'], backend)
+    await user.click(await screen.findByRole('radio', { name: 'Last week' }))
+    await screen.findByText(/can still change$/)
+    vi.mocked(backend.getBoard).mockImplementation(async (_groupId, weekStart) =>
+      weekStart === LAST_WEEK ? after : FULL,
+    )
+    await act(() => queryClient.invalidateQueries({ queryKey: ['board'] }))
+  }
+
+  it('the server marks last week locked: "Locked" with the frozen results, even before the device clock reaches the lock', async () => {
+    const before = testBoard({ isCurrentWeek: false, lockAt: LAST_LOCK, rows: [marco, jo] })
+    await lockWhileOpen(before, {
+      ...before,
+      locked: true,
+      rows: [
+        { ...jo, rank: 1, weeklyPoints: 90 },
+        { ...marco, rank: 2 },
+      ],
+    })
+    expect(await screen.findByText('Locked')).toBeInTheDocument()
+    const places = within(
+      await screen.findByRole('list', { name: "Last week's podium" }),
+    ).getAllByRole('listitem')
+    expect(places[0]).toHaveTextContent(/^Jo, rank 1, 90 weekly points/)
+  })
+
+  it('a locked week that had one member: their block, without the waiting line or Invite once the group has grown', async () => {
+    const before = testBoard({ isCurrentWeek: false, lockAt: LAST_LOCK, rows: [marco, jo] })
+    await lockWhileOpen(before, {
+      ...before,
+      locked: true,
+      waiting: true,
+      rows: [{ ...marco, rank: null }],
+    })
+    expect(await screen.findByText('Locked')).toBeInTheDocument()
+    expect(await screen.findByText(/^Marco, 88 weekly points/)).toBeInTheDocument()
+    expect(screen.queryByText('The leaderboard starts when a second friend joins.')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Invite' })).toBeNull()
+  })
+})

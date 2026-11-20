@@ -6,7 +6,10 @@
 -- nobody), a group of one (2026-11-20 decision: scored, not ranked, its points kept, no winner), a
 -- late check-in received just before lock_at counted and one after rejected, a locked week
 -- unchanged by later check-ins, the streak functions equal before and after the stored rows exist
--- (and reading them), private.all_time_points, and get_board reading a locked week.
+-- (and reading them, and resetting after a later miss), private.all_time_points, get_board reading
+-- a locked week (an anonymized row skipped), a week with nobody current at its lock (scored = false),
+-- and the tick: step 5 skipped after a failing step 1, a failing week recorded as step 5 with its
+-- group's later week waiting while other groups lock.
 --
 -- Cast: alice (UTC) creates "Crew"; bob, carol, dave and erin join; dave leaves before P's lock,
 -- erin after it (before the delayed tick); hank joins after it. frank is alone in "Solo". gus
@@ -17,7 +20,7 @@
 -- search_path pointed at test_overrides so tests.freeze_time moves it.
 begin;
 set local timezone = 'UTC';
-select plan(55);
+select plan(62);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -619,6 +622,100 @@ update public.week_commitment_results set streak_after = 40
 where commitment_id = current_setting('test.gym')::uuid and week_start = '2026-11-09';
 select is(pg_temp.through('gym', '2026-11-16'), 42,
   'streak_through_week starts from P''s stored streak_after (40 here) and adds W''s two done sessions');
+
+-- ===== A miss after the stored week resets the streak (the stored value is ignored) =====
+-- Tue 24 Nov: W has ended unlocked: Gym's Fri was missed and Run met only 1 of 2.
+select tests.freeze_time('2026-11-24 12:00:00+00');
+select is(
+  'gymW=' || pg_temp.through('gym', '2026-11-16') || ' runW=' || pg_temp.through('run', '2026-11-16')
+  || ' gymNow=' || private.current_streak(current_setting('test.gym')::uuid)
+  || ' b0gym=' || private.streak_back_to_zero(current_setting('test.gym')::uuid),
+  'gymW=0 runW=0 gymNow=0 b0gym=true',
+  'a miss (fixed days) or a broken week (times per week) after the stored week resets to 0, as Story 4.2'
+);
+
+-- ===== A week with nobody current at its lock: scored = false, no member rows =====
+select tests.authenticate_as('kim');
+select pg_catalog.set_config('test.g5', public.create_group('Late')::text, true);
+reset role;
+update public.memberships set joined_at = '2026-11-20 00:00:00+00'
+where group_id = current_setting('test.g5')::uuid;
+select private.ensure_group_week(current_setting('test.g5')::uuid, '2026-11-09');
+select pg_catalog.set_config('test.g5_locked',
+  private.lock_week(current_setting('test.g5')::uuid, '2026-11-09')::text, true);
+select is(
+  current_setting('test.g5_locked') || '|'
+  || pg_temp.group_result('g5', '2026-11-09') || '|'
+  || (select pg_catalog.count(*) from public.week_results where group_id = current_setting('test.g5')::uuid),
+  'true|false|false||0',
+  'nobody current at lock_at (kim joined after it): locked, scored = false, not ranked, no member rows'
+);
+
+-- ===== An anonymized row (Epic 7) is skipped by get_board =====
+update public.week_results set user_id = null
+where group_id = current_setting('test.g3')::uuid and week_start = '2026-11-09'
+  and user_id = tests.get_supabase_uid('ivy');
+select tests.authenticate_as('gus');
+select is(
+  (select pg_catalog.string_agg(b.display_name, ',') from public.get_board(current_setting('test.g3')::uuid, '2026-11-09') b),
+  'Gus',
+  'get_board for a locked week skips a row whose user_id was anonymized'
+);
+reset role;
+
+-- ===== Through the tick: step 5 waits for steps 1 to 4, and a failing week =====
+-- Thu 3 Dec 00:00:30: due are Solo's W, and Zeroes' W and 23 Nov. Steps 1, 2 and 4 are stubbed
+-- (step 1 fails first); Zeroes' W group row fails by trigger (its 23 Nov week would succeed).
+select tests.freeze_time('2026-12-03 00:00:30+00');
+alter function private.tick() set search_path = test_overrides, pg_catalog;
+select private.ensure_group_week(current_setting('test.g2')::uuid, '2026-11-16');
+select private.ensure_group_week(current_setting('test.g3')::uuid, '2026-11-16');
+select private.ensure_group_week(current_setting('test.g3')::uuid, '2026-11-23');
+-- gus's task gets a W session, so the failing lock also writes a week_commitment_results row first.
+select pg_temp.add_session('gtask', '2026-11-16', 0, false);
+create or replace function private.tick_step_1_sessions() returns text language sql as $$ select 'step one broke'::text $$;
+create or replace function private.tick_step_2_time_zones() returns text language sql as $$ select null::text $$;
+create or replace function private.tick_step_4_misses() returns text language sql as $$ select null::text $$;
+create function tests.fail_zeroes() returns trigger language plpgsql as $$
+begin
+  if new.group_id = current_setting('test.g3')::uuid and new.week_start = '2026-11-16' then
+    raise exception 'zeroes broke';
+  end if;
+  return new;
+end;
+$$;
+-- On the last insert, after week_results and week_commitment_results were written: the rollback
+-- has to undo those.
+create trigger group_week_results_fail_zeroes before insert on public.group_week_results
+  for each row execute function tests.fail_zeroes();
+
+-- Hold the tick's lock (a cron run would make private.tick() return at once); it is re-entrant.
+select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('proofy.tick'));
+select private.tick();
+select ok(
+  not pg_temp.is_locked('g2', '2026-11-16')
+  and (select h.last_error_step = 1 from public.heartbeat h),
+  'tick: with step 1 failing, step 5 is skipped and a due week stays unlocked'
+);
+create or replace function private.tick_step_1_sessions() returns text language sql as $$ select null::text $$;
+select private.tick();
+select is(pg_temp.is_locked('g2', '2026-11-16'), true, 'tick: step 5 locks a due week once steps 1 to 4 pass');
+select ok(
+  (select h.last_error_step = 5
+          and h.last_error = 'group ' || current_setting('test.g3') || ' week 2026-11-16: zeroes broke'
+   from public.heartbeat h),
+  'tick: a failing week is recorded as step 5, naming the group and the week'
+);
+select ok(
+  not pg_temp.is_locked('g3', '2026-11-16') and not pg_temp.is_locked('g3', '2026-11-23')
+  and not exists (select 1 from public.week_results r
+                  where r.group_id = current_setting('test.g3')::uuid and r.week_start = '2026-11-16')
+  and not exists (select 1 from public.week_commitment_results r
+                  where r.group_id = current_setting('test.g3')::uuid and r.week_start = '2026-11-16')
+  and not exists (select 1 from public.group_week_results r
+                  where r.group_id = current_setting('test.g3')::uuid and r.week_start = '2026-11-16'),
+  'the failing week''s earlier writes rolled back, and its group''s later week waits'
+);
 
 select * from finish();
 rollback;

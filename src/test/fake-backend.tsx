@@ -172,6 +172,7 @@ export function testBoard(board: Partial<Board> = {}): Board {
     lockAt: TEST_GROUP_WEEK.lockAt,
     isCurrentWeek: true,
     timeZone: TEST_GROUP.timeZone,
+    locked: false,
     ...board,
   }
 }

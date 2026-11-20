@@ -532,6 +532,7 @@ export function toBoard(rows: readonly BoardRpcRow[]): Board {
     lockAt: first?.lock_at ?? null,
     isCurrentWeek: first?.is_current_week ?? false,
     timeZone: first?.time_zone ?? null,
+    locked: first?.locked ?? false,
     rows: rows.map((row): BoardRow => ({
       userId: row.user_id,
       displayName: row.display_name,

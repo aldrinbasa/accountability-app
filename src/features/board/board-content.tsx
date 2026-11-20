@@ -63,29 +63,37 @@ function WaitingInvite({ group }: { group: MyGroup }) {
   )
 }
 
-/** The week's standings: the solo view in a group of one, else Podium, rows and unscored rows. */
+/**
+ * The week's standings: the solo view for a week of one (a group of one now, or a locked week that
+ * had one member at its lock), else Podium, rows and unscored rows. The waiting line and Invite show
+ * only while the group is waiting now (`groupWaiting`), not because a past week was solo.
+ */
 function Standings({
   board,
   week,
   group,
   userId,
+  groupWaiting,
 }: {
   board: Board
   week: BoardWeek
   group: MyGroup
   userId: string
+  groupWaiting: boolean
 }) {
   if (board.waiting) {
-    const me = board.rows.find((row) => row.userId === userId)
+    // The viewer's row; a locked solo week may belong to another member (the viewer joined later).
+    const solo =
+      board.rows.find((row) => row.userId === userId) ?? (board.locked ? board.rows[0] : undefined)
     return (
       <>
-        {me && me.weeklyPoints !== null ? <SoloStand row={me} week={week} /> : null}
-        {me && me.weeklyPoints === null ? (
+        {solo && solo.weeklyPoints !== null ? <SoloStand row={solo} week={week} /> : null}
+        {solo && solo.weeklyPoints === null ? (
           <ul className="flex flex-col gap-2">
-            <LeaderboardRow row={me} week={week} />
+            <LeaderboardRow row={solo} week={week} />
           </ul>
         ) : null}
-        <WaitingInvite group={group} />
+        {groupWaiting ? <WaitingInvite group={group} /> : null}
       </>
     )
   }
@@ -110,12 +118,14 @@ function Standings({
 }
 
 /**
- * The Board for one group (Story 4.3): the week switch (only while last week awaits its lock), the
- * week chip, then the standings. Current week from `get_group_week`; both weeks' boards load so the
- * switch is instant. The switch shows while last week's lock is after its latest fetch; if the lock
- * passes while Last week is open, the next refetch shows "Locked" and the switch stays until the
- * member goes back to This week. No data yet: the skeleton after 300 ms, or "Can't reach Proofy
- * right now." + Try again when the first load failed. Every number is the server's.
+ * The Board for one group (Stories 4.3, 4.4): the week switch (only while last week awaits its lock),
+ * the week chip, then the standings. Current week from `get_group_week`; both weeks' boards load so
+ * the switch is instant. Last week counts as locked once the server says so (`locked`, its frozen
+ * results) or its lock passed before its latest fetch (the tick may not have run yet); until then
+ * the switch shows. If the lock passes while Last week is open, the next refetch shows "Locked" and
+ * the switch stays until the member goes back to This week. No data yet: the skeleton after 300 ms,
+ * or "Can't reach Proofy right now." + Try again when the first load failed. Every number is the
+ * server's.
  */
 export function BoardContent({ group }: { group: MyGroup }) {
   const session = useAuthSession()
@@ -128,7 +138,9 @@ export function BoardContent({ group }: { group: MyGroup }) {
   const [selected, setSelected] = useState<BoardWeek>('this')
 
   const lastLockAt = last.data?.lockAt ?? null
-  const lastLocked = lastLockAt !== null && Date.parse(lastLockAt) <= last.dataUpdatedAt
+  const lastLocked =
+    last.data?.locked === true ||
+    (lastLockAt !== null && Date.parse(lastLockAt) <= last.dataUpdatedAt)
   const offerSwitch = lastLockAt !== null && !lastLocked
   const showSwitch = offerSwitch || selected === 'last'
   const week: BoardWeek = showSwitch ? selected : 'this'
@@ -169,7 +181,13 @@ export function BoardContent({ group }: { group: MyGroup }) {
             })}
           />
         ) : null}
-        <Standings board={board} week={week} group={group} userId={userId} />
+        <Standings
+          board={board}
+          week={week}
+          group={group}
+          userId={userId}
+          groupWaiting={current.data ? current.data.waiting : !board.locked && board.waiting}
+        />
       </>
     )
   }

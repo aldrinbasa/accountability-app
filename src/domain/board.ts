@@ -39,9 +39,15 @@ export interface BoardRow {
   taskCount: number
 }
 
-/** A group's board for one week: ranked rows first (ties by name), then unscored members. */
+/**
+ * A group's board for one week: ranked rows first (ties by name), then unscored members. A locked
+ * week lists the members current at its lock, an unlocked week the current members.
+ */
 export interface Board {
-  /** Fewer than 2 current members: nobody is ranked and the score UI hides. */
+  /**
+   * Nobody is ranked: fewer than 2 current members (an unlocked week), or fewer than 2 members at
+   * the lock (a locked week, `group_week_results.ranked = false`).
+   */
   waiting: boolean
   rows: BoardRow[]
   /** The week's lock (Thursday 00:00 after it, group zone), ISO 8601; null with no rows. */
@@ -50,6 +56,11 @@ export interface Board {
   isCurrentWeek: boolean
   /** The group's zone for the week; null with no rows. */
   timeZone: string | null
+  /**
+   * The week is locked (Story 4.4): its results are final and come from the stored rows. A locked
+   * week that was not ranked (a group of one) reports `waiting`.
+   */
+  locked: boolean
 }
 
 /** The group's current week (`get_group_week`, AD-11): never derived from the device clock. */
