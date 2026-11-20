@@ -28,6 +28,7 @@ import { routes } from '@/app/router'
 import { CameraPortContext } from '@/app/camera-port-context'
 import { createFakeCamera } from '@/test/fake-camera'
 import { createFakeEncoder } from '@/test/fake-image-encoder'
+import { addDays, localStart, weekStartOf } from '@/test/zone-math'
 
 export const TEST_USER: AuthUser = { id: 'user-1', email: 'jo@example.com' }
 
@@ -222,6 +223,11 @@ export function createFakeBackend(
     feed?: Record<string, FeedItem[]>
     /** Friends today per group id, newest first as given. Default none. */
     friendsToday?: Record<string, FeedCheckin[]>
+    /**
+     * The server clock for `setTimeZone` (ISO instant). Default `2026-11-18T12:00:00Z`, the day of
+     * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
+     */
+    now?: string
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -234,6 +240,7 @@ export function createFakeBackend(
   }
   const groupActivities: Record<string, GroupActivity[]> = options.groupActivities ?? {}
   const planPreview = options.planPreview ?? TEST_PLAN_PREVIEW
+  const serverNow = options.now ?? '2026-11-18T12:00:00Z'
   let created = 0
   let invitesMade = 0
   let commitmentsMade = 0
@@ -506,16 +513,40 @@ export function createFakeBackend(
       return { endsAfterWeekStart: started ? planPreview.weekStart : '2026-11-09' }
     }),
     setTimeZone: vi.fn(async (timeZone: string, groupId?: string) => {
-      // The server's rule: the current zone clears a waiting change; another zone waits from the
-      // next Monday (the waiting change's Monday when there is one).
-      const next = <T extends TimeZoneState>(row: T): T =>
-        timeZone === row.timeZone
-          ? { ...row, pendingTimeZone: null, pendingWeekStart: null }
-          : {
-              ...row,
-              pendingTimeZone: timeZone,
-              pendingWeekStart: row.pendingWeekStart ?? planPreview.startsOn,
-            }
+      // The server's rule (set_time_zone, 20261128000000): a waiting change whose Monday has come
+      // in its zone counts as applied; the change starts at the waiting change's Monday, else the
+      // next Monday in the current zone, pushed a week at a time while that Monday 00:00 in the
+      // new zone has passed. The current zone clears a waiting change; the waiting zone keeps it.
+      const now = Date.parse(serverNow)
+      const next = <T extends TimeZoneState>(row: T): T => {
+        let current = row.timeZone
+        let pendingZone = row.pendingTimeZone
+        let pendingWeek = row.pendingWeekStart
+        if (
+          pendingZone !== null &&
+          pendingWeek !== null &&
+          now >= Date.parse(localStart(pendingWeek, pendingZone))
+        ) {
+          current = pendingZone
+          pendingZone = null
+          pendingWeek = null
+        }
+        let week = pendingWeek ?? addDays(weekStartOf(serverNow, current), 7)
+        while (Date.parse(localStart(week, timeZone)) <= now) week = addDays(week, 7)
+        if (timeZone === current) {
+          pendingZone = null
+          pendingWeek = null
+        } else if (timeZone !== pendingZone) {
+          pendingZone = timeZone
+          pendingWeek = week
+        }
+        return {
+          ...row,
+          timeZone: current,
+          pendingTimeZone: pendingZone,
+          pendingWeekStart: pendingWeek,
+        }
+      }
       const state = (row: TimeZoneState): TimeZoneState => ({
         timeZone: row.timeZone,
         pendingTimeZone: row.pendingTimeZone,
