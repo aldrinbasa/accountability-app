@@ -1614,7 +1614,7 @@ function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_it
   }
 }
 
-describe('board (Story 4.1)', () => {
+describe('board (Stories 4.1 and 4.3)', () => {
   it('get_group_week maps the current week', async () => {
     db.rpc.mockResolvedValueOnce({
       data: [{ week_start: '2026-11-16', lock_at: '2026-11-25T16:00:00+00:00' }],
@@ -1643,6 +1643,18 @@ describe('board (Story 4.1)', () => {
           sessions_frozen: 0,
           rank: 1,
           waiting: false,
+          miss_count: 2,
+          best_streak: 6,
+          plan: [
+            { activity_name: 'Gym', schedule_type: 'times_per_week', days: null, target: 3 },
+            { activity_name: 'Study', schedule_type: 'fixed_days', days: [1, 3, 5], target: null },
+            { activity_name: 'Broken', schedule_type: 'other', days: null, target: null },
+            'junk',
+          ],
+          task_count: 1,
+          lock_at: '2026-11-25T16:00:00+00:00',
+          is_current_week: true,
+          time_zone: 'Asia/Manila',
         },
         {
           user_id: 'u2',
@@ -1654,6 +1666,13 @@ describe('board (Story 4.1)', () => {
           sessions_frozen: 0,
           rank: null,
           waiting: false,
+          miss_count: 0,
+          best_streak: 0,
+          plan: [],
+          task_count: 0,
+          lock_at: '2026-11-25T16:00:00+00:00',
+          is_current_week: true,
+          time_zone: 'Asia/Manila',
         },
       ],
       error: null,
@@ -1661,6 +1680,9 @@ describe('board (Story 4.1)', () => {
     })
     expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({
       waiting: false,
+      lockAt: '2026-11-25T16:00:00+00:00',
+      isCurrentWeek: true,
+      timeZone: 'Asia/Manila',
       rows: [
         {
           userId: 'u1',
@@ -1671,6 +1693,14 @@ describe('board (Story 4.1)', () => {
           sessionsPlanned: 6,
           sessionsFrozen: 0,
           rank: 1,
+          missCount: 2,
+          bestStreak: 6,
+          // Malformed plan items are dropped.
+          plan: [
+            { activityName: 'Gym', scheduleType: 'times_per_week', days: null, target: 3 },
+            { activityName: 'Study', scheduleType: 'fixed_days', days: [1, 3, 5], target: null },
+          ],
+          taskCount: 1,
         },
         {
           userId: 'u2',
@@ -1681,6 +1711,10 @@ describe('board (Story 4.1)', () => {
           sessionsPlanned: 0,
           sessionsFrozen: 0,
           rank: null,
+          missCount: 0,
+          bestStreak: 0,
+          plan: [],
+          taskCount: 0,
         },
       ],
     })
@@ -1692,7 +1726,13 @@ describe('board (Story 4.1)', () => {
 
   it('get_board with no rows counts as waiting', async () => {
     db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
-    expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({ waiting: true, rows: [] })
+    expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({
+      waiting: true,
+      rows: [],
+      lockAt: null,
+      isCurrentWeek: false,
+      timeZone: null,
+    })
   })
 
   it('get_board maps not_member', async () => {

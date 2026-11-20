@@ -167,7 +167,7 @@ describe('bottom nav', () => {
 
   it('rebuilds history as [Today, tab] on a cold start on another tab', async () => {
     const router = renderAt('/board')
-    await screen.findByRole('heading', { level: 1, name: 'Board' })
+    await screen.findByRole('heading', { level: 1, name: /^Leaderboard/ })
     // The rebuild pushes /board; the focus sync then replaces it with the group query.
     await waitForGroupInUrl(router, 'group-1')
     expect(router.state.location.pathname).toBe('/board')

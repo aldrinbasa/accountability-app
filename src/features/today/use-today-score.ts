@@ -1,5 +1,5 @@
 import { passedChipText, rankChipText } from '@/domain/board'
-import { isWaiting, type MyGroup } from '@/domain/groups'
+import type { MyGroup } from '@/domain/groups'
 import { useAuthSession } from '@/data/auth-session'
 import { useBoard, useGroupWeek } from '@/data/board'
 import { optimisticScore, passedForMount, usePostMoment, type PostMoment } from '@/data/post-moment'
@@ -20,8 +20,10 @@ export interface TodayScore {
 }
 
 /**
- * Today's score for the member in `group` (Story 4.1), or null while the Score sticker hides: a
- * waiting group, the board not loaded yet (or failed with nothing cached), or the member not on it.
+ * Today's score for the member in `group` (Story 4.1), or null while the Score sticker hides: the
+ * board not loaded yet (or failed with nothing cached), or the member not on it. A group of one
+ * shows the sticker too (2026-11-20 decision: a solo member scores their own plan); nobody is ranked
+ * there, so the chip hides.
  * Every number is the server's: `get_board`, or `post_checkin`'s answer until a board fetched after
  * the post arrives. A late post's answer is not applied: it may score an earlier week (the same rule
  * as Today's rows). While the post's values stand, the chip reads only "#N" (or the passed copy):
@@ -34,7 +36,7 @@ export function useTodayScore(group: MyGroup, mountId: number): TodayScore | nul
   const board = useBoard(group.id, week.data?.weekStart)
   const moment = usePostMoment(group.id)
 
-  if (isWaiting(group) || !board.data || board.data.waiting) return null
+  if (!board.data) return null
   const me = board.data.rows.find((row) => row.userId === userId)
   if (!me) return null
 

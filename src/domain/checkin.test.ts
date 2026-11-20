@@ -105,10 +105,11 @@ describe('posting copy and rules', () => {
     expect(postedAnnouncement('Gym', 4, 5, { weeklyPoints: 67, rank: 1 })).toBe(
       'Posted. Gym 4 of 5. 67 weekly points. Rank 1.',
     )
-    // Unranked (waiting group, no score): the short form.
+    // A group of one: the points, no rank (2026-11-20 decision: a solo member scores).
     expect(postedAnnouncement('Gym', 4, 5, { weeklyPoints: 100, rank: null })).toBe(
-      'Posted. Gym 4 of 5.',
+      'Posted. Gym 4 of 5. 100 weekly points.',
     )
+    // No score: the short form.
     expect(postedAnnouncement('Gym', 0, 5, { weeklyPoints: null, rank: null })).toBe(
       'Posted. Gym 0 of 5.',
     )

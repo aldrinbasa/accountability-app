@@ -179,8 +179,8 @@ export function pickerStatus(target: CheckinTarget): string {
 
 /**
  * The post moment's one polite announcement: "Posted. Gym 4 of 5. 67 weekly points. Rank 1." The
- * points and rank sentences only when the member is ranked (Story 4.1); a waiting group or no score
- * keeps "Posted. Gym 4 of 5."
+ * points sentence whenever the post has a score (a group of one too: "Posted. Gym 4 of 5. 67 weekly
+ * points."), the rank sentence only when ranked; no score keeps "Posted. Gym 4 of 5."
  */
 export function postedAnnouncement(
   title: string,
@@ -189,8 +189,9 @@ export function postedAnnouncement(
   score: { weeklyPoints: number | null; rank: number | null } = { weeklyPoints: null, rank: null },
 ): string {
   const base = `Posted. ${title} ${doneCount} of ${target}.`
-  if (score.rank === null || score.weeklyPoints === null) return base
-  return `${base} ${score.weeklyPoints} weekly points. Rank ${score.rank}.`
+  if (score.weeklyPoints === null) return base
+  const points = `${base} ${score.weeklyPoints} weekly points.`
+  return score.rank === null ? points : `${points} Rank ${score.rank}.`
 }
 
 /** The polaroid photo's alt text: "Your Gym check-in, caption: leg day." */

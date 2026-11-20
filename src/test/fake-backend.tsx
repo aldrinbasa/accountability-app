@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
-import type { Board, GroupWeek } from '@/domain/board'
+import type { Board, BoardRow, GroupWeek } from '@/domain/board'
 import type { Streak } from '@/domain/streaks'
 import type {
   CheckinPhotoSize,
@@ -145,6 +145,37 @@ export const TEST_GROUP_WEEK: GroupWeek = {
   lockAt: '2026-11-25T16:00:00.000Z',
 }
 
+/** A `get_board` row with defaults for the Board-only fields (no misses, streak, plan or tasks). */
+export function boardRow(
+  row: Partial<BoardRow> & Pick<BoardRow, 'userId' | 'displayName'>,
+): BoardRow {
+  return {
+    avatarPath: null,
+    weeklyPoints: null,
+    sessionsDone: 0,
+    sessionsPlanned: 0,
+    sessionsFrozen: 0,
+    rank: null,
+    missCount: 0,
+    bestStreak: 0,
+    plan: [],
+    taskCount: 0,
+    ...row,
+  }
+}
+
+/** A board of `TEST_GROUP_WEEK` in the test group's zone (current week, not waiting). */
+export function testBoard(board: Partial<Board> = {}): Board {
+  return {
+    waiting: false,
+    rows: [],
+    lockAt: TEST_GROUP_WEEK.lockAt,
+    isCurrentWeek: true,
+    timeZone: TEST_GROUP.timeZone,
+    ...board,
+  }
+}
+
 /**
  * The fake's pro-rated last week: ISO weekday of the end date (Monday = 1) as the days of that week.
  * Test-only stand-in for the server's rule.
@@ -231,8 +262,12 @@ export function createFakeBackend(
     feed?: Record<string, FeedItem[]>
     /** Friends today per group id, newest first as given. Default none. */
     friendsToday?: Record<string, FeedCheckin[]>
-    /** `get_board` per group id (default: no rows, `waiting` from the group's member count). */
+    /**
+     * `get_board` per group id, for any week (default: no rows, `waiting` from the group's member
+     * count). `boards` keyed `{groupId}:{weekStart}` wins for that week.
+     */
     board?: Record<string, Board>
+    boards?: Record<string, Board>
     /** `get_streaks` per group id (default none). */
     streaks?: Record<string, Streak[]>
     /** `get_group_week` per group id (default `TEST_GROUP_WEEK`). */
@@ -281,6 +316,7 @@ export function createFakeBackend(
   const feed = options.feed ?? {}
   const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
   const board: Record<string, Board> = { ...options.board }
+  const boards: Record<string, Board> = { ...options.boards }
   const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
   const streaks: Record<string, Streak[]> = { ...options.streaks }
   const invites: Record<string, InvitePreview> = options.invites ?? {
@@ -630,10 +666,14 @@ export function createFakeBackend(
       if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
       return groupWeeks[groupId] ?? TEST_GROUP_WEEK
     }),
-    getBoard: vi.fn(async (groupId: string, _weekStart: string) => {
+    getBoard: vi.fn(async (groupId: string, weekStart: string) => {
       const group = groups.find((g) => g.id === groupId)
       if (!group) throw new BackendError('not_member')
-      return board[groupId] ?? { waiting: group.memberCount < 2, rows: [] }
+      return (
+        boards[`${groupId}:${weekStart}`] ??
+        board[groupId] ??
+        testBoard({ waiting: group.memberCount < 2, rows: [] })
+      )
     }),
     getStreaks: vi.fn(async (groupId: string) => {
       if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')

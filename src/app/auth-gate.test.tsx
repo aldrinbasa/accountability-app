@@ -50,7 +50,7 @@ describe('auth gate', () => {
     const backend = createFakeBackend()
     const onSignedOut = vi.fn()
     const { router } = renderRoutes(['/board'], backend, { onSignedOut })
-    await screen.findByRole('heading', { level: 1, name: 'Board' })
+    await screen.findByRole('heading', { level: 1, name: /^Leaderboard/ })
 
     act(() => backend.emit(null))
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/signin'))
@@ -121,7 +121,7 @@ describe('profile gate', () => {
       throw new BackendError('network')
     })
     const { router } = renderRoutes(['/board'], backend)
-    expect(await screen.findByRole('heading', { level: 1, name: 'Board' })).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1, name: /^Leaderboard/ })).toBeVisible()
     expect(router.state.location.pathname).toBe('/board')
   })
 })

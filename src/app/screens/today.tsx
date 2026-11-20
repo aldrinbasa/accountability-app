@@ -25,7 +25,7 @@ import { useTodayScore } from '@/features/today/use-today-score'
 /**
  * Today for one group: the member-local day name as the one h1, the week line under it ("Week 4 of
  * the grind · 6 of 9 done", hidden when nothing is planned this week), the Score sticker beside the
- * heading and the rank chip under the week line (Story 4.1; hidden in a waiting group), the install
+ * heading and the rank chip under the week line (Story 4.1; a group of one shows the sticker, never the chip), the install
  * notice, the waiting state on top in a waiting group, then the plan sections and "+ Add" (Story
  * 2.5), then the Friends today strip (Story 3.5). The outbox's photo-waiting and rejection Banners (Story 3.3, every
  * group's entries) sit under the week line. After a post the polaroid drops as an overlay and

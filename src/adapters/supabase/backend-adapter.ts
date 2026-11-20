@@ -12,7 +12,7 @@ import {
   type PresetActivity,
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
-import type { Board, BoardRow, GroupWeek } from '@/domain/board'
+import type { Board, BoardRow, GroupWeek, PlanItem } from '@/domain/board'
 import type { Streak } from '@/domain/streaks'
 import {
   checkinPhotoPath,
@@ -501,13 +501,37 @@ export function toGroupWeek(row: GroupWeekRow): GroupWeek {
 
 type BoardRpcRow = Database['public']['Functions']['get_board']['Returns'][number]
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** `get_board`'s `plan` jsonb as plan items; anything malformed is dropped. */
+export function toPlanItems(value: unknown): PlanItem[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): PlanItem[] => {
+    if (!isRecord(item) || typeof item.activity_name !== 'string') return []
+    const scheduleType = item.schedule_type
+    if (scheduleType !== 'fixed_days' && scheduleType !== 'times_per_week') return []
+    const days = Array.isArray(item.days)
+      ? item.days.filter((day): day is number => typeof day === 'number')
+      : null
+    const target = typeof item.target === 'number' ? item.target : null
+    return [{ activityName: item.activity_name, scheduleType, days, target }]
+  })
+}
+
 /**
- * `get_board` rows as a board, in the server's order. `waiting` repeats on every row; a board with
- * no rows (never for a member) counts as waiting. The generated type misses the nullable columns.
+ * `get_board` rows as a board, in the server's order. `waiting`, `lock_at`, `is_current_week` and
+ * `time_zone` repeat on every row; a board with no rows (never for a member) counts as waiting. The
+ * generated type misses the nullable columns.
  */
 export function toBoard(rows: readonly BoardRpcRow[]): Board {
+  const first = rows[0]
   return {
-    waiting: rows[0]?.waiting ?? true,
+    waiting: first?.waiting ?? true,
+    lockAt: first?.lock_at ?? null,
+    isCurrentWeek: first?.is_current_week ?? false,
+    timeZone: first?.time_zone ?? null,
     rows: rows.map((row): BoardRow => ({
       userId: row.user_id,
       displayName: row.display_name,
@@ -517,6 +541,10 @@ export function toBoard(rows: readonly BoardRpcRow[]): Board {
       sessionsPlanned: row.sessions_planned,
       sessionsFrozen: row.sessions_frozen,
       rank: row.rank ?? null,
+      missCount: row.miss_count ?? 0,
+      bestStreak: row.best_streak ?? 0,
+      plan: toPlanItems(row.plan),
+      taskCount: row.task_count ?? 0,
     })),
   }
 }

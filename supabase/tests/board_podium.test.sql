@@ -6,8 +6,8 @@
 -- A waiting group still returns its member's weekly points with rank null. not_member and grants
 -- (AD-16) are kept.
 --
--- Cast (every zone UTC): alice creates "Crew", bob joins; carol is in no group; frank is alone in
--- "Solo". The clock is frozen at Fri 20 Nov 2026 12:00 UTC: week W = Mon 16 Nov (locks Thu 26 Nov),
+-- Cast: alice (UTC) creates "Crew", bob (UTC) joins; carol is in no group; frank (Asia/Manila) is
+-- alone in "Solo", a group in his zone. The clock is frozen at Fri 20 Nov 2026 12:00 UTC: week W = Mon 16 Nov (locks Thu 26 Nov),
 -- the previous week P = Mon 9 Nov (locks Thu 19 Nov). Plans, sessions and check-ins are written
 -- directly as the table owner. get_board, session_status, current_streak and commitment_is_active
 -- call now() unqualified; their search_path is pointed at test_overrides so tests.freeze_time moves
@@ -55,7 +55,7 @@ select public.save_profile('Bob', 'UTC');
 select tests.authenticate_as('carol');
 select public.save_profile('Carol', 'UTC');
 select tests.authenticate_as('frank');
-select public.save_profile('Frank', 'UTC');
+select public.save_profile('Frank', 'Asia/Manila');
 
 select tests.authenticate_as('alice');
 select pg_catalog.set_config('test.g1', public.create_group('Crew')::text, true);
@@ -161,13 +161,17 @@ $$;
 grant execute on function pg_temp.board_row(text, date, text) to authenticated;
 
 -- ===== Plans =====
--- alice: Gym Mon Wed Fri, Read Tue, Walk 2 times per week, task Tax forms (W).
+-- alice: Gym Mon Wed Fri (Mon Wed from W), Read Tue, Walk 2 times per week, task Tax forms (W).
 --   P: Gym Mon, Wed, Fri done; Walk 1 of 2 done (ended: 1 missed row).
---   W: Gym Mon and Wed done, Fri open (today); Read Tue missed; Walk 1 done, 1 open; task open.
+--   W: Gym (now Mon Wed) Mon and Wed done; Read Tue missed; Walk 1 done, 1 open; task open.
 --   Gym's streak: P's three + W's two = 5. Read: 0. Walk: P below target, W open = 0.
 -- bob: task only (W), open: 0 points.
 -- frank (Solo): task only (W), done: 100 points, unranked.
 select pg_catalog.set_config('test.gym', pg_temp.add_plan('alice', 'g1', 'gym', array[1, 3, 5]::smallint[], null, '2026-10-20 10:00+00')::text, true);
+-- Gym changes to Mon Wed from W (a second version): P shows MWF, W shows Mon Wed.
+insert into public.commitment_versions (commitment_id, group_id, effective_week_start, days, target)
+values (current_setting('test.gym')::uuid, current_setting('test.g1')::uuid, '2026-11-16',
+        array[1, 3]::smallint[], null);
 select pg_catalog.set_config('test.read', pg_temp.add_plan('alice', 'g1', 'read', array[2]::smallint[], null, '2026-10-21 10:00+00')::text, true);
 select pg_catalog.set_config('test.walk', pg_temp.add_plan('alice', 'g1', 'walk', null, 2::smallint, '2026-10-22 10:00+00')::text, true);
 select pg_catalog.set_config('test.tax', pg_temp.add_plan('alice', 'g1', 'groceries', null, null, '2026-10-23 10:00+00', 'task')::text, true);
@@ -182,7 +186,6 @@ select pg_temp.add_session('walk', '2026-11-09', 2, false);
 
 select pg_temp.check_in(pg_temp.add_session('gym', '2026-11-16', 1, true));
 select pg_temp.check_in(pg_temp.add_session('gym', '2026-11-16', 3, true));
-select pg_temp.add_session('gym', '2026-11-16', 5, true);
 select pg_temp.add_session('read', '2026-11-16', 2, true);
 select pg_temp.check_in(pg_temp.add_session('walk', '2026-11-16', 1, false));
 select pg_temp.add_session('walk', '2026-11-16', 2, false);
@@ -194,10 +197,10 @@ select pg_temp.check_in(pg_temp.add_session('ftask', '2026-11-16', 0, false));
 select tests.authenticate_as('bob');
 select is(
   pg_temp.board_row('g1', '2026-11-16', 'alice'),
-  '43|1|1|5|1|[{"days": [1, 3, 5], "target": null, "activity_name": "Gym", "schedule_type": "fixed_days"}, '
+  '50|1|1|5|1|[{"days": [1, 3], "target": null, "activity_name": "Gym", "schedule_type": "fixed_days"}, '
   || '{"days": [2], "target": null, "activity_name": "Read", "schedule_type": "fixed_days"}, '
   || '{"days": null, "target": 2, "activity_name": "Walk", "schedule_type": "times_per_week"}]',
-  'W: alice 3 of 7 = 43, rank 1, 1 miss (Read Tue; Walk''s open week row not yet), best streak 5 (Gym), 1 task, plan in order made'
+  'W: alice 3 of 6 = 50, rank 1, 1 miss (Read Tue; Walk''s open week row not yet), best streak 5 (Gym), 1 task, plan in order made with Gym''s W version'
 );
 select is(
   pg_temp.board_row('g1', '2026-11-16', 'bob'),
@@ -217,7 +220,7 @@ select is(
   pg_temp.board_row('g1', '2026-11-09', 'alice'),
   '80|1|1|5|0|[{"days": [1, 3, 5], "target": null, "activity_name": "Gym", "schedule_type": "fixed_days"}, '
   || '{"days": null, "target": 2, "activity_name": "Walk", "schedule_type": "times_per_week"}]',
-  'P: alice 4 of 5 = 80, 1 miss (Walk''s week ended below target), only the commitments with sessions in P, no task'
+  'P: alice 4 of 5 = 80, 1 miss (Walk''s week ended below target), only the commitments with sessions in P (Gym''s first version), no task'
 );
 select is(
   (select b.lock_at::text || '|' || b.is_current_week || '|' || b.time_zone
@@ -231,10 +234,10 @@ select is(
 select tests.authenticate_as('frank');
 select is(
   (select b.weekly_points::text || '|' || coalesce(b.rank::text, 'null') || '|' || b.waiting
-          || '|' || b.task_count
+          || '|' || b.task_count || '|' || b.lock_at::text || '|' || b.time_zone || '|' || b.is_current_week
    from public.get_board(current_setting('test.g2')::uuid, '2026-11-16') b),
-  '100|null|true|1',
-  'a waiting group: the solo member''s weekly points, rank null, waiting'
+  '100|null|true|1|2026-11-25 16:00:00+00|Asia/Manila|true',
+  'a waiting group in Asia/Manila: the solo member''s points, rank null, waiting; the lock is Thu 00:00 Manila (Wed 16:00 UTC) and the zone is the group''s'
 );
 
 -- ===== not_member =====
@@ -252,8 +255,8 @@ select is(
   (select b.miss_count::text || '|' || b.is_current_week
    from public.get_board(current_setting('test.g1')::uuid, '2026-11-16') b
    where b.user_id = tests.get_supabase_uid('alice')),
-  '4|false',
-  'W ended: Read Tue, Gym Fri, Walk''s unmet row and the task are all misses now; W is no longer current'
+  '3|false',
+  'W ended: Read Tue, Walk''s unmet row and the task are all misses now; W is no longer current'
 );
 select is(
   (select b.miss_count::text
@@ -266,8 +269,8 @@ select is(
   (select b.best_streak::text
    from public.get_board(current_setting('test.g1')::uuid, '2026-11-16') b
    where b.user_id = tests.get_supabase_uid('alice')),
-  '0',
-  'W ended: Gym''s Fri miss resets alice''s best streak to 0'
+  '5',
+  'W ended without a Gym miss: alice''s best streak stays 5'
 );
 
 -- ===== An ended commitment no longer feeds the flame =====

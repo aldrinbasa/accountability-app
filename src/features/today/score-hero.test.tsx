@@ -3,45 +3,38 @@ import userEvent from '@testing-library/user-event'
 import type { Board } from '@/domain/board'
 import { getLastSeenRank, setLastSeenRank } from '@/data/board'
 import { getPostMoment, setPostMoment, type PostMoment } from '@/data/post-moment'
-import { createFakeBackend, renderRoutes, TEST_GROUP, TEST_USER } from '@/test/fake-backend'
+import {
+  boardRow,
+  createFakeBackend,
+  renderRoutes,
+  TEST_GROUP,
+  TEST_USER,
+  testBoard,
+} from '@/test/fake-backend'
 import { waitForGroupInUrl } from '@/test/router'
 
 // Jo (the test user) is 2nd behind Priya; Sam has no score.
-const BOARD: Board = {
-  waiting: false,
+const BOARD: Board = testBoard({
   rows: [
-    {
+    boardRow({
       userId: 'user-priya',
       displayName: 'Priya',
-      avatarPath: null,
       weeklyPoints: 67,
       sessionsDone: 4,
       sessionsPlanned: 6,
-      sessionsFrozen: 0,
       rank: 1,
-    },
-    {
+    }),
+    boardRow({
       userId: TEST_USER.id,
       displayName: 'Jo',
-      avatarPath: null,
       weeklyPoints: 63,
       sessionsDone: 5,
       sessionsPlanned: 8,
-      sessionsFrozen: 0,
       rank: 2,
-    },
-    {
-      userId: 'user-sam',
-      displayName: 'Sam',
-      avatarPath: null,
-      weeklyPoints: null,
-      sessionsDone: 0,
-      sessionsPlanned: 0,
-      sessionsFrozen: 0,
-      rank: null,
-    },
+    }),
+    boardRow({ userId: 'user-sam', displayName: 'Sam' }),
   ],
-}
+})
 
 const MOMENT: PostMoment = {
   checkinId: 'k1',
@@ -98,7 +91,7 @@ describe('Today score (Story 4.1)', () => {
       row.userId === TEST_USER.id ? { ...row, weeklyPoints: null, rank: null } : row,
     )
     const backend = createFakeBackend(undefined, {
-      board: { [TEST_GROUP.id]: { waiting: false, rows } },
+      board: { [TEST_GROUP.id]: testBoard({ rows }) },
     })
     renderRoutes(['/today'], backend)
     const link = await sticker()
@@ -107,15 +100,19 @@ describe('Today score (Story 4.1)', () => {
     expect(chip()).toBeNull()
   })
 
-  it('a waiting group shows neither the sticker nor the chip', async () => {
+  it('a group of one shows the sticker with the own points and no chip', async () => {
     const solo = { ...TEST_GROUP, memberCount: 1 }
     const backend = createFakeBackend(undefined, {
       groups: [solo],
-      board: { [TEST_GROUP.id]: { waiting: true, rows: [{ ...BOARD.rows[1]!, rank: null }] } },
+      board: {
+        [TEST_GROUP.id]: { ...BOARD, waiting: true, rows: [{ ...BOARD.rows[1]!, rank: null }] },
+      },
     })
     renderRoutes(['/today'], backend)
     expect(await screen.findByText('Just you in here so far.')).toBeInTheDocument()
-    expect(screen.queryByText('Weekly points')).toBeNull()
+    expect(
+      await screen.findByRole('link', { name: '63 weekly points. Open the leaderboard' }),
+    ).toBeInTheDocument()
     expect(chip()).toBeNull()
   })
 
@@ -167,14 +164,13 @@ describe('Today score (Story 4.1)', () => {
     expect(statuses()).not.toContain("#2 · Priya's 4 ahead")
 
     // Sam overtakes Jo: the refetched board has Jo 3rd.
-    const dropped: Board = {
-      waiting: false,
+    const dropped: Board = testBoard({
       rows: [
         BOARD.rows[0]!,
         { ...BOARD.rows[2]!, weeklyPoints: 65, sessionsDone: 3, rank: 2 },
         { ...BOARD.rows[1]!, rank: 3 },
       ],
-    }
+    })
     vi.mocked(backend.getBoard).mockResolvedValue(dropped)
     await act(() => queryClient.invalidateQueries({ queryKey: ['board'] }))
     await waitFor(() => expect(chip()).toHaveTextContent("#3 · Sam's 2 ahead"))

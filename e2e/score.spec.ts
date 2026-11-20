@@ -1,28 +1,7 @@
 import type { Page } from '@playwright/test'
 import { expect, test } from './support/fixtures'
 import { createFirstGroup, readInviteCode, signUp } from './support/members'
-
-/** A task due today, added from Today's "+ Add". */
-async function addTaskToday(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: 'Add a commitment or task' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
-  await sheet.getByRole('radio', { name: 'Task' }).click()
-  // Once the group has used Groceries it is listed twice (the group's activities, then the presets).
-  await sheet.getByRole('radio', { name: 'Groceries' }).first().click()
-  await sheet.getByRole('textbox', { name: 'Name' }).fill(name)
-  await sheet.getByRole('radio', { name: 'Today' }).click()
-  await sheet.getByRole('button', { name: 'Save' }).click()
-  await expect(sheet).toBeHidden()
-}
-
-/** Checks in a row's task with the fake camera and waits for the camera to close. */
-async function checkIn(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: `Check in ${name}` }).click()
-  const camera = page.getByRole('dialog', { name: 'Camera' })
-  await camera.getByRole('button', { name: 'Take photo' }).click()
-  await camera.getByRole('button', { name: 'Post' }).click()
-  await expect(camera).toBeHidden({ timeout: 30_000 })
-}
+import { addTaskToday, checkIn } from './support/plan'
 
 function scoreSticker(page: Page, points: number) {
   return page.getByRole('link', { name: `${points} weekly points. Open the leaderboard` })
@@ -33,7 +12,7 @@ function rankChip(page: Page) {
 }
 
 /**
- * Story 4.1 against the local stack: no Score sticker while the group waits; once a friend joins,
+ * Story 4.1 against the local stack: a group of one shows the sticker without a rank; once a friend joins,
  * Today shows the weekly points from `get_board` and the rank chip; a post that moves the member
  * past someone ticks the sticker to `post_checkin`'s points, announces them with the rank and swaps
  * the chip to "#1 · passed Ben"; the sticker opens the Board.
@@ -42,8 +21,10 @@ test('weekly points and rank on Today move with a post', async ({ page, newPhone
   await signUp(page, { name: 'Ada' })
   await createFirstGroup(page, 'Score Club')
   const code = await readInviteCode(page)
-  // Waiting group: no score UI.
-  await expect(page.getByText('Weekly points')).toHaveCount(0)
+  // A group of one scores its own plan (2026-11-20 decision): the sticker, no rank chip.
+  await expect(
+    page.getByRole('link', { name: 'No score this week. Open the leaderboard' }),
+  ).toBeVisible()
   await expect(rankChip(page)).toHaveCount(0)
 
   // Ben joins, plans two tasks due today and checks in one: 1 of 2 = 50, the only ranked member.
