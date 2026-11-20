@@ -47,6 +47,8 @@ export function CameraHost({ children }: { children: ReactNode }) {
   const trigger = useRef<HTMLElement | null>(null)
   const shots = useRef(0)
   const flowBack = useRef<(() => void) | null>(null)
+  // This open ended in a post: focus goes to the post moment, not back to the trigger.
+  const posted = useRef(false)
   const { group } = useFocusedGroup()
   const goToTab = useTabNavigation()
 
@@ -54,6 +56,7 @@ export function CameraHost({ children }: { children: ReactNode }) {
     (request, from) => {
       if (session.getSnapshot().status !== 'closed') return
       trigger.current = from
+      posted.current = false
       // Check-ins use the back camera (Story 3.6 opens avatars on the front one).
       session.open('environment')
       setOpened({ request, openedAt: performance.now() })
@@ -114,20 +117,28 @@ export function CameraHost({ children }: { children: ReactNode }) {
       played: false,
       announced: false,
     })
+    posted.current = true
     close()
     goToTab(TODAY_PATH)
+    // After the route commits and the moment renders: focus the polaroid (else the page heading).
+    requestAnimationFrame(() => requestAnimationFrame(focusMoment))
+  }
+
+  function focusMoment() {
+    const moment = document.querySelector<HTMLElement>('[data-component="post-moment"]')
+    const target = moment ?? document.querySelector<HTMLElement>('main h1')
+    if (!target) return
+    if (!target.hasAttribute('tabindex')) target.tabIndex = -1
+    target.focus()
   }
 
   /**
-   * The trigger, or when it is gone (a posted row turned Done) the post moment's polaroid, else the
-   * page heading.
+   * The trigger on a plain close. After a post focus goes to the post moment instead (`focusMoment`,
+   * once Today has rendered): the trigger may be on another tab or about to turn into the Done check.
    */
   function returnFocus(): HTMLElement | null {
-    if (trigger.current?.isConnected) return trigger.current
-    const moment = document.querySelector<HTMLElement>('[data-component="post-moment"]')
-    const fallback = moment ?? document.querySelector<HTMLElement>('main h1')
-    if (fallback && !fallback.hasAttribute('tabindex')) fallback.tabIndex = -1
-    return fallback
+    if (posted.current) return null
+    return trigger.current?.isConnected ? trigger.current : null
   }
 
   const launcher = useMemo<CameraLauncher>(() => ({ openCamera }), [openCamera])

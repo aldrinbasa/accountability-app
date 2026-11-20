@@ -1389,11 +1389,10 @@ describe('check-ins', () => {
     )
     storage.bucket.upload.mockResolvedValueOnce({
       data: null,
-      error: storageError('Unauthorized', 400, '403'),
+      error: storageError('jwt expired', 400, '403'),
     })
-    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe(
-      'not_member',
-    )
+    // An auth failure is not a policy refusal: it stays retryable.
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('unknown')
     storage.bucket.upload.mockResolvedValueOnce({
       data: null,
       error: storageError('Internal error', 500, '500'),

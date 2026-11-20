@@ -128,7 +128,7 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
 
   // The last post's counts on its row until Today refetches after it; then the server's alone.
   const data = query.data ? withPostMoment(query.data, moment, query.dataUpdatedAt) : undefined
-  const bumpId = moment && !moment.played ? moment.commitmentId : null
+  const bumpId = moment && !moment.played && !moment.isLate ? moment.commitmentId : null
   // A refetch removed the row whose actions are open (deleted elsewhere, its week moved on): close.
   if (
     actionsOpen &&

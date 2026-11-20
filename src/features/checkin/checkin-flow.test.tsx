@@ -370,10 +370,9 @@ describe('after the post', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Post' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await waitFor(() => {
-      const active = document.activeElement
       const moment = document.querySelector('[data-component="post-moment"]')
-      const heading = document.querySelector('main h1')
-      expect(active !== null && (active === moment || active === heading)).toBe(true)
+      expect(moment).not.toBeNull()
+      expect(document.activeElement).toBe(moment)
     })
   })
 
