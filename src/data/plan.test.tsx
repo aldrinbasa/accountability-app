@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { BackendError, backendErrorCode } from '@/domain/error-codes'
 import type { AddCommitmentInput, AddTaskInput, TaskDetails } from '@/domain/plan'
+import { groupGoalKey } from '@/data/goal'
 import { groupActivitiesKey } from '@/data/activities'
 import {
   commitmentKey,
@@ -134,6 +135,7 @@ describe('task data (Story 2.4)', () => {
       todayKey(TEST_GROUP.id),
       planKey(TEST_GROUP.id),
       groupActivitiesKey(TEST_GROUP.id),
+      groupGoalKey(TEST_GROUP.id),
     ]) {
       queryClient.setQueryData(key, [])
     }
@@ -148,6 +150,8 @@ describe('task data (Story 2.4)', () => {
       todayKey(TEST_GROUP.id),
       planKey(TEST_GROUP.id),
       groupActivitiesKey(TEST_GROUP.id),
+      // A task counts this week: the group goal's average moves (Story 4.7).
+      groupGoalKey(TEST_GROUP.id),
     ]) {
       expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
     }

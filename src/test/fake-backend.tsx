@@ -15,6 +15,7 @@ import type {
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
 import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
+import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
@@ -286,6 +287,26 @@ export const TEST_COMMITMENT: CommitmentDetails = {
   canEdit: true,
 }
 
+/** A group goal read: no goal, nobody scored, the default group's three members (override any field). */
+export function testGroupGoal(goal: Partial<GroupGoal> = {}): GroupGoal {
+  return {
+    weekStart: TEST_GROUP_WEEK.weekStart,
+    memberCount: 3,
+    target: null,
+    period: null,
+    liveAverage: null,
+    monthWeeks: [],
+    monthAverage: null,
+    contributions: TEST_MEMBERS.map((m) => ({
+      userId: m.userId,
+      name: m.displayName,
+      weeklyPoints: null,
+    })),
+    lastResult: null,
+    ...goal,
+  }
+}
+
 export interface FakeBackend extends BackendPort {
   /** Simulate a session change from outside (another tab, expiry). */
   emit(user: AuthUser | null): void
@@ -351,6 +372,11 @@ export function createFakeBackend(
      */
     memberProfiles?: Record<string, MemberProfile | null>
     /**
+     * `get_group_goal` per group id (default `testGroupGoal` with the group's member count);
+     * `setGroupGoal` writes the target and period into it.
+     */
+    goals?: Record<string, GroupGoal>
+    /**
      * The server clock for `setTimeZone` (ISO instant). Default `2026-11-18T12:00:00Z`, the day of
      * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
      */
@@ -399,6 +425,7 @@ export function createFakeBackend(
   const streaks: Record<string, Streak[]> = { ...options.streaks }
   const winnerWeeks: Record<string, WinnerWeek> = { ...options.winnerWeeks }
   const memberProfiles: Record<string, MemberProfile | null> = { ...options.memberProfiles }
+  const goals: Record<string, GroupGoal> = { ...options.goals }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -776,6 +803,22 @@ export function createFakeBackend(
         : null
     }),
     listTitles: vi.fn(async () => [...TEST_TITLES]),
+    getGroupGoal: vi.fn(async (groupId: string) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      return goals[groupId] ?? testGroupGoal({ memberCount: group.memberCount })
+    }),
+    setGroupGoal: vi.fn(async (groupId: string, target: number, period: GoalPeriod) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      if (group.role !== 'admin') throw new BackendError('not_admin')
+      if (target < 50 || target > 100 || target % 5 !== 0) throw new BackendError('invalid_goal')
+      goals[groupId] = {
+        ...(goals[groupId] ?? testGroupGoal({ memberCount: group.memberCount })),
+        target,
+        period,
+      }
+    }),
     // The member's check-ins in the fake feed, newest first.
     listMemberCheckins: vi.fn(async (groupId: string, userId: string, limit: number) =>
       groups.some((group) => group.id === groupId)

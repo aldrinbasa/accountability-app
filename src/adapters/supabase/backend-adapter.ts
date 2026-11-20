@@ -30,6 +30,14 @@ import {
 } from '@/domain/checkin'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
+  isGoalPeriod,
+  type FeedGoal,
+  type GoalContribution,
+  type GoalMonthWeek,
+  type GoalResult,
+  type GroupGoal,
+} from '@/domain/goal'
+import {
   isFeedEventKind,
   type FeedCheckin,
   type FeedCursor,
@@ -660,6 +668,71 @@ export function toMemberProfile(rows: readonly MemberProfileRow[]): MemberProfil
   }
 }
 
+type GroupGoalRow = Database['public']['Functions']['get_group_goal']['Returns'][number]
+
+function jsonNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** `get_group_goal`'s `last_result` jsonb as a result, or null (none, or malformed). */
+export function toGoalResult(value: unknown): GoalResult | null {
+  if (!isRecord(value)) return null
+  const target = jsonNumber(value.target)
+  const average = jsonNumber(value.average)
+  if (
+    typeof value.week_start !== 'string' ||
+    !isGoalPeriod(value.period) ||
+    target === null ||
+    average === null ||
+    typeof value.hit !== 'boolean'
+  ) {
+    return null
+  }
+  return { weekStart: value.week_start, period: value.period, target, average, hit: value.hit }
+}
+
+/**
+ * The `get_group_goal` row as the Goal panel's data; malformed jsonb entries are dropped. The
+ * generated type misses the nullable columns (no goal, nobody scored).
+ */
+export function toGroupGoal(rows: readonly GroupGoalRow[]): GroupGoal {
+  const row = rows[0]
+  if (!row) throw new BackendError('unknown', 'get_group_goal returned no row')
+  const period = isGoalPeriod(row.period) ? row.period : null
+  const target = jsonNumber(row.target_pct)
+  const monthWeeks: unknown = row.month_weeks
+  const contributions: unknown = row.contributions
+  return {
+    weekStart: row.week_start,
+    memberCount: row.member_count ?? 0,
+    target: period === null ? null : target,
+    period: target === null ? null : period,
+    liveAverage: jsonNumber(row.live_average),
+    monthWeeks: Array.isArray(monthWeeks)
+      ? monthWeeks.flatMap((item): GoalMonthWeek[] => {
+          if (!isRecord(item) || typeof item.week_start !== 'string') return []
+          const average = jsonNumber(item.goal_average)
+          return average === null ? [] : [{ weekStart: item.week_start, average }]
+        })
+      : [],
+    monthAverage: jsonNumber(row.month_average),
+    contributions: Array.isArray(contributions)
+      ? contributions.flatMap((item): GoalContribution[] =>
+          isRecord(item) && typeof item.user_id === 'string'
+            ? [
+                {
+                  userId: item.user_id,
+                  name: typeof item.name === 'string' ? item.name : '',
+                  weeklyPoints: jsonNumber(item.weekly_points),
+                },
+              ]
+            : [],
+        )
+      : [],
+    lastResult: toGoalResult(row.last_result),
+  }
+}
+
 type StreakRpcRow = Database['public']['Functions']['get_streaks']['Returns'][number]
 
 /** `get_streaks` rows as streaks. The generated type misses the nullable streak (null for a task). */
@@ -718,6 +791,19 @@ function toFeedWinner(
   )
   if (winners.length === 0) return null
   return { type: 'winner', id, groupId, sortAt, weekStart, weeklyPoints: points, winners }
+}
+
+/** A goal result row (Story 4.7), or null when the payload is malformed. */
+function toFeedGoal(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedGoal | null {
+  const payload = row.payload
+  if (!isRecord(payload)) return null
+  const result = toGoalResult(payload)
+  return result ? { type: 'goal', id, groupId, sortAt, ...result } : null
 }
 
 /** A miss row (Story 3.5): the live title and count, the payload's tease, day and schedule type. */
@@ -781,6 +867,7 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
   }
   if (kind === 'miss') return toFeedMiss(row, id, groupId, sortAt)
   if (kind === 'weekly_winner') return toFeedWinner(row, id, groupId, sortAt)
+  if (kind === 'goal_result') return toFeedGoal(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -1345,6 +1432,21 @@ export const supabaseBackendAdapter: BackendPort = {
     })
     if (error) throw toBackendError(error, status)
     return toMemberProfile(data ?? [])
+  },
+
+  async getGroupGoal(groupId) {
+    const { data, error, status } = await supabase.rpc('get_group_goal', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toGroupGoal(data ?? [])
+  },
+
+  async setGroupGoal(groupId, target, period) {
+    const { error, status } = await supabase.rpc('set_group_goal', {
+      p_group_id: groupId,
+      p_target_pct: target,
+      p_period: period,
+    })
+    if (error) throw toBackendError(error, status)
   },
 
   async listTitles() {

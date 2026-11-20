@@ -1,4 +1,5 @@
 import { formatLateLabel, type LateLabel } from '@/domain/checkin'
+import type { FeedGoal } from '@/domain/goal'
 import { beatLine, joinNames } from '@/domain/winner'
 
 /**
@@ -129,7 +130,7 @@ export interface FeedWinner {
   winners: { userId: string; name: string }[]
 }
 
-export type FeedItem = FeedCheckin | FeedEvent | FeedMiss | FeedWinner
+export type FeedItem = FeedCheckin | FeedEvent | FeedMiss | FeedWinner | FeedGoal
 
 /** One keyset read: older than `before`, or newer than `after` (never both), at most `limit` rows. */
 export interface FeedRowsRequest {

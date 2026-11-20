@@ -1,4 +1,5 @@
 import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
+import { GoalPanelSkeleton } from '@/features/goal/goal-panel'
 
 function BlockOutline({ height }: { height: string }) {
   return (
@@ -9,8 +10,8 @@ function BlockOutline({ height }: { height: string }) {
 }
 
 /**
- * The Board's cold-load skeleton (after 300 ms): 3 podium block outlines and 3 leaderboard-row
- * blocks. The goal panel block joins with Story 4.7.
+ * The Board's cold-load skeleton (after 300 ms): 3 podium block outlines, 3 leaderboard-row blocks
+ * and the goal panel block (Story 4.7).
  */
 export function BoardSkeleton() {
   return (
@@ -26,6 +27,7 @@ export function BoardSkeleton() {
             <SkeletonBar />
           </SkeletonBlock>
         ))}
+        <GoalPanelSkeleton />
       </div>
     </Skeleton>
   )

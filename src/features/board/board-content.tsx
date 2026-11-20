@@ -20,6 +20,7 @@ import { InvitePanel } from '@/features/group/invite-panel'
 import { BoardSkeleton } from '@/features/board/board-skeleton'
 import { LeaderboardRow } from '@/features/board/leaderboard-rows'
 import { Podium, SoloStand } from '@/features/board/podium'
+import { GoalPanel } from '@/features/goal/goal-panel'
 
 const WEEK_OPTIONS = [
   { value: 'this', label: BOARD_COPY.thisWeek },
@@ -126,7 +127,8 @@ function Standings({
  * the switch is instant. Last week counts as locked once the server says so (`locked`, its frozen
  * results) or its lock passed before its latest fetch (the tick may not have run yet); until then
  * the switch shows. If the lock passes while Last week is open, the next refetch shows "Locked" and
- * the switch stays until the member goes back to This week. No data yet: the skeleton after 300 ms,
+ * the switch stays until the member goes back to This week. Under This week's standings, the Goal
+ * panel (Story 4.7; not in a group of one). No data yet: the skeleton after 300 ms,
  * or "Can't reach Proofy right now." + Try again when the first load failed. Every number is the
  * server's.
  */
@@ -171,6 +173,7 @@ export function BoardContent({ group }: { group: MyGroup }) {
     const board = query.data
     if (!board) return query.isError ? failed : <BoardSkeleton />
     const lockAt = board.lockAt ?? (week === 'this' ? weekQuery.data.lockAt : null)
+    const groupWaiting = current.data ? current.data.waiting : !board.locked && board.waiting
     return (
       <>
         {lockAt ? (
@@ -189,8 +192,11 @@ export function BoardContent({ group }: { group: MyGroup }) {
           week={week}
           group={group}
           userId={userId}
-          groupWaiting={current.data ? current.data.waiting : !board.locked && board.waiting}
+          groupWaiting={groupWaiting}
         />
+        {/* Story 4.7: the goal shows the current week's state, so only under This week, and never
+            in a group of one. */}
+        {week === 'this' && !groupWaiting ? <GoalPanel key={group.id} group={group} /> : null}
       </>
     )
   }

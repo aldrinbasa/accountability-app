@@ -13,6 +13,7 @@ import { todayKey } from '@/data/plan'
 import { localPhotoUrl, setPostMoment } from '@/data/post-moment'
 import { streaksKey } from '@/data/streaks'
 import { memberProfileGroupKey } from '@/data/member-profile'
+import { groupGoalKey } from '@/data/goal'
 import { setUploadRunning } from '@/ui/update-guard'
 
 /**
@@ -65,6 +66,8 @@ export function OutboxHost({ userId, children }: { userId: string; children: Rea
     void queryClient.invalidateQueries({ queryKey: streaksKey(entry.groupId) })
     // Profiles (Story 4.6): a met criterion shows its pending seal.
     void queryClient.invalidateQueries({ queryKey: memberProfileGroupKey(entry.groupId) })
+    // The group goal's live average and contributions move with the post (Story 4.7).
+    void queryClient.invalidateQueries({ queryKey: groupGoalKey(entry.groupId) })
   }
 
   const outbox = useCheckinOutboxForUser(userId, { onSent, onRunningChange: setUploadRunning })

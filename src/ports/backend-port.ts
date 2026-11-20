@@ -10,6 +10,7 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import type { FeedCheckin, FeedItem, FeedRows, FeedRowsRequest } from '@/domain/feed'
+import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
   CommitmentDetails,
@@ -236,6 +237,16 @@ export interface BackendPort {
   listTitles(): Promise<Title[]>
   /** A member's latest check-ins in the group's feed, newest first, at most `limit`. */
   listMemberCheckins(groupId: string, userId: string, limit: number): Promise<FeedCheckin[]>
+  /**
+   * `get_group_goal` (Story 4.7): the goal in effect for the current week, its live and monthly
+   * averages, every current member's part and the latest decided result. Rejects with `not_member`.
+   */
+  getGroupGoal(groupId: string): Promise<GroupGoal>
+  /**
+   * `set_group_goal`: a new goal version from the group's current week. Rejects with `not_member`,
+   * `not_admin` or `invalid_goal`.
+   */
+  setGroupGoal(groupId: string, target: number, period: GoalPeriod): Promise<void>
 
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on

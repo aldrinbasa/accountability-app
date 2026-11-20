@@ -25,6 +25,7 @@ import type { TodayData } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { groupActivitiesKey } from '@/data/activities'
 import { boardGroupKey } from '@/data/board'
+import { groupGoalKey } from '@/data/goal'
 import { useBackendContext } from '@/data/backend-context-value'
 import { retryOnline } from '@/data/query-client'
 
@@ -161,12 +162,13 @@ function isStaleTaskError(error: unknown): boolean {
 
 /**
  * Invalidates what every task write changes: Today's items, the member's plan and the board (a task
- * counts this week, so it moves the weekly points, Story 4.1).
+ * counts this week, so it moves the weekly points, Story 4.1) and the group goal's average (4.7).
  */
 function invalidatePlan(queryClient: QueryClient, groupId: string) {
   void queryClient.invalidateQueries({ queryKey: todayKey(groupId) })
   void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
   void queryClient.invalidateQueries({ queryKey: boardGroupKey(groupId) })
+  void queryClient.invalidateQueries({ queryKey: groupGoalKey(groupId) })
 }
 
 /**

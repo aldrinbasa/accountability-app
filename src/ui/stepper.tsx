@@ -11,6 +11,8 @@ export interface StepperProps {
   unit: string
   /** The announced value, e.g. "4 times per week". */
   valueLabel: (value: number) => string
+  /** The value as shown (default the number itself), e.g. steps of 5 shown as "85%". */
+  display?: (value: number) => string
   decrementLabel: string
   incrementLabel: string
   /** Id of the visible label for the group. */
@@ -30,6 +32,7 @@ export function Stepper({
   max,
   unit,
   valueLabel,
+  display = String,
   decrementLabel,
   incrementLabel,
   labelledBy,
@@ -66,7 +69,7 @@ export function Stepper({
         className="min-w-[48px] text-center type-numeral-md tabular-nums"
         data-stepper-value=""
       >
-        <span aria-hidden="true">{value}</span>
+        <span aria-hidden="true">{display(value)}</span>
         <span className="sr-only">{valueLabel(value)}</span>
       </span>
       <IconButton
@@ -78,9 +81,11 @@ export function Stepper({
         className={value >= max ? 'invisible' : undefined}
         onClick={() => step(1)}
       />
-      <span aria-hidden="true" className="type-meta text-muted">
-        {unit}
-      </span>
+      {unit ? (
+        <span aria-hidden="true" className="type-meta text-muted">
+          {unit}
+        </span>
+      ) : null}
     </div>
   )
 }

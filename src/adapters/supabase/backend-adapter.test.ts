@@ -2195,6 +2195,123 @@ describe('member profile (Story 4.6)', () => {
   })
 })
 
+describe('group goal (Story 4.7)', () => {
+  it('get_group_goal maps the goal, month weeks, contributions and last result; malformed entries dropped', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          week_start: '2026-11-16',
+          member_count: 3,
+          target_pct: 80,
+          period: 'monthly',
+          live_average: 72.5,
+          month_weeks: [{ week_start: '2026-11-02', goal_average: 70 }, { week_start: 'x' }],
+          month_average: 70,
+          contributions: [
+            { user_id: 'u-1', name: 'Jo', weekly_points: 81 },
+            { user_id: 'u-2', name: 'Priya', weekly_points: null },
+            'junk',
+          ],
+          last_result: {
+            week_start: '2026-11-09',
+            period: 'weekly',
+            target: 85,
+            average: 84.5,
+            hit: false,
+          },
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.getGroupGoal('g1')).resolves.toEqual({
+      weekStart: '2026-11-16',
+      memberCount: 3,
+      target: 80,
+      period: 'monthly',
+      liveAverage: 72.5,
+      monthWeeks: [{ weekStart: '2026-11-02', average: 70 }],
+      monthAverage: 70,
+      contributions: [
+        { userId: 'u-1', name: 'Jo', weeklyPoints: 81 },
+        { userId: 'u-2', name: 'Priya', weeklyPoints: null },
+      ],
+      lastResult: {
+        weekStart: '2026-11-09',
+        period: 'weekly',
+        target: 85,
+        average: 84.5,
+        hit: false,
+      },
+    })
+    expect(db.rpc).toHaveBeenCalledWith('get_group_goal', { p_group_id: 'g1' })
+  })
+
+  it('get_group_goal without a goal: nulls, empty lists, no result', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          week_start: '2026-11-16',
+          member_count: 1,
+          target_pct: null,
+          period: null,
+          live_average: null,
+          month_weeks: [],
+          month_average: null,
+          contributions: [],
+          last_result: null,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.getGroupGoal('g1')).resolves.toMatchObject({
+      memberCount: 1,
+      target: null,
+      period: null,
+      liveAverage: null,
+      lastResult: null,
+    })
+  })
+
+  it('set_group_goal sends the target and period; a refusal maps to its code', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.setGroupGoal('g1', 85, 'weekly')
+    expect(db.rpc).toHaveBeenCalledWith('set_group_goal', {
+      p_group_id: 'g1',
+      p_target_pct: 85,
+      p_period: 'weekly',
+    })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('invalid_goal'), status: 400 })
+    expect(await backendCodeOf(adapter.setGroupGoal('g1', 47, 'weekly'))).toBe('invalid_goal')
+  })
+
+  it('maps a goal_result feed row; a malformed payload is dropped', () => {
+    const goal = feedRow({
+      item_kind: 'goal_result',
+      item_id: 'e-9',
+      sort_at: '2026-11-19T00:00:01+00:00',
+      actor_id: null,
+      actor_name: null,
+      commitment_id: null,
+      payload: { week_start: '2026-11-09', period: 'weekly', target: 85, average: 85, hit: true },
+    })
+    expect(toFeedItem(goal)).toEqual({
+      type: 'goal',
+      id: 'e-9',
+      groupId: goal.group_id,
+      sortAt: '2026-11-19T00:00:01+00:00',
+      weekStart: '2026-11-09',
+      period: 'weekly',
+      target: 85,
+      average: 85,
+      hit: true,
+    })
+    expect(toFeedItem({ ...goal, payload: { week_start: '2026-11-09', hit: true } })).toBeNull()
+    expect(toFeedItem({ ...goal, payload: null })).toBeNull()
+  })
+})
+
 describe('feed reads', () => {
   const NEWER = feedRow({ item_id: 'c-new', sort_at: '2026-11-20T08:00:00+00:00' })
   const OLDER = feedRow({ item_id: 'c-old', sort_at: '2026-11-20T07:00:00+00:00' })

@@ -15,6 +15,7 @@ import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
 import { runAfterSheetClose } from '@/ui/sheet-history'
 import { InvitePanel } from '@/features/group/invite-panel'
+import { GoalRow } from '@/features/goal/goal-row'
 import { NotInGroupState } from '@/features/group/not-in-group-state'
 import { useMoveFocusAfterLeave } from '@/features/group/use-focused-group'
 import { LeaveGroupSheet } from '@/features/me/leave-group-sheet'
@@ -31,7 +32,7 @@ import { TimeZoneRow, TimeZoneSheet } from '@/features/me/time-zone-sheet'
  * the next current group (or the create screen) on Today.
  * A group the member left or was removed from shows "You're not in {Group} anymore." with Go to
  * Today; an id they were never in goes back to Me, keeping `?g=`. Back always shows; a failed load
- * with nothing cached shows Try again. The group goal arrives with a later story.
+ * with nothing cached shows Try again. The Group goal row (Story 4.7) sits under the time zone.
  */
 export function GroupSettingsScreen() {
   const { groupId } = useParams()
@@ -121,6 +122,7 @@ function GroupSettings({ group, onLeaving }: { group: MyGroup; onLeaving: () => 
           onChoose={(zone) => saveZone((z) => setTimeZone.mutateAsync(z), zone)}
         />
       ) : null}
+      <GoalRow group={group} />
       <div className="card p-0">
         <button
           type="button"
