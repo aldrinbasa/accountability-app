@@ -1,10 +1,11 @@
 -- Today (Story 2.5): get_today_items (section placement for fixed days, times per week with the
 -- at-risk move, tasks, commitments that start next week, display order, row details) and
 -- get_today_summary (member-local today, week number, planned / done / left), a member in a
--- different zone from the group, a non-member rejected, and grants per role (AD-16).
+-- different zone from the group, has_plan (retro F1), a non-member rejected, and grants per role (AD-16).
 --
 -- Cast: alice (Europe/London) creates "Crew" (group zone Europe/London); bob (Europe/London) and
--- carol (Asia/Manila, UTC+8) join with alice's invite. dave (UTC) is in no group.
+-- carol (Asia/Manila, UTC+8) join with alice's invite;
+-- erin (Europe/London) joins too and never adds anything. dave (UTC) is in no group.
 -- Week under test: Mon 16 Nov to Sun 22 Nov 2026 (GMT in London, so London time = UTC).
 -- Commitments are added on Tue 10 Nov (they start Mon 16 Nov), then tick step 1 writes the week's
 -- sessions on Mon 16 Nov. alice: Gym fixed days Mon Wed Fri, Run 3 times per week, Yoga 2 times
@@ -16,12 +17,13 @@
 -- test_overrides so tests.freeze_time moves their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(28);
+select plan(31);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
 select tests.create_supabase_user('carol');
 select tests.create_supabase_user('dave');
+select tests.create_supabase_user('erin');
 
 -- ===== Shape =====
 select ok(
@@ -63,6 +65,8 @@ select tests.authenticate_as('carol');
 select public.save_profile('Carol', 'Asia/Manila');
 select tests.authenticate_as('dave');
 select public.save_profile('Dave', 'UTC');
+select tests.authenticate_as('erin');
+select public.save_profile('Erin', 'Europe/London');
 
 select tests.authenticate_as('alice');
 select pg_catalog.set_config('test.g1', public.create_group('Crew')::text, true);
@@ -70,6 +74,8 @@ select pg_catalog.set_config('test.c1', (select code from public.create_invite(c
 select tests.authenticate_as('bob');
 select public.join_group(current_setting('test.c1'));
 select tests.authenticate_as('carol');
+select public.join_group(current_setting('test.c1'));
+select tests.authenticate_as('erin');
 select public.join_group(current_setting('test.c1'));
 
 -- ===== Frozen clock =====
@@ -215,12 +221,31 @@ select is(
   '1 0 0 0',
   'summary: week 1 for a member who joined mid-week, nothing planned this week'
 );
+select is(
+  (select s.has_plan from public.get_today_summary(current_setting('test.g1')::uuid) s),
+  true,
+  'has_plan: a commitment that starts next week is a plan'
+);
+
+-- erin: a member with no commitments or tasks.
+select tests.authenticate_as('erin');
+select is(
+  (select s.has_plan::text || ' ' || s.planned::text
+   from public.get_today_summary(current_setting('test.g1')::uuid) s),
+  'false 0',
+  'has_plan: false for a member with no commitments or tasks in the group'
+);
 
 -- carol (Manila): Wed 18:00 there, her Thursday session is not listed yet.
 select tests.authenticate_as('carol');
 select is(
   (select count(*)::integer from public.get_today_items(current_setting('test.g1')::uuid)),
   0, 'on her Wednesday a Thursday-only member has nothing listed'
+);
+select is(
+  (select s.has_plan from public.get_today_summary(current_setting('test.g1')::uuid) s),
+  true,
+  'has_plan: a fixed-days member with nothing listed today still has a plan (retro F1)'
 );
 
 -- ===== Wed 18 Nov 20:00 UTC: Thursday 04:00 in Manila, still Wednesday in London =====
