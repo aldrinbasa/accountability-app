@@ -131,12 +131,13 @@ function Shutter({
 const BRACKET = 'pointer-events-none absolute size-[26px] border-camera-ink'
 
 /**
- * The full-screen camera (Story 3.1; Story 3.6's avatar mode has a square frame and no chip): a modal Radix Dialog on `camera-surface` above
- * everything (`--z-camera`), `100dvh`, the 480px column centered, safe areas padded. It never touches
- * the URL, history or hash. Top row: Close camera, Target chip, Switch camera (in landscape the
- * controls move to the right edge). The Viewfinder frame (4:3, square for avatars) shows exactly the capture crop; the
- * bottom row holds the "Live only" note (the dialog's description, read once on open), the Shutter
- * once the first frame is in, and an empty right slot. No gallery or file control anywhere.
+ * The full-screen camera (Story 3.1; Story 3.6's avatar mode has a square frame and no chip): a
+ * modal Radix Dialog on `camera-surface` above everything (`--z-camera`), `100dvh`, the 480px column
+ * centered, safe areas padded. It never touches the URL, history or hash. Top row: Close camera,
+ * Target chip, Switch camera (in landscape the controls move to the right edge). The Viewfinder
+ * frame (4:3, square for avatars) shows exactly the capture crop; the bottom row holds the "Live
+ * only" note (the dialog's description, read once on open), the Shutter once the first frame is in,
+ * and an empty right slot. No gallery or file control anywhere.
  *
  * States from the session: warming ("Waking up the camera"), prompt (dimmed frame and the iPhone
  * helper sticky), live, denied (Fix-it card) and no camera.

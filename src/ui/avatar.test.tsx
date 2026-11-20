@@ -79,4 +79,42 @@ describe('Avatar', () => {
     expect(img).toHaveAttribute('alt', '')
     expect(img).toHaveAttribute('aria-hidden', 'true')
   })
+
+  it('a re-signed URL of the same photo stays up; a different photo waits for its own load', () => {
+    const { container, rerender } = render(
+      <Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/a.webp?token=1" />,
+    )
+    const circle = container.querySelector('[data-fill]')
+    fireEvent.load(container.querySelector('img')!)
+    expect(circle).toHaveAttribute('data-photo')
+
+    rerender(<Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/a.webp?token=2" />)
+    expect(circle).toHaveAttribute('data-photo')
+
+    rerender(<Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/b.webp?token=1" />)
+    expect(circle).not.toHaveAttribute('data-photo')
+    expect(container.querySelector('img')).toHaveClass('opacity-0')
+    expect(screen.getByRole('img', { name: "Jo's photo" })).toBe(circle)
+
+    fireEvent.load(container.querySelector('img')!)
+    expect(circle).toHaveAttribute('data-photo')
+  })
+
+  it('after the URL goes away (offline), the same photo waits for a fresh load; a later load clears an error', () => {
+    const { container, rerender } = render(
+      <Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/a.webp?token=1" />,
+    )
+    const circle = container.querySelector('[data-fill]')
+    fireEvent.load(container.querySelector('img')!)
+    expect(circle).toHaveAttribute('data-photo')
+
+    rerender(<Avatar id="user-1" name="Jo" label="Jo's photo" src={null} />)
+    rerender(<Avatar id="user-1" name="Jo" label="Jo's photo" src="https://x/a.webp?token=2" />)
+    expect(circle).not.toHaveAttribute('data-photo')
+
+    fireEvent.error(container.querySelector('img')!)
+    expect(circle).not.toHaveAttribute('data-photo')
+    fireEvent.load(container.querySelector('img')!)
+    expect(circle).toHaveAttribute('data-photo')
+  })
 })

@@ -53,19 +53,16 @@ export function AvatarFlow({
     saveToProfile,
     onSaved,
   })
-  const busy = useRef(false)
-  useEffect(() => {
-    busy.current = flow.busy
-  }, [flow.busy])
   const headingRef = useRef<HTMLHeadingElement>(null)
   const keepRef = useRef<HTMLButtonElement>(null)
   const headingId = useId()
   const step: AvatarStep = confirming ? 'confirm' : 'preview'
 
+  const { isBusy } = flow
   const back = useCallback(() => {
     if (step === 'confirm') setConfirming(false)
-    else if (!busy.current) setConfirming(true)
-  }, [step])
+    else if (!isBusy()) setConfirming(true)
+  }, [step, isBusy])
 
   useEffect(() => {
     backRef.current = back
@@ -141,7 +138,7 @@ export function AvatarFlow({
                 className="flex-1"
                 onClick={() => {
                   // A save in flight keeps its photo.
-                  if (!flow.busy) onRetake()
+                  if (!flow.isBusy()) onRetake()
                 }}
               >
                 {AVATAR_COPY.retake}

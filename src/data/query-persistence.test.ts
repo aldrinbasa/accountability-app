@@ -9,6 +9,7 @@ import {
   readPersistedClient,
   type QueryPersistence,
 } from '@/data/query-persistence'
+import { photoUrlKey } from '@/data/photo-url'
 
 const DAY = 24 * 60 * 60_000
 
@@ -97,10 +98,10 @@ describe('query client defaults', () => {
     expect(onRefreshFailed).toHaveBeenCalledTimes(1)
 
     // A silent background re-mint (signed photo URLs, Story 3.4) never reports.
-    client.setQueryData(['photoUrl', 'g/c/360.webp'], 'https://x')
+    client.setQueryData(photoUrlKey('g/c/360.webp'), 'https://x')
     await client
       .fetchQuery({
-        queryKey: ['photoUrl', 'g/c/360.webp'],
+        queryKey: photoUrlKey('g/c/360.webp'),
         queryFn: fail,
         retry: false,
         staleTime: 0,
@@ -125,7 +126,7 @@ describe('persisted query cache', () => {
 
     await client.fetchQuery({ queryKey: ['today', 'g1'], queryFn: async () => ({ n: 1 }) })
     await client.fetchQuery({
-      queryKey: ['photoUrl', 'k1'],
+      queryKey: photoUrlKey('k1'),
       queryFn: async () => 'https://signed',
       meta: { persist: false },
     })

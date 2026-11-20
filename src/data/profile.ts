@@ -157,6 +157,8 @@ export interface SaveAvatarOptions {
 export interface SaveAvatarFlow {
   /** "Saving…": taps are ignored. */
   busy: boolean
+  /** The busy guard itself (no render lag), for back during a save. */
+  isBusy: () => boolean
   /** Inline retry: `offline` (no request was sent, or none got through) or `failed`. */
   failure: SaveFailure | null
   /** Use photo. */
@@ -194,19 +196,24 @@ export function useSaveAvatar({
       const profile = await repository.setAvatarPath(saved.path)
       await queryClient.cancelQueries({ queryKey: MY_PROFILE_KEY })
       queryClient.setQueryData(MY_PROFILE_KEY, profile)
+      // Members lists carry avatar paths too.
+      void queryClient.invalidateQueries({ queryKey: ['members'] })
     }
     return saved
   }, [canvas, encoder, queryClient, repository, saveToProfile, userId])
 
   const flow = useSaveFlow<undefined, SavedAvatar>({
     run,
-    onSaved: (saved) => onSaved(saved),
+    onSaved: (saved, _input, live) => {
+      if (live) onSaved(saved)
+    },
     // The camera closes on success: Use photo must not send twice meanwhile.
     holdBusyOnSaved: true,
   })
 
   return {
     busy: flow.busy,
+    isBusy: flow.isBusy,
     failure: flow.failure,
     save: () => void flow.send(undefined),
     retry: () => {

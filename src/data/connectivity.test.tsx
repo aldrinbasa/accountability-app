@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 import { useLastFetchedAt } from '@/data/connectivity'
 import { createTestQueryClient } from '@/test/fake-backend'
+import { photoUrlKey } from '@/data/photo-url'
 
 describe('useLastFetchedAt', () => {
   it('ignores queries that are never saved (signed photo URLs)', async () => {
@@ -18,7 +19,7 @@ describe('useLastFetchedAt', () => {
 
     await act(() =>
       client.fetchQuery({
-        queryKey: ['photoUrl', 'g/c/360.webp'],
+        queryKey: photoUrlKey('g/c/360.webp'),
         queryFn: async () => {
           await new Promise((resolve) => setTimeout(resolve, 5))
           return 'https://x'
@@ -26,7 +27,7 @@ describe('useLastFetchedAt', () => {
         meta: { persist: false, silentRefresh: true },
       }),
     )
-    expect(client.getQueryState(['photoUrl', 'g/c/360.webp'])?.dataUpdatedAt).toBeGreaterThan(
+    expect(client.getQueryState(photoUrlKey('g/c/360.webp'))?.dataUpdatedAt).toBeGreaterThan(
       fetchedAt,
     )
     expect(result.current).toBe(fetchedAt)

@@ -348,6 +348,29 @@ describe('SetupScreen', () => {
     expect(backend.saveProfile).toHaveBeenNthCalledWith(2, 'Jo', 'UTC')
   })
 
+  it('the UTC fallback still saves the photo path', async () => {
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+      timeZone: 'America/Ciudad_Juarez',
+    } as Intl.ResolvedDateTimeFormatOptions)
+    const user = userEvent.setup()
+    const backend = newMember()
+    const save = backend.saveProfile
+    backend.saveProfile = vi
+      .fn()
+      .mockRejectedValueOnce(new BackendError('invalid_time_zone'))
+      .mockImplementation(save) as typeof backend.saveProfile
+    const { router } = await openSetup(backend)
+
+    await user.type(screen.getByLabelText('Display name'), 'Jo')
+    await takeSetupPhoto(user)
+    const path = vi.mocked(backend.uploadAvatar).mock.calls[0]?.[0]
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await vi.waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(backend.saveProfile).toHaveBeenNthCalledWith(2, 'Jo', 'UTC')
+    expect(backend.setAvatarPath).toHaveBeenCalledTimes(1)
+    expect(backend.setAvatarPath).toHaveBeenCalledWith(path)
+  })
+
   it('UTC rejected too: zone toast without Retry, name kept', async () => {
     vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
       timeZone: 'America/Ciudad_Juarez',

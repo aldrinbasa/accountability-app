@@ -35,6 +35,12 @@ export interface AvatarProps {
   className?: string
 }
 
+/** A photo URL without its query (a signed URL's token changes on every re-mint). */
+function photoKey(src: string): string {
+  const query = src.indexOf('?')
+  return query === -1 ? src : src.slice(0, query)
+}
+
 /**
  * Avatar per DESIGN.md `avatar`: a full circle in one of four object fills, 2.5px `obj-ink` outline
  * with a hard `obj-ink` offset, the initial in Baloo 2 `obj-ink`. With a `src` (Story 3.6) the photo
@@ -43,10 +49,13 @@ export interface AvatarProps {
  */
 export function Avatar({ id, name, size = 38, label, src = null, badge, className }: AvatarProps) {
   const fill = avatarFill(id)
-  // The last URL that loaded (a re-signed URL keeps the photo up while it loads) and the last that failed.
+  // The object (URL without its query) that last loaded, so a re-signed URL of the same photo keeps
+  // it up while it loads but a different photo waits for its own load; and the last URL that failed.
   const [loaded, setLoaded] = useState<string | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
-  const showPhoto = src !== null && loaded !== null && failed !== src
+  // No URL (offline, unset): forget the last load, so a new <img> waits for its own load event.
+  if (src === null && loaded !== null) setLoaded(null)
+  const showPhoto = src !== null && loaded === photoKey(src) && failed !== src
   return (
     <span className={cn('relative inline-flex shrink-0', className)}>
       <span
@@ -71,7 +80,10 @@ export function Avatar({ id, name, size = 38, label, src = null, badge, classNam
             alt={label ?? ''}
             aria-hidden={label && showPhoto ? undefined : true}
             draggable={false}
-            onLoad={() => setLoaded(src)}
+            onLoad={() => {
+              setLoaded(photoKey(src))
+              setFailed(null)
+            }}
             onError={() => setFailed(src)}
             onContextMenu={(event) => event.preventDefault()}
             className={cn(

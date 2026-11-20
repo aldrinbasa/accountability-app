@@ -18,8 +18,8 @@ select is(
    from pg_catalog.pg_proc p
    where p.pronamespace = 'private'::regnamespace
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
-  array['avatar_path_owner', 'can_read_checkin_photo', 'can_upload_checkin_photo', 'commitment_is_active',
-        'counted_checkins', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
+  array['avatar_path_owner', 'can_read_checkin_photo', 'can_upload_checkin_photo',
+        'commitment_is_active', 'counted_checkins', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
         'member_time_zone', 'membership_is_current', 'prorated_target', 'session_status',
         'shares_group', 'week_start_of']::text[],
   'authenticated can execute only the RLS, view, Storage policy and plan_preview helpers in private'
