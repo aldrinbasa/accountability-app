@@ -55,6 +55,11 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    // The WASM WebP fallback (Story 3.2) loads its .wasm next to its own module; pre-bundling would
+    // move the module away from it in dev.
+    exclude: ['@jsquash/webp'],
+  },
   server: {
     // Bind to the LAN so a phone on the same network can reach the dev server.
     host: true,

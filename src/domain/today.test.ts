@@ -6,6 +6,7 @@ import {
   leftThisWeek,
   overflowLabel,
   ringLabel,
+  rowDone,
   scheduleMeta,
   shortDayName,
   showsRing,
@@ -32,6 +33,8 @@ const BASE: TodayItem = {
   deadline: null,
   startsOn: null,
   canDelete: false,
+  countedToday: false,
+  targetMet: false,
 }
 
 const FIXED = BASE
@@ -82,6 +85,21 @@ describe('Today formatters', () => {
     expect(scheduleMeta({ ...NEXT, scheduleType: 'fixed_days', days: [2, 4], target: null })).toBe(
       'Fixed days · Tue Thu · starts Mon 16 Nov',
     )
+  })
+
+  it('done and counted states (Story 3.2): "· Done", "· counted today", "· target met"', () => {
+    expect(rowDone({ ...FIXED, countedToday: true })).toBe(true)
+    expect(scheduleMeta({ ...FIXED, countedToday: true })).toBe('Fixed days · Mon Wed Fri · Done')
+    expect(rowDone({ ...TASK, targetMet: true })).toBe(true)
+    expect(scheduleMeta({ ...TASK, targetMet: true })).toBe('Task · by Sun · Done')
+    expect(rowDone({ ...TIMES, countedToday: true, targetMet: true })).toBe(false)
+    expect(scheduleMeta({ ...TIMES, counted: 1, countedToday: true })).toBe(
+      '3 times per week · 2 to go · counted today',
+    )
+    expect(scheduleMeta({ ...TIMES, counted: 3, countedToday: true, targetMet: true })).toBe(
+      '3 times per week · target met',
+    )
+    expect(rowDone({ ...NEXT, countedToday: true })).toBe(false)
   })
 
   it('days and day names come from the server dates, Monday first', () => {

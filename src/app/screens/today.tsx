@@ -10,13 +10,15 @@ import { CreateGroupScreen } from '@/features/group/create-group-screen'
 import { useFocusedGroup } from '@/features/group/use-focused-group'
 import { useGroupNotices } from '@/features/group/use-group-notices'
 import { WaitingEmptyState } from '@/features/group/waiting-empty-state'
+import { PostMoment } from '@/features/checkin/post-moment'
 import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
 import { TodaySections } from '@/features/plan/today-sections'
 
 /**
  * Today for one group: the member-local day name as the one h1, the week line under it ("Week 4 of
  * the grind · 6 of 9 done", hidden when nothing is planned this week), the install notice, the
- * waiting state on top in a waiting group, then the plan sections and "+ Add" (Story 2.5).
+ * waiting state on top in a waiting group, then the plan sections and "+ Add" (Story 2.5). The
+ * post moment's polaroid sits under the week line after a check-in (Story 3.2).
  */
 function GroupToday({ group }: { group: MyGroup }) {
   const { data } = useToday(group.id)
@@ -24,6 +26,8 @@ function GroupToday({ group }: { group: MyGroup }) {
   return (
     <Screen title={todayHeading(data?.summary.memberToday)}>
       {line ? <p className="-mt-2 type-meta text-muted">{line}</p> : null}
+      {/* The last post's polaroid, at the top for the session (Story 3.2). */}
+      <PostMoment groupId={group.id} />
       <InstallNotice />
       {isWaiting(group) ? <WaitingEmptyState group={group} /> : null}
       {/* One Plan sheet host per group: "+ Add" and a row's Edit open it. */}

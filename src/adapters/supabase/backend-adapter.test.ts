@@ -24,8 +24,14 @@ const db = vi.hoisted(() => {
   return { query, from: vi.fn(() => query), rpc: vi.fn() }
 })
 
+// supabase.storage.from(bucket).upload(path, body, options).
+const storage = vi.hoisted(() => {
+  const bucket = { upload: vi.fn() }
+  return { bucket, from: vi.fn(() => bucket) }
+})
+
 vi.mock('@/adapters/supabase/client', () => ({
-  supabase: { auth, from: db.from, rpc: db.rpc },
+  supabase: { auth, from: db.from, rpc: db.rpc, storage: { from: storage.from } },
 }))
 
 const USER = { id: 'user-1', email: 'jo@example.com' }
@@ -919,6 +925,9 @@ describe('today', () => {
     deadline: '2026-11-20',
     starts_on: null,
     can_delete: false,
+    done_count: 1,
+    counted_today: true,
+    target_met: true,
   }
   const RING_ROW = {
     commitment_id: 'c1',
@@ -935,6 +944,9 @@ describe('today', () => {
     deadline: null,
     starts_on: null,
     can_delete: false,
+    done_count: 0,
+    counted_today: false,
+    target_met: false,
   }
 
   it('get_today_items maps the rows in the server order, nulls kept', async () => {
@@ -955,6 +967,8 @@ describe('today', () => {
         deadline: '2026-11-20',
         startsOn: null,
         canDelete: false,
+        countedToday: true,
+        targetMet: true,
       },
       {
         commitmentId: 'c1',
@@ -971,6 +985,8 @@ describe('today', () => {
         deadline: null,
         startsOn: null,
         canDelete: false,
+        countedToday: false,
+        targetMet: false,
       },
     ])
     expect(db.rpc).toHaveBeenLastCalledWith('get_today_items', { p_group_id: 'g1' })
@@ -1214,5 +1230,242 @@ describe('my plan', () => {
       status: 0,
     })
     expect(await backendCodeOf(adapter.endCommitment('c1'))).toBe('network')
+  })
+})
+
+/** A storage-js error as the client returns it (marked with `__isStorageError`). */
+function storageError(message: string, status?: number, statusCode?: string) {
+  return Object.assign(new Error(message), {
+    __isStorageError: true,
+    ...(status === undefined ? {} : { status }),
+    ...(statusCode === undefined ? {} : { statusCode }),
+  })
+}
+
+describe('check-ins', () => {
+  beforeEach(() => {
+    storage.bucket.upload.mockReset()
+    storage.from.mockClear()
+  })
+
+  it('get_checkin_targets maps the rows in the server order with the reasons', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          commitment_id: 'c1',
+          kind: 'commitment',
+          preset_key: 'gym',
+          custom_name: null,
+          activity_name: 'Gym',
+          name: null,
+          schedule_type: 'fixed_days',
+          due_today: true,
+          member_today: '2026-11-20',
+          deadline: null,
+          target: 3,
+          done_count: 1,
+          wont_count: null,
+        },
+        {
+          commitment_id: 't1',
+          kind: 'task',
+          preset_key: null,
+          custom_name: 'Pottery',
+          activity_name: 'Pottery',
+          name: 'Glaze',
+          schedule_type: null,
+          due_today: false,
+          member_today: '2026-11-20',
+          deadline: '2026-11-22',
+          target: 1,
+          done_count: 1,
+          wont_count: 'done',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getCheckinTargets('g1')).toEqual([
+      {
+        commitmentId: 'c1',
+        kind: 'commitment',
+        presetKey: 'gym',
+        activityName: 'Gym',
+        name: null,
+        scheduleType: 'fixed_days',
+        dueToday: true,
+        memberToday: '2026-11-20',
+        deadline: null,
+        target: 3,
+        doneCount: 1,
+        wontCount: null,
+      },
+      {
+        commitmentId: 't1',
+        kind: 'task',
+        presetKey: null,
+        activityName: 'Pottery',
+        name: 'Glaze',
+        scheduleType: null,
+        dueToday: false,
+        memberToday: '2026-11-20',
+        deadline: '2026-11-22',
+        target: 1,
+        doneCount: 1,
+        wontCount: 'done',
+      },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_checkin_targets', { p_group_id: 'g1' })
+  })
+
+  it('get_checkin_targets fails loudly on an unknown reason and maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          commitment_id: 'c1',
+          kind: 'commitment',
+          preset_key: 'gym',
+          custom_name: null,
+          activity_name: 'Gym',
+          name: null,
+          schedule_type: 'fixed_days',
+          due_today: true,
+          member_today: '2026-11-20',
+          deadline: null,
+          target: 3,
+          done_count: 0,
+          wont_count: 'maybe',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getCheckinTargets('g1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getCheckinTargets('g1'))).toBe('not_member')
+  })
+
+  it('uploads a rendition to {group}/{checkin}/{size}.webp in the private bucket, no upsert', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockResolvedValueOnce({ data: { path: 'p' }, error: null })
+    await adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo)
+    expect(storage.from).toHaveBeenCalledWith('checkins')
+    expect(storage.bucket.upload).toHaveBeenCalledWith(
+      'g1/k1/1080.webp',
+      photo,
+      expect.objectContaining({ contentType: 'image/webp', upsert: false }),
+    )
+  })
+
+  it('an object that already exists counts as uploaded', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('The resource already exists', 409, '409'),
+    })
+    await expect(adapter.uploadCheckinPhoto('g1', 'k1', 360, photo)).resolves.toBeUndefined()
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Duplicate', 400, '409'),
+    })
+    await expect(adapter.uploadCheckinPhoto('g1', 'k1', 360, photo)).resolves.toBeUndefined()
+  })
+
+  it('an upload with no response is network; a refused one is unknown', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Failed to fetch'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('network')
+    storage.bucket.upload.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('network')
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('new row violates row-level security policy', 403, '403'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('unknown')
+  })
+
+  it('post_checkin sends the payload (no caption when empty) and maps the result', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          checkin_id: 'k1',
+          session_id: null,
+          counted: false,
+          is_late: false,
+          done_count: 2,
+          target: 3,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    const input = {
+      id: 'k1',
+      groupId: 'g1',
+      commitmentId: 'c1',
+      capturedAt: '2026-11-20T01:00:00.000Z',
+      caption: null,
+    }
+    expect(await adapter.postCheckin(input)).toEqual({
+      checkinId: 'k1',
+      sessionId: null,
+      counted: false,
+      isLate: false,
+      doneCount: 2,
+      target: 3,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('post_checkin', {
+      p_id: 'k1',
+      p_commitment_id: 'c1',
+      p_captured_at: '2026-11-20T01:00:00.000Z',
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          checkin_id: 'k1',
+          session_id: 's1',
+          counted: true,
+          is_late: true,
+          done_count: 3,
+          target: 3,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await adapter.postCheckin({ ...input, caption: 'leg day' })
+    expect(db.rpc).toHaveBeenLastCalledWith('post_checkin', {
+      p_id: 'k1',
+      p_commitment_id: 'c1',
+      p_captured_at: '2026-11-20T01:00:00.000Z',
+      p_caption: 'leg day',
+    })
+  })
+
+  it('post_checkin maps every rejection code', async () => {
+    const input = {
+      id: 'k1',
+      groupId: 'g1',
+      commitmentId: 'c1',
+      capturedAt: '2026-11-20T01:00:00.000Z',
+      caption: null,
+    }
+    for (const code of [
+      'bad_capture_time',
+      'not_member',
+      'commitment_ended',
+      'week_locked',
+      'photo_missing',
+      'checkin_conflict',
+      'invalid_caption',
+    ]) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.postCheckin(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.postCheckin(input))).toBe('unknown')
   })
 })

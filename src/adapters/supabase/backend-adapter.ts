@@ -12,6 +12,13 @@ import {
   type PresetActivity,
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
+import {
+  checkinPhotoPath,
+  isWontCount,
+  type CheckinTarget,
+  type PostCheckinInput,
+  type PostCheckinResult,
+} from '@/domain/checkin'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
   isEndReason,
@@ -307,6 +314,8 @@ export function toTodayItems(rows: readonly TodayItemRow[]): TodayItem[] {
       deadline: row.deadline ?? null,
       startsOn: row.starts_on ?? null,
       canDelete: row.can_delete ?? false,
+      countedToday: row.counted_today ?? false,
+      targetMet: row.target_met ?? false,
     }
   })
 }
@@ -412,6 +421,115 @@ export function toUpdateCommitmentArgs(input: UpdateCommitmentInput) {
   }
 }
 
+type CheckinTargetRow = Database['public']['Functions']['get_checkin_targets']['Returns'][number]
+
+/**
+ * `get_checkin_targets` rows as domain targets, in the server's order. The generated type misses the
+ * nullable columns. An unknown kind, schedule type or reason is a server bug: fail loudly.
+ */
+export function toCheckinTargets(rows: readonly CheckinTargetRow[]): CheckinTarget[] {
+  return rows.map((row) => {
+    const scheduleType = row.schedule_type ?? null
+    const wontCount = row.wont_count ?? null
+    if (row.kind !== 'commitment' && row.kind !== 'task') {
+      throw new BackendError('unknown', `checkin target ${row.commitment_id} has kind ${row.kind}`)
+    }
+    if (scheduleType !== null && !isScheduleType(scheduleType)) {
+      throw new BackendError(
+        'unknown',
+        `checkin target ${row.commitment_id} has schedule type ${scheduleType}`,
+      )
+    }
+    if (wontCount !== null && !isWontCount(wontCount)) {
+      throw new BackendError(
+        'unknown',
+        `checkin target ${row.commitment_id} has wont_count ${wontCount}`,
+      )
+    }
+    return {
+      commitmentId: row.commitment_id,
+      kind: row.kind,
+      presetKey: row.preset_key ?? null,
+      activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+      name: row.name ?? null,
+      scheduleType,
+      dueToday: row.due_today ?? false,
+      memberToday: row.member_today,
+      deadline: row.deadline ?? null,
+      target: row.target ?? 0,
+      doneCount: row.done_count ?? 0,
+      wontCount,
+    }
+  })
+}
+
+type PostCheckinRow = Database['public']['Functions']['post_checkin']['Returns'][number]
+
+/** The `post_checkin` row as a domain result (`session_id` is null for an extra). */
+export function toPostCheckinResult(row: PostCheckinRow): PostCheckinResult {
+  return {
+    checkinId: row.checkin_id,
+    sessionId: row.session_id ?? null,
+    counted: row.counted,
+    isLate: row.is_late,
+    doneCount: row.done_count,
+    target: row.target,
+  }
+}
+
+/** `post_checkin` arguments (the caption only when there is one). */
+export function toPostCheckinArgs(input: PostCheckinInput) {
+  return {
+    p_id: input.id,
+    p_commitment_id: input.commitmentId,
+    p_captured_at: input.capturedAt,
+    ...(input.caption !== null ? { p_caption: input.caption } : {}),
+  }
+}
+
+interface StorageErrorLike {
+  message: string
+  /** HTTP status; undefined when the request got no response (the fetch threw). */
+  status?: number
+  statusCode?: string
+  code?: string
+  error?: string
+}
+
+/** storage-js marks its errors with `__isStorageError` (its own `isStorageError` check). */
+function isStorageError(error: unknown): error is StorageErrorLike {
+  return typeof error === 'object' && error !== null && '__isStorageError' in error
+}
+
+/** The private bucket for check-in photos (`{group_id}/{checkin_id}/{1080|360}.webp`). */
+const CHECKINS_BUCKET = 'checkins'
+
+/**
+ * Whether a Storage upload error means the object is already there (a retried upload whose first
+ * response was lost): HTTP 409, or Storage's `Duplicate` / `ResourceAlreadyExists` code.
+ */
+export function isAlreadyUploaded(error: unknown): boolean {
+  if (!isStorageError(error)) return false
+  return (
+    error.status === 409 ||
+    error.statusCode === '409' ||
+    error.code === 'ResourceAlreadyExists' ||
+    error.error === 'Duplicate' ||
+    /already exists/i.test(error.message)
+  )
+}
+
+/**
+ * Maps a Storage upload error onto a `BackendError`: no response at all (the fetch threw, so there
+ * is no HTTP status) is `network`, anything else `unknown`.
+ */
+export function toStorageBackendError(error: unknown): BackendError {
+  const message = error instanceof Error ? error.message : String(error)
+  const status = isStorageError(error) ? error.status : undefined
+  if (status === undefined || status === 0) return new BackendError('network', message)
+  return new BackendError('unknown', message)
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
@@ -472,7 +590,7 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 /**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
  * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
- * (2.4), Today (2.5), My plan (2.6).
+ * (2.4), Today (2.5), My plan (2.6), check-ins (3.2).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -756,5 +874,39 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'end_commitment returned no row')
     return { endsAfterWeekStart: row.ends_after_week_start }
+  },
+
+  async getCheckinTargets(groupId) {
+    const { data, error, status } = await supabase.rpc('get_checkin_targets', {
+      p_group_id: groupId,
+    })
+    if (error) throw toBackendError(error, status)
+    return toCheckinTargets(data ?? [])
+  },
+
+  async uploadCheckinPhoto(groupId, checkinId, size, photo) {
+    let error: unknown
+    try {
+      const result = await supabase.storage
+        .from(CHECKINS_BUCKET)
+        .upload(checkinPhotoPath(groupId, checkinId, size), photo, {
+          contentType: 'image/webp',
+          upsert: false,
+          cacheControl: '31536000',
+        })
+      error = result.error
+    } catch (thrown) {
+      error = thrown
+    }
+    if (!error || isAlreadyUploaded(error)) return
+    throw toStorageBackendError(error)
+  },
+
+  async postCheckin(input) {
+    const { data, error, status } = await supabase.rpc('post_checkin', toPostCheckinArgs(input))
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'post_checkin returned no row')
+    return toPostCheckinResult(row)
   },
 }

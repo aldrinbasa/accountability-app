@@ -9,8 +9,13 @@ export const PHOTO_ASPECT = 4 / 3
 /** What the camera is open for. Story 3.6 adds `avatar`. */
 export type CameraMode = 'checkin'
 
-/** The pre-picked commitment or task a due row's Check in opens the camera for. */
+/**
+ * The commitment or task a check-in is for: pre-picked by a due row's Check in, or picked in the
+ * snap-first picker.
+ */
 export interface CameraTarget {
+  /** The group the commitment or task belongs to. */
+  groupId: string
   commitmentId: string
   kind: 'commitment' | 'task'
   /** The row's title: the task's name, else the activity's. */
@@ -57,8 +62,6 @@ export const CAMERA_COPY = {
   noCameraBody: 'Check-ins need a camera. Try on your phone.',
   closeAction: 'Close',
   checkIn: 'Check in',
-  /** Temporary until Story 3.2 adds the picker and preview. */
-  captureStub: 'Photo taken. Posting comes in the next update.',
 } as const
 
 /** The due row's Check in button name: "Check in Grocery run". */

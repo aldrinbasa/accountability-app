@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ReactNode,
   type Ref,
 } from 'react'
 import { Dialog } from 'radix-ui'
@@ -25,7 +26,20 @@ export interface CameraOverlayProps {
   target: CameraTarget | null
   /** `performance.now()` at the tap that opened the camera, for the first-frame timing. */
   openedAt: number | null
+  /** Closes the camera (No camera's Close). */
   onClose: () => void
+  /**
+   * Close camera, Esc and system back. Without a panel this closes the camera; with one, the host
+   * steps back (picker → viewfinder, preview → "Discard this photo?", confirm → Keep).
+   */
+  onBack: () => void
+  /**
+   * The check-in flow's current step (picker or preview), drawn over the whole overlay. The
+   * viewfinder stays mounted (the stream keeps running, so Retake is instant) but hidden and inert.
+   */
+  panel?: ReactNode
+  /** Changes with every flow step, so system back gets a fresh `CloseWatcher` per step. */
+  backKey?: string
   /** The mode's capture handler: the 4:3 canvas and the device capture time. */
   onCapture: (capture: CameraCapture) => void
   /** Where focus returns on close (the Camera button or the row's Check in). */
@@ -52,7 +66,7 @@ function logFirstFrame(video: HTMLVideoElement, ms: number): void {
 }
 
 /** DESIGN.md `camera-control`: 44px circle, translucent backing, camera-ink outline and icon. */
-function CameraControl({
+export function CameraControl({
   icon,
   label,
   onClick,
@@ -74,7 +88,7 @@ function CameraControl({
 }
 
 /** DESIGN.md `target-chip`: coral pill, camera-ink outline, activity icon + name in `title-sm`. */
-function TargetChip({ target, id }: { target: CameraTarget; id: string }) {
+export function TargetChip({ target, id }: { target: CameraTarget; id?: string }) {
   const icon = target.presetKey !== null ? presetIcon(target.presetKey) : CUSTOM_ACTIVITY_ICON
   return (
     <p
@@ -123,8 +137,11 @@ const BRACKET = 'pointer-events-none absolute size-[26px] border-camera-ink'
  * States from the session: warming ("Waking up the camera"), prompt (dimmed frame and the iPhone
  * helper sticky), live, denied (Fix-it card) and no camera.
  *
- * Esc closes through the dialog; Android back through `CloseWatcher` where it exists, else a
- * `popstate` while open. The page going hidden stops the camera and coming back restarts it.
+ * Close camera, Esc and Android back all call `onBack` (back through `CloseWatcher` where it
+ * exists, one per flow step, else a `popstate` while open): without a panel the host closes the
+ * camera, with one it steps back through the check-in flow (Story 3.2). The flow's `panel` covers the
+ * overlay while the viewfinder stays mounted but hidden and inert. The page going hidden stops the
+ * camera and coming back restarts it.
  */
 export function CameraOverlay({
   open,
@@ -133,6 +150,9 @@ export function CameraOverlay({
   target,
   openedAt,
   onClose,
+  onBack,
+  panel = null,
+  backKey = '',
   onCapture,
   returnFocusTo,
 }: CameraOverlayProps) {
@@ -150,8 +170,9 @@ export function CameraOverlay({
 
   const failed = status === 'denied' || status === 'no_camera'
   const ready = status === 'live' && stream !== null && frameStream === stream
+  const hasPanel = panel !== null && panel !== undefined && panel !== false
 
-  const requestClose = useEffectEvent(() => onClose())
+  const requestBack = useEffectEvent(() => onBack())
   const recordFirstFrame = useEffectEvent((video: HTMLVideoElement) => {
     if (openedAt === null || timedOpen.current === openedAt) return
     timedOpen.current = openedAt
@@ -176,14 +197,14 @@ export function CameraOverlay({
     }
     if (watcher) {
       const active = watcher
-      active.onclose = () => requestClose()
+      active.onclose = () => requestBack()
       stopBack = () => {
         active.onclose = null
         active.destroy()
       }
     } else {
-      // No CloseWatcher: back moves the route underneath too (accepted), and the camera closes.
-      const onPopState = () => requestClose()
+      // No CloseWatcher: back moves the route underneath too (accepted), and the camera steps back.
+      const onPopState = () => requestBack()
       window.addEventListener('popstate', onPopState)
       stopBack = () => window.removeEventListener('popstate', onPopState)
     }
@@ -191,7 +212,8 @@ export function CameraOverlay({
       document.removeEventListener('visibilitychange', onVisibility)
       stopBack()
     }
-  }, [open, session])
+    // A CloseWatcher is spent once it fires: each flow step (backKey) gets a fresh one.
+  }, [open, session, backKey])
 
   // Attach the stream; the shutter waits for its first frame (requestVideoFrameCallback, else playing).
   useEffect(() => {
@@ -225,21 +247,23 @@ export function CameraOverlay({
 
   // Focus starts on the dialog (its name and the "Live only" note are read), then moves to the
   // shutter once live, or to the Fix-it action, unless the member already moved it to a control.
+  // Back from a panel (picker closed, Retake) lands on the shutter again.
   useEffect(() => {
-    if (!open) return
+    if (!open || hasPanel) return
     const next = ready ? shutterRef.current : failed ? actionRef.current : null
     if (!next) return
     const active = document.activeElement
     if (active === null || active === document.body || active === contentRef.current) next.focus()
-  }, [open, ready, failed])
+  }, [open, ready, failed, hasPanel])
 
+  // The shutter guard re-arms on open, on a new stream and when the flow returns to the viewfinder.
   useEffect(() => {
-    if (open) shot.current = false
-  }, [open, stream])
+    if (open && !hasPanel) shot.current = false
+  }, [open, stream, hasPanel])
 
   function shoot() {
     const video = videoRef.current
-    if (!video || !ready || shot.current) return
+    if (!video || !ready || shot.current || hasPanel) return
     shot.current = true
     try {
       onCapture(session.capture(video))
@@ -262,6 +286,11 @@ export function CameraOverlay({
           ref={contentRef}
           // The "Live only" note, plus the pre-picked target, so screen readers hear what it's for.
           aria-describedby={target ? `${noteId} ${chipId}` : noteId}
+          // Esc steps back like system back; preventDefault keeps Chrome's CloseWatcher out of it.
+          onEscapeKeyDown={(event) => {
+            event.preventDefault()
+            onBack()
+          }}
           onOpenAutoFocus={(event) => {
             event.preventDefault()
             contentRef.current?.focus()
@@ -279,10 +308,17 @@ export function CameraOverlay({
           data-status={status}
         >
           <Dialog.Title className="sr-only">{CAMERA_COPY.title}</Dialog.Title>
-          <div className="mx-auto flex h-full w-full max-w-content-max flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] landscape:flex-row">
+          <div
+            inert={hasPanel}
+            aria-hidden={hasPanel || undefined}
+            className={cn(
+              'mx-auto flex h-full w-full max-w-content-max flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] landscape:flex-row',
+              hasPanel && 'invisible',
+            )}
+          >
             {/* Top control row; the right edge in landscape. */}
             <div className="flex items-center justify-between gap-2 px-gutter py-3 landscape:order-3 landscape:flex-col landscape:px-2 landscape:py-gutter">
-              <CameraControl icon={X} label={CAMERA_COPY.close} onClick={onClose} />
+              <CameraControl icon={X} label={CAMERA_COPY.close} onClick={onBack} />
               <div className="flex min-w-0 flex-1 justify-center landscape:flex-none">
                 {target ? <TargetChip target={target} id={chipId} /> : null}
               </div>
@@ -366,6 +402,11 @@ export function CameraOverlay({
               <span aria-hidden="true" />
             </div>
           </div>
+          {hasPanel ? (
+            <div className="absolute inset-0 overflow-y-auto" data-component="camera-panel">
+              {panel}
+            </div>
+          ) : null}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

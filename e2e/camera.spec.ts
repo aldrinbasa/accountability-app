@@ -5,7 +5,7 @@ import { createFirstGroup, signUp } from './support/members'
  * Story 3.1 against Chromium's fake camera (playwright.config.ts launch flags, camera permission in
  * the phone profile): the overlay opens with no route change, goes live, closes on Esc with focus
  * back on the trigger, pre-picks a row's target, and the shutter hands the shot to the check-in
- * handler (the interim toast until Story 3.2).
+ * handler (the preview, Story 3.2; posting is covered in checkin.spec.ts).
  */
 test('the camera opens over Today, goes live, closes, and takes a photo', async ({ page }) => {
   await signUp(page, { name: 'Cam' })
@@ -36,7 +36,7 @@ test('the camera opens over Today, goes live, closes, and takes a photo', async 
   await expect(shutter).toBeFocused()
   await expect(camera.locator('[data-component="target-chip"]')).toHaveCount(0)
   await expect(camera.locator('video[data-first-frame-ms]')).toHaveCount(1)
-  await expect(camera.locator('input[type="file"]')).toHaveCount(0)
+  await expect(camera.locator('input[type=file]')).toHaveCount(0)
   expect(page.url()).toBe(url)
   expect(await page.evaluate(() => window.history.length)).toBe(historyLength)
 
@@ -50,7 +50,10 @@ test('the camera opens over Today, goes live, closes, and takes a photo', async 
   await expect(camera).toBeVisible()
   await expect(camera.locator('[data-component="target-chip"]')).toHaveText('Grocery run')
   await camera.getByRole('button', { name: 'Take photo' }).click()
+  await expect(camera.getByRole('button', { name: 'Post' })).toBeVisible()
+  // Leaving the preview asks first; Discard closes the camera.
+  await camera.getByRole('button', { name: 'Close camera' }).click()
+  await camera.getByRole('button', { name: 'Discard' }).click()
   await expect(camera).toBeHidden()
-  await expect(page.getByText('Photo taken. Posting comes in the next update.')).toBeVisible()
   expect(page.url()).toBe(url)
 })

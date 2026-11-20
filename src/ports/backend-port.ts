@@ -1,5 +1,11 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type {
+  CheckinPhotoSize,
+  CheckinTarget,
+  PostCheckinInput,
+  PostCheckinResult,
+} from '@/domain/checkin'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
   CommitmentDetails,
@@ -154,4 +160,27 @@ export interface BackendPort {
    * or `commitment_ended`.
    */
   endCommitment(commitmentId: string): Promise<{ endsAfterWeekStart: string }>
+
+  /**
+   * `get_checkin_targets`: what the camera's picker lists for the member in a group, due today first,
+   * each with the server's won't-count reason. Rejects with `not_member`.
+   */
+  getCheckinTargets(groupId: string): Promise<CheckinTarget[]>
+  /**
+   * Uploads one WebP rendition to `checkins/{groupId}/{checkinId}/{size}.webp` (no upsert). An object
+   * that already exists counts as uploaded. Rejects with `network` or `unknown`.
+   */
+  uploadCheckinPhoto(
+    groupId: string,
+    checkinId: string,
+    size: CheckinPhotoSize,
+    photo: Blob,
+  ): Promise<void>
+  /**
+   * `post_checkin`: the server sets the timing, matches a session (or stores an extra) and returns
+   * the week's counts. The same id and payload again return the stored result. Rejects with
+   * `bad_capture_time`, `not_member`, `commitment_ended`, `week_locked`, `photo_missing`,
+   * `checkin_conflict` or `invalid_caption`.
+   */
+  postCheckin(input: PostCheckinInput): Promise<PostCheckinResult>
 }

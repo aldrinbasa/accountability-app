@@ -7,6 +7,8 @@ import { createAppRouter } from '@/app/router'
 import { UpdatePrompt } from '@/app/update-prompt'
 import { clearAccountDeviceState } from '@/data/account-device-state'
 import { BackendProvider } from '@/data/backend-context'
+import { ImageEncoderContext } from '@/data/image-encoder-context'
+import { clearPostMoment } from '@/data/post-moment'
 import { Toaster } from '@/ui/toaster'
 
 export function App() {
@@ -22,11 +24,14 @@ export function App() {
         onSignedOut={() => {
           queryClient.clear()
           clearAccountDeviceState()
+          clearPostMoment()
         }}
       >
-        <CameraPortContext.Provider value={adapters.camera}>
-          <RouterProvider router={router} />
-        </CameraPortContext.Provider>
+        <ImageEncoderContext.Provider value={adapters.imageEncoder}>
+          <CameraPortContext.Provider value={adapters.camera}>
+            <RouterProvider router={router} />
+          </CameraPortContext.Provider>
+        </ImageEncoderContext.Provider>
       </BackendProvider>
       <Toaster />
       <UpdatePrompt />

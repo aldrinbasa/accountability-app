@@ -29,6 +29,8 @@ const GYM: TodayItem = {
   deadline: null,
   startsOn: null,
   canDelete: false,
+  countedToday: false,
+  targetMet: false,
 }
 
 function backendWithGym(memberCount = 3) {
@@ -160,7 +162,7 @@ describe('camera overlay', () => {
     }
   })
 
-  it('the shutter hands a capture to the check-in handler: closed, with the interim toast', async () => {
+  it('the shutter hands a capture to the check-in handler: the preview, the stream still live', async () => {
     const { user, camera } = await renderToday()
     await user.click(screen.getByRole('button', { name: 'Check in Gym' }))
     const dialog = await screen.findByRole('dialog', { name: 'Camera' })
@@ -168,9 +170,11 @@ describe('camera overlay', () => {
     const viewfinder = video()
     await user.click(await within(dialog).findByRole('button', { name: 'Take photo' }))
     expect(camera.capture).toHaveBeenCalledWith(viewfinder, 4 / 3)
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(toast.showToast).toHaveBeenCalledWith('Photo taken. Posting comes in the next update.')
-    expect(camera.openStreams()).toHaveLength(0)
+    expect(await within(dialog).findByRole('button', { name: 'Post' })).toBeInTheDocument()
+    // The viewfinder stays mounted (hidden), so Retake is instant.
+    expect(video()).toBe(viewfinder)
+    expect(camera.openStreams()).toHaveLength(1)
+    expect(toast.showToast).not.toHaveBeenCalled()
   })
 
   it('a fast double tap on the shutter hands over one shot', async () => {
@@ -183,9 +187,8 @@ describe('camera overlay', () => {
       fireEvent.click(shutter)
       fireEvent.click(shutter)
     })
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(await within(dialog).findByRole('button', { name: 'Post' })).toBeInTheDocument()
     expect(camera.capture).toHaveBeenCalledTimes(1)
-    expect(toast.showToast).toHaveBeenCalledTimes(1)
   })
 
   it('leaving the shell with the camera open (sign-out) stops the stream and clears the toast guard', async () => {

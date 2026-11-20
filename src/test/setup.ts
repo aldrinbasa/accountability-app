@@ -3,6 +3,7 @@ import '@testing-library/jest-dom/vitest'
 import 'fake-indexeddb/auto'
 import { afterEach, vi } from 'vitest'
 import { resetDeviceMemory } from '@/data/device-storage'
+import { clearPostMoment } from '@/data/post-moment'
 
 // Some runners expose a broken global `localStorage` (Node's experimental stub, active without a
 // backing file). Install a deterministic in-memory Storage so app persistence works in tests.
@@ -80,5 +81,6 @@ afterEach(() => {
   localStorage.clear()
   sessionStorage.clear()
   resetDeviceMemory()
+  clearPostMoment()
   if (hasWindow) installMatchMedia(false)
 })

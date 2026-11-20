@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type { CheckinTarget, PostCheckinInput, PostCheckinResult } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
@@ -13,11 +14,14 @@ import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import type { CameraPort } from '@/ports/camera-port'
+import type { ImageEncodePort } from '@/ports/image-encode-port'
 import { BackendProvider } from '@/data/backend-context'
+import { ImageEncoderContext } from '@/data/image-encoder-context'
 import { INSTALLED_KEY } from '@/data/install-state'
 import { routes } from '@/app/router'
 import { CameraPortContext } from '@/app/camera-port-context'
 import { createFakeCamera } from '@/test/fake-camera'
+import { createFakeEncoder } from '@/test/fake-image-encoder'
 
 export const TEST_USER: AuthUser = { id: 'user-1', email: 'jo@example.com' }
 
@@ -198,6 +202,13 @@ export function createFakeBackend(
     myPlan?: Record<string, MyPlanItem[]>
     /** The member's own commitments that `getCommitment` knows (default none). */
     commitments?: CommitmentDetails[]
+    /** The camera picker's rows per group id (default none). */
+    checkinTargets?: Record<string, CheckinTarget[]>
+    /**
+     * `post_checkin`'s answer (default: counted, on time, `doneCount` 1 of `target` 1). Overridden
+     * per test for failures.
+     */
+    postCheckin?: (input: PostCheckinInput) => PostCheckinResult
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -219,6 +230,17 @@ export function createFakeBackend(
   const commitments = new Map<string, CommitmentDetails>(
     (options.commitments ?? []).map((c) => [c.commitmentId, c]),
   )
+  const checkinTargets = options.checkinTargets ?? {}
+  const postResult =
+    options.postCheckin ??
+    ((input: PostCheckinInput): PostCheckinResult => ({
+      checkinId: input.id,
+      sessionId: `session-${input.commitmentId}`,
+      counted: true,
+      isLate: false,
+      doneCount: 1,
+      target: 1,
+    }))
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -496,6 +518,17 @@ export function createFakeBackend(
       groups = groups.map((g) => (g.id === groupId ? updated : g))
       return state(updated)
     }),
+    getCheckinTargets: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return checkinTargets[groupId] ?? []
+    }),
+    uploadCheckinPhoto: vi.fn(
+      async (_groupId: string, _checkinId: string, _size: 1080 | 360, _photo: Blob) => {},
+    ),
+    postCheckin: vi.fn(async (input: PostCheckinInput) => {
+      if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
+      return postResult(input)
+    }),
   }
 }
 
@@ -512,11 +545,14 @@ export function withBackend(
   onSignedOut?: () => void,
   queryClient: QueryClient = createTestQueryClient(),
   camera: CameraPort = createFakeCamera(),
+  encoder: ImageEncodePort = createFakeEncoder(),
 ) {
   return (
     <QueryClientProvider client={queryClient}>
       <BackendProvider backend={backend} onSignedOut={onSignedOut}>
-        <CameraPortContext.Provider value={camera}>{children}</CameraPortContext.Provider>
+        <ImageEncoderContext.Provider value={encoder}>
+          <CameraPortContext.Provider value={camera}>{children}</CameraPortContext.Provider>
+        </ImageEncoderContext.Provider>
       </BackendProvider>
     </QueryClientProvider>
   )
@@ -531,6 +567,7 @@ export function renderRoutes(
     onSignedOut?: () => void
     queryClient?: QueryClient
     camera?: CameraPort
+    encoder?: ImageEncodePort
   } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries, initialIndex: options.initialIndex })
@@ -542,6 +579,7 @@ export function renderRoutes(
       options.onSignedOut,
       queryClient,
       options.camera,
+      options.encoder,
     ),
   )
   return { router, backend, queryClient, ...utils }

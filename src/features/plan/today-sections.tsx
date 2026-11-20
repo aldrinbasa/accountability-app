@@ -12,6 +12,7 @@ import {
   type TodayItem,
 } from '@/domain/today'
 import { useToday } from '@/data/plan'
+import { usePostMoment, withPostMoment } from '@/data/post-moment'
 import { EmptyState } from '@/ui/empty-state'
 import { useCameraLauncher } from '@/features/camera/camera-launcher'
 import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
@@ -47,11 +48,14 @@ function Rows({
   items,
   onMore,
   onCheckIn,
+  bumpId = null,
 }: {
   items: readonly TodayItem[]
   onMore: (item: TodayItem, button: HTMLButtonElement) => void
   /** Due today and This week rows only; never "Your plan here · starts Mon". */
   onCheckIn?: (item: TodayItem, button: HTMLButtonElement) => void
+  /** The row whose count bumps in the post moment. */
+  bumpId?: string | null
 }) {
   return (
     <ul className="flex flex-col gap-2">
@@ -61,6 +65,7 @@ function Rows({
           item={item}
           onMore={(button) => onMore(item, button)}
           onCheckIn={onCheckIn ? (button) => onCheckIn(item, button) : undefined}
+          bump={item.commitmentId === bumpId}
         />
       ))}
     </ul>
@@ -68,8 +73,9 @@ function Rows({
 }
 
 /** What a row's Check in pre-picks in the camera's Target chip. */
-function cameraTarget(item: TodayItem): CameraTarget {
+function cameraTarget(groupId: string, item: TodayItem): CameraTarget {
   return {
+    groupId,
     commitmentId: item.commitmentId,
     kind: item.kind,
     title: itemTitle(item),
@@ -110,6 +116,7 @@ function TodaySkeleton() {
  */
 export function TodaySections({ groupId, waiting }: { groupId: string; waiting: boolean }) {
   const query = useToday(groupId)
+  const moment = usePostMoment(groupId)
   const { openPlanSheet } = usePlanSheet()
   const { openCamera } = useCameraLauncher()
   const [actions, setActions] = useState<{ item: TodayItem; opener: HTMLButtonElement } | null>(
@@ -119,7 +126,9 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   // Edit hands focus over to the Plan sheet, which returns it to the row's Overflow later.
   const handedOff = useRef(false)
 
-  const data = query.data
+  // The last post's counts on its row until Today refetches after it; then the server's alone.
+  const data = query.data ? withPostMoment(query.data, moment, query.dataUpdatedAt) : undefined
+  const bumpId = moment && !moment.played ? moment.commitmentId : null
   // A refetch removed the row whose actions are open (deleted elsewhere, its week moved on): close.
   if (
     actionsOpen &&
@@ -163,7 +172,7 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   const next = itemsIn(data.items, 'starts_next_week')
 
   function checkIn(item: TodayItem, button: HTMLButtonElement) {
-    openCamera({ mode: 'checkin', target: cameraTarget(item) }, button)
+    openCamera({ mode: 'checkin', target: cameraTarget(groupId, item) }, button)
   }
 
   function openActions(item: TodayItem, opener: HTMLButtonElement) {
@@ -182,12 +191,12 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
         {empty === 'nothing_due' ? (
           <EmptyState icon={Couch} line={TODAY_COPY.nothingDue} />
         ) : (
-          <Rows items={due} onMore={openActions} onCheckIn={checkIn} />
+          <Rows items={due} onMore={openActions} onCheckIn={checkIn} bumpId={bumpId} />
         )}
       </Section>
       {thisWeek.length > 0 ? (
         <Section title={TODAY_COPY.thisWeek}>
-          <Rows items={thisWeek} onMore={openActions} onCheckIn={checkIn} />
+          <Rows items={thisWeek} onMore={openActions} onCheckIn={checkIn} bumpId={bumpId} />
         </Section>
       ) : null}
       {next.length > 0 ? (

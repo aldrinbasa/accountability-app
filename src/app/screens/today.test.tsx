@@ -26,6 +26,8 @@ const ROW: TodayItem = {
   deadline: null,
   startsOn: null,
   canDelete: false,
+  countedToday: false,
+  targetMet: false,
 }
 
 const TASK_TODAY: TodayItem = {
@@ -356,6 +358,55 @@ describe('Today with a plan', () => {
     await screen.findByRole('dialog', { name: 'Garage' })
     await user.click(screen.getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(more).toHaveFocus())
+  })
+})
+
+describe('Today done and counted states (Story 3.2)', () => {
+  it('done rows: dashed, the Done doodle instead of Check in, "· Done" in the meta', async () => {
+    renderRoutes(
+      ['/today'],
+      withToday([
+        { ...ROW, counted: 1, countedToday: true },
+        { ...TASK_TODAY, counted: 1, countedToday: true, targetMet: true },
+      ]),
+    )
+    const gym = await screen.findByRole('heading', { level: 3, name: 'Gym' })
+    const gymRow = gym.closest('li') as HTMLElement
+    expect(gymRow).toHaveAttribute('data-done')
+    expect(gymRow).toHaveClass('border-dashed', 'bg-transparent')
+    expect(within(gymRow).getByRole('img', { name: 'Done' })).toBeInTheDocument()
+    expect(within(gymRow).queryByRole('button', { name: 'Check in Gym' })).not.toBeInTheDocument()
+    expect(within(gymRow).getByText('Fixed days · Mon Wed Fri · Done')).toBeInTheDocument()
+    const taskRow = screen.getByRole('heading', { level: 3, name: 'Grocery run' }).closest('li')
+    expect(within(taskRow as HTMLElement).getByText('Task · by Wed · Done')).toBeInTheDocument()
+  })
+
+  it('times per week keeps Check in: "counted today", then "target met" with a full ring', async () => {
+    const { unmount } = renderRoutes(
+      ['/today'],
+      withToday([{ ...RUN, counted: 1, countedToday: true }]),
+    )
+    const run = await screen.findByRole('heading', { level: 3, name: 'Run' })
+    const row = run.closest('li') as HTMLElement
+    expect(row).not.toHaveAttribute('data-done')
+    expect(within(row).getByText('3 times per week · 2 to go · counted today')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Check in Run' })).toBeInTheDocument()
+    unmount()
+
+    renderRoutes(
+      ['/today'],
+      withToday([{ ...RUN, counted: 3, countedToday: true, targetMet: true }]),
+    )
+    const met = (await screen.findByRole('heading', { level: 3, name: 'Run' })).closest('li')
+    expect(
+      within(met as HTMLElement).getByText('3 times per week · target met'),
+    ).toBeInTheDocument()
+    expect(
+      within(met as HTMLElement).getByRole('img', { name: 'Run, 3 of 3 this week' }),
+    ).toHaveAttribute('data-met')
+    expect(
+      within(met as HTMLElement).getByRole('button', { name: 'Check in Run' }),
+    ).toBeInTheDocument()
   })
 })
 

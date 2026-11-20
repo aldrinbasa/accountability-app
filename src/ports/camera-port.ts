@@ -1,6 +1,6 @@
 /**
- * The app's one camera contract (AD-13). Implemented in src/adapters/camera, the only code that calls
- * `getUserMedia` or stops a track; wired only in src/app/composition.ts. The session in
+ * The app's one camera contract (AD-13). Implemented in src/adapters/camera, the only code that opens
+ * or stops a camera stream; wired only in src/app/composition.ts. The session in
  * src/data/camera-session.ts drives it and makes sure at most one stream exists.
  */
 
