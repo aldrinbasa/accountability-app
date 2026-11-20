@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { avatarFill, avatarInitial, type AvatarFill } from '@/ui/avatar-fill'
 import { cn } from '@/ui/lib/utils'
 
@@ -23,32 +23,75 @@ export interface AvatarProps {
   /** The display name; the circle shows its initial. */
   name: string
   size?: AvatarSize
-  /** Accessible name. Without it the circle is decorative (the name is shown nearby). */
+  /**
+   * Accessible name (the photo's alt text, e.g. "Jo's photo"). Without it the circle and the photo
+   * are decorative (the name is shown nearby).
+   */
   label?: string
+  /** The profile photo's URL (Story 3.6); the initial shows while it loads, on error and without. */
+  src?: string | null
   /** Optional control pinned to the bottom-right edge, e.g. the "Add a photo" camera button. */
   badge?: ReactNode
   className?: string
 }
 
+/** A photo URL without its query (a signed URL's token changes on every re-mint). */
+function photoKey(src: string): string {
+  const query = src.indexOf('?')
+  return query === -1 ? src : src.slice(0, query)
+}
+
 /**
- * Initial avatar per DESIGN.md `avatar`: a full circle in one of four object fills, 2.5px `obj-ink`
- * outline with a hard `obj-ink` offset, the initial in Baloo 2 `obj-ink`. The photo arrives in 3.6.
+ * Avatar per DESIGN.md `avatar`: a full circle in one of four object fills, 2.5px `obj-ink` outline
+ * with a hard `obj-ink` offset, the initial in Baloo 2 `obj-ink`. With a `src` (Story 3.6) the photo
+ * covers the initial once it has loaded, never after an error; the initial is always drawn under it.
  * The 44px hit area for a tappable avatar belongs to its parent (button or row).
  */
-export function Avatar({ id, name, size = 38, label, badge, className }: AvatarProps) {
+export function Avatar({ id, name, size = 38, label, src = null, badge, className }: AvatarProps) {
   const fill = avatarFill(id)
+  // The object (URL without its query) that last loaded, so a re-signed URL of the same photo keeps
+  // it up while it loads but a different photo waits for its own load; and the last URL that failed.
+  const [loaded, setLoaded] = useState<string | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  // No URL (offline, unset): forget the last load, so a new <img> waits for its own load event.
+  if (src === null && loaded !== null) setLoaded(null)
+  const showPhoto = src !== null && loaded === photoKey(src) && failed !== src
   return (
     <span className={cn('relative inline-flex shrink-0', className)}>
       <span
         data-fill={fill}
+        data-photo={showPhoto ? '' : undefined}
         className={cn(
-          'inline-flex items-center justify-center rounded-full border-[2.5px] border-obj-ink text-obj-ink shadow-obj select-none',
+          'relative inline-flex items-center justify-center overflow-hidden rounded-full border-[2.5px] border-obj-ink text-obj-ink shadow-obj select-none',
           FILL_CLASS[fill],
           SIZE_CLASS[size],
         )}
-        {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
+        // One image for assistive tech: the circle (initial) until the photo shows, then the photo.
+        {...(!label
+          ? { 'aria-hidden': true }
+          : showPhoto
+            ? {}
+            : { role: 'img', 'aria-label': label })}
       >
-        {avatarInitial(name)}
+        <span aria-hidden={showPhoto || undefined}>{avatarInitial(name)}</span>
+        {src !== null ? (
+          <img
+            src={src}
+            alt={label ?? ''}
+            aria-hidden={label && showPhoto ? undefined : true}
+            draggable={false}
+            onLoad={() => {
+              setLoaded(photoKey(src))
+              setFailed(null)
+            }}
+            onError={() => setFailed(src)}
+            onContextMenu={(event) => event.preventDefault()}
+            className={cn(
+              'absolute inset-0 size-full object-cover',
+              showPhoto ? 'opacity-100' : 'opacity-0',
+            )}
+          />
+        ) : null}
       </span>
       {badge ? <span className="absolute -right-2 -bottom-2">{badge}</span> : null}
     </span>

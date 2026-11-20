@@ -1,5 +1,12 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type {
+  CheckinPhotoSize,
+  CheckinTarget,
+  PostCheckinInput,
+  PostCheckinResult,
+} from '@/domain/checkin'
+import type { FeedCheckin, FeedItem, FeedRows, FeedRowsRequest } from '@/domain/feed'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
   CommitmentDetails,
@@ -58,6 +65,18 @@ export interface BackendPort {
    * Rejects with `invalid_time_zone`, `profile_required`, `not_member` or `not_admin`.
    */
   setTimeZone(timeZone: string, groupId?: string): Promise<TimeZoneState>
+  /**
+   * Uploads the profile photo (one 256 px WebP) to `avatars/{path}` (`{user_id}/{version}.webp`, no
+   * upsert). An object that already exists counts as uploaded. Rejects with `network` or `unknown`.
+   */
+  uploadAvatar(path: string, photo: Blob): Promise<void>
+  /** Points the caller's own `profiles.avatar_path` at `path`. Resolves with the stored profile. */
+  setAvatarPath(path: string): Promise<Profile>
+  /**
+   * 10-minute signed URLs for avatar object paths (one request for all). A path the caller may not
+   * read maps to null.
+   */
+  signAvatarPhotos(paths: readonly string[]): Promise<Record<string, string | null>>
 
   /**
    * The signed-in member's current groups, each with its member count, plus the groups they are no
@@ -80,7 +99,10 @@ export interface BackendPort {
    */
   joinGroup(code: string): Promise<string>
 
-  /** A group's current members with display names, in handover order (earliest joined first). */
+  /**
+   * A group's current members with display names and avatar paths, in handover order (earliest
+   * joined first).
+   */
   listMembers(groupId: string): Promise<GroupMember[]>
   /** `leave_group`: ends the caller's membership. Rejects with `not_member`. */
   leaveGroup(groupId: string): Promise<void>
@@ -154,4 +176,51 @@ export interface BackendPort {
    * or `commitment_ended`.
    */
   endCommitment(commitmentId: string): Promise<{ endsAfterWeekStart: string }>
+
+  /**
+   * `get_checkin_targets`: what the camera's picker lists for the member in a group, due today first,
+   * each with the server's won't-count reason. Rejects with `not_member`.
+   */
+  getCheckinTargets(groupId: string): Promise<CheckinTarget[]>
+  /**
+   * Uploads one WebP rendition to `checkins/{groupId}/{checkinId}/{size}.webp` (no upsert). An object
+   * that already exists counts as uploaded. Rejects with `network` or `unknown`.
+   */
+  uploadCheckinPhoto(
+    groupId: string,
+    checkinId: string,
+    size: CheckinPhotoSize,
+    photo: Blob,
+  ): Promise<void>
+  /**
+   * `post_checkin`: the server sets the timing, matches a session (or stores an extra) and returns
+   * the week's counts. The same id and payload again return the stored result. Rejects with
+   * `bad_capture_time`, `not_member`, `commitment_ended`, `week_locked`, `photo_missing`,
+   * `checkin_conflict` or `invalid_caption`.
+   */
+  postCheckin(input: PostCheckinInput): Promise<PostCheckinResult>
+
+  /**
+   * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on
+   * (`sort_at`, `item_id`), returned newest first: older than `before` or newer than `after`. Items
+   * of kinds the app does not render are dropped (the cursors still cover them).
+   */
+  listFeed(groupId: string, request: FeedRowsRequest): Promise<FeedRows>
+  /** One check-in of the group's feed, or null when it is gone, hidden or in another group. */
+  getFeedCheckin(groupId: string, checkinId: string): Promise<FeedItem | null>
+  /**
+   * `get_friends_today`: the group's check-ins received since the caller's local midnight, newest
+   * first, at most 30 (Today's Friends today strip).
+   */
+  listFriendsToday(groupId: string): Promise<FeedCheckin[]>
+  /**
+   * 10-minute signed URLs for check-in photo object paths (one request for all). A path the caller
+   * may not read maps to null.
+   */
+  signCheckinPhotos(paths: readonly string[]): Promise<Record<string, string | null>>
+  /**
+   * The token-less URL of a check-in photo object: the service worker's photo cache key. Only that
+   * cache can answer it (used offline).
+   */
+  checkinPhotoCacheUrl(path: string): string
 }

@@ -11,8 +11,8 @@ import {
   type TaskDetails,
 } from '@/domain/plan'
 import { usePresetActivities } from '@/data/activities'
-import { isOffline } from '@/data/connectivity'
 import { useRenameTask, useTask } from '@/data/plan'
+import { canRetry, useSaveFlow, type SaveFailure } from '@/data/save-flow'
 import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
 import { InlineRetry } from '@/ui/inline-retry'
@@ -20,10 +20,10 @@ import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
 import { TextField } from '@/ui/text-field'
 import type { DeleteTarget } from '@/features/plan/delete-task-sheet'
 
-/** Why a rename did not go through. Only offline and a plain failure offer Retry. */
-type RenameFailure = 'offline' | 'failed' | 'locked' | 'gone'
+/** Why a rename did not go through, besides offline and a plain failure (no Retry for these). */
+type RenameFailure = 'locked' | 'gone'
 
-function failureText(failure: RenameFailure): string {
+function failureText(failure: SaveFailure<RenameFailure>): string {
   switch (failure) {
     case 'offline':
       return PLAN_COPY.offline
@@ -104,25 +104,31 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
 
   const [name, setName] = useState(task.name)
   const [showNameError, setShowNameError] = useState(false)
-  const [failure, setFailure] = useState<RenameFailure | null>(null)
-  const [busy, setBusy] = useState(false)
-  const busyRef = useRef(false)
-  const mounted = useRef(true)
   const nameRef = useRef<HTMLInputElement>(null)
   const [focusTick, setFocusTick] = useState(0)
 
   // The server refused the name (invalid_plan); cleared by the next edit.
   const [serverNameError, setServerNameError] = useState(false)
+  const flow = useSaveFlow<string, unknown, RenameFailure>({
+    run: (trimmed) => rename.mutateAsync({ commitmentId: task.commitmentId, name: trimmed }),
+    onSaved: (_result, _input, live) => {
+      if (live) onSaved()
+    },
+    onError: (code) => {
+      if (code === 'task_locked') return 'locked'
+      if (code === 'not_found') return 'gone'
+      if (code !== 'invalid_plan') return 'failed'
+      setShowNameError(true)
+      setServerNameError(true)
+      setFocusTick((tick) => tick + 1)
+      return null
+    },
+    holdBusyOnSaved: true,
+  })
+  const { failure, setFailure } = flow
   const nameError = showNameError
     ? (taskNameError(name) ?? (serverNameError ? TASK_COPY.pickName : undefined))
     : undefined
-
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
 
   useEffect(() => {
     onDirtyChange(name !== task.name)
@@ -134,7 +140,7 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
 
   function save(event?: FormEvent) {
     event?.preventDefault()
-    if (busyRef.current) return
+    if (flow.isBusy()) return
     if (taskNameError(name) !== undefined) {
       setShowNameError(true)
       setFailure(null)
@@ -147,41 +153,11 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
       onSaved()
       return
     }
-    void send(trimmed)
-  }
-
-  async function send(trimmed: string) {
-    if (busyRef.current) return
-    if (isOffline()) {
-      setFailure('offline')
-      return
-    }
-    busyRef.current = true
-    setBusy(true)
-    setFailure(null)
-    try {
-      await rename.mutateAsync({ commitmentId: task.commitmentId, name: trimmed })
-      if (!mounted.current) return
-      onSaved()
-    } catch (error) {
-      busyRef.current = false
-      if (!mounted.current) return
-      setBusy(false)
-      const code = backendErrorCode(error)
-      if (code === 'network') setFailure('offline')
-      else if (code === 'task_locked') setFailure('locked')
-      else if (code === 'not_found') setFailure('gone')
-      else if (code === 'invalid_plan') {
-        setShowNameError(true)
-        setServerNameError(true)
-        setFocusTick((tick) => tick + 1)
-      } else setFailure('failed')
-    }
+    void flow.send(trimmed)
   }
 
   const activityName = taskActivityName(task, presets)
   const activityIcon = task.presetKey !== null ? presetIcon(task.presetKey) : CUSTOM_ACTIVITY_ICON
-  const canRetry = failure === 'offline' || failure === 'failed'
 
   return (
     <form noValidate className="flex flex-col" onSubmit={save}>
@@ -205,7 +181,7 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
             value={name}
             onChange={(event) => {
               setName(event.target.value)
-              setFailure(null)
+              flow.reset()
               setServerNameError(false)
             }}
             error={nameError}
@@ -231,7 +207,7 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
       <div className="sticky bottom-0 flex flex-col gap-3 bg-card pt-[14px]">
         {failure ? (
           <InlineRetry
-            onRetry={canRetry ? () => void send(name.trim()) : undefined}
+            onRetry={canRetry(failure) ? () => void flow.retry() : undefined}
             retryLabel={PLAN_COPY.retry}
           >
             {failureText(failure)}
@@ -242,7 +218,7 @@ function TaskEditForm({ groupId, task, onDirtyChange, onSaved, onDelete }: TaskE
             type="submit"
             variant="primary"
             fullWidth
-            busy={busy}
+            busy={flow.busy}
             busyLabel={PLAN_COPY.saving}
           >
             {PLAN_COPY.save}

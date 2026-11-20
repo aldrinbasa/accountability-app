@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import type { ActivitySelection } from '@/domain/activities'
-import { backendErrorCode, errorCopy } from '@/domain/error-codes'
+import { errorCopy } from '@/domain/error-codes'
 import {
   deadlineOptions,
   hasTaskErrors,
@@ -19,6 +19,7 @@ import {
 import { useGroupActivities, usePresetActivities } from '@/data/activities'
 import { isOffline } from '@/data/connectivity'
 import { useAddTask, usePlanPreview } from '@/data/plan'
+import { useSaveFlow } from '@/data/save-flow'
 import { Button } from '@/ui/button'
 import { FieldError } from '@/ui/field-error'
 import { InlineRetry } from '@/ui/inline-retry'
@@ -28,8 +29,6 @@ import { WeekdaySelector } from '@/ui/weekday-selector'
 import { ActivityPicker } from '@/features/plan/activity-picker'
 
 type ErrorKey = keyof TaskErrors | 'deadline'
-
-type SaveFailure = 'offline' | 'failed'
 
 const EMPTY_TASK: TaskForm = { activity: null, name: '', deadline: null }
 
@@ -56,11 +55,24 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
   const [shown, setShown] = useState<ReadonlySet<keyof TaskErrors>>(new Set())
   // The server refused the deadline (the member's day moved on); cleared by picking a day.
   const [serverDeadlineError, setServerDeadlineError] = useState(false)
-  const [failure, setFailure] = useState<SaveFailure | null>(null)
-  const [busy, setBusy] = useState(false)
-  const busyRef = useRef(false)
-  const lastInput = useRef<AddTaskInput | null>(null)
-  const mounted = useRef(true)
+  const flow = useSaveFlow<AddTaskInput, unknown>({
+    run: (input) => addTask.mutateAsync(input),
+    onSaved: (_result, input, live) => {
+      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
+      showToast(taskAddedToast(input.name))
+      // Stays busy while the sheet closes.
+      if (live) onSaved()
+    },
+    onError: (code) => {
+      if (code !== 'invalid_deadline') return 'failed'
+      // The plan refetches (useAddTask), so the days catch up with the member's today.
+      setServerDeadlineError(true)
+      focusError('deadline')
+      return null
+    },
+    holdBusyOnSaved: true,
+  })
+  const { failure, setFailure } = flow
   const [focusTick, setFocusTick] = useState(0)
   const [focusKey, setFocusKey] = useState<ErrorKey | null>(null)
 
@@ -87,13 +99,6 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
   const validation = validateTask(form)
 
   useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
-  useEffect(() => {
     onDirtyChange(isTaskFormDirty(form, defaultDeadline))
   }, [form, defaultDeadline, onDirtyChange])
 
@@ -112,8 +117,7 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
     const next = { ...form, ...patch }
     setForm(next)
     // An edit makes the failed request stale: Retry must not save what the form no longer shows.
-    setFailure(null)
-    lastInput.current = null
+    flow.reset()
     if ('deadline' in patch) setServerDeadlineError(false)
     const nextErrors = validateTask(next)
     setShown((prev) => {
@@ -129,7 +133,7 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
 
   function save(event?: FormEvent) {
     event?.preventDefault()
-    if (busyRef.current) return
+    if (flow.isBusy()) return
     if (hasTaskErrors(validation) || form.activity === null) {
       const keys = TASK_ERROR_ORDER.filter((k) => validation[k] !== undefined)
       setShown(new Set(keys))
@@ -148,48 +152,12 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
       void preview.refetch()
       return
     }
-    void send(toAddTaskInput(groupId, form.activity, form.name, deadline))
-  }
-
-  async function send(input: AddTaskInput) {
-    if (busyRef.current) return
-    lastInput.current = input
-    if (isOffline()) {
-      setFailure('offline')
-      return
-    }
-    busyRef.current = true
-    setBusy(true)
-    setFailure(null)
-    try {
-      await addTask.mutateAsync(input)
-      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
-      showToast(taskAddedToast(input.name))
-      if (!mounted.current) return
-      // Stays busy while the sheet closes.
-      onSaved()
-    } catch (error) {
-      busyRef.current = false
-      if (!mounted.current) return
-      setBusy(false)
-      const code = backendErrorCode(error)
-      if (code === 'network') {
-        setFailure('offline')
-      } else if (code === 'invalid_deadline') {
-        // The plan refetches (useAddTask), so the days catch up with the member's today.
-        lastInput.current = null
-        setServerDeadlineError(true)
-        focusError('deadline')
-      } else {
-        setFailure('failed')
-      }
-    }
+    void flow.send(toAddTaskInput(groupId, form.activity, form.name, deadline))
   }
 
   function retry() {
     // No request yet when the days had not loaded: Retry runs Save again.
-    if (lastInput.current) void send(lastInput.current)
-    else save()
+    if (!flow.retry()) save()
   }
 
   const activityError = shown.has('activity') ? validation.activity : undefined
@@ -261,7 +229,13 @@ export function TaskFormView({ groupId, onDirtyChange, onSaved }: TaskFormViewPr
             {failure === 'offline' ? PLAN_COPY.offline : PLAN_COPY.failed}
           </InlineRetry>
         ) : null}
-        <Button type="submit" variant="primary" fullWidth busy={busy} busyLabel={PLAN_COPY.saving}>
+        <Button
+          type="submit"
+          variant="primary"
+          fullWidth
+          busy={flow.busy}
+          busyLabel={PLAN_COPY.saving}
+        >
           {PLAN_COPY.save}
         </Button>
       </div>

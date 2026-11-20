@@ -11,6 +11,7 @@ import {
   type CommitmentDetails,
   type CommitmentEditForm,
   type UpdateCommitmentInput,
+  type UpdateCommitmentResult,
 } from '@/domain/my-plan'
 import {
   DEFAULT_TARGET,
@@ -24,8 +25,8 @@ import {
   targetLabel,
   WEEKDAYS,
 } from '@/domain/plan'
-import { isOffline } from '@/data/connectivity'
 import { useCommitment, usePlanPreview, useUpdateCommitment } from '@/data/plan'
+import { canRetry, useSaveFlow, type SaveFailure } from '@/data/save-flow'
 import { Button } from '@/ui/button'
 import { DateField } from '@/ui/date-field'
 import { FieldError } from '@/ui/field-error'
@@ -44,10 +45,10 @@ const WEEKDAY_OPTIONS: readonly WeekdayOption[] = WEEKDAYS.map((day) => ({
   name: day.name,
 }))
 
-/** Why a save did not go through. Only offline and a plain failure offer Retry. */
-type SaveFailure = 'offline' | 'failed' | 'ended'
+/** Why a save did not go through, besides offline and a plain failure (no Retry for this). */
+type EditFailure = 'ended'
 
-function failureText(failure: SaveFailure): string {
+function failureText(failure: SaveFailure<EditFailure>): string {
   switch (failure) {
     case 'offline':
       return PLAN_COPY.offline
@@ -163,11 +164,25 @@ function CommitmentEditForm({
   const [shown, setShown] = useState<ReadonlySet<ErrorKey>>(new Set())
   // The server refused the end date; cleared by the next end date change.
   const [serverEndDateError, setServerEndDateError] = useState(false)
-  const [failure, setFailure] = useState<SaveFailure | null>(null)
-  const [busy, setBusy] = useState(false)
-  const busyRef = useRef(false)
-  const lastInput = useRef<UpdateCommitmentInput | null>(null)
-  const mounted = useRef(true)
+  const flow = useSaveFlow<UpdateCommitmentInput, UpdateCommitmentResult, EditFailure>({
+    run: (input) => update.mutateAsync(input),
+    onSaved: (result, input, live) => {
+      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
+      showToast(updatedToast(details.activityName, input, result.changesFrom))
+      // Stays busy while the sheet closes.
+      if (live) onSaved()
+    },
+    onError: (code) => {
+      if (code === 'commitment_ended' || code === 'not_found') return 'ended'
+      if (code !== 'invalid_end_date') return 'failed'
+      setServerEndDateError(true)
+      setShown((prev) => new Set([...prev, 'endDate']))
+      focusError('endDate')
+      return null
+    },
+    holdBusyOnSaved: true,
+  })
+  const { failure, busy } = flow
   const [focusTick, setFocusTick] = useState(0)
   const [focusKey, setFocusKey] = useState<ErrorKey | null>(null)
 
@@ -190,13 +205,6 @@ function CommitmentEditForm({
   }
 
   useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-    }
-  }, [])
-
-  useEffect(() => {
     onDirtyChange(isCommitmentEditDirty(form, details))
   }, [form, details, onDirtyChange])
 
@@ -216,8 +224,7 @@ function CommitmentEditForm({
     const next = { ...form, ...patch }
     setForm(next)
     // An edit makes the failed request stale: Retry must not save what the form no longer shows.
-    setFailure(null)
-    lastInput.current = null
+    flow.reset()
     const keepServerEndDate = serverEndDateError && !('endDate' in patch)
     if ('endDate' in patch) setServerEndDateError(false)
     setShown((prev) => {
@@ -231,11 +238,11 @@ function CommitmentEditForm({
 
   function save(event?: FormEvent) {
     event?.preventDefault()
-    if (busyRef.current) return
+    if (flow.isBusy()) return
     const keys = (['days', 'endDate'] as const).filter((key) => validation[key] !== undefined)
     if (keys.length > 0) {
       setShown(new Set(keys))
-      setFailure(null)
+      flow.setFailure(null)
       const first = keys[0]
       if (first) focusError(first)
       return
@@ -245,43 +252,7 @@ function CommitmentEditForm({
       onSaved()
       return
     }
-    void send(toUpdateCommitmentInput(details, form))
-  }
-
-  async function send(input: UpdateCommitmentInput) {
-    if (busyRef.current) return
-    lastInput.current = input
-    if (isOffline()) {
-      setFailure('offline')
-      return
-    }
-    busyRef.current = true
-    setBusy(true)
-    setFailure(null)
-    try {
-      const result = await update.mutateAsync(input)
-      // Saved even if the sheet was discarded meanwhile, so the toast always shows.
-      showToast(updatedToast(details.activityName, input, result.changesFrom))
-      if (!mounted.current) return
-      // Stays busy while the sheet closes.
-      onSaved()
-    } catch (error) {
-      busyRef.current = false
-      if (!mounted.current) return
-      setBusy(false)
-      const code = backendErrorCode(error)
-      if (code === 'network') setFailure('offline')
-      else if (code === 'commitment_ended' || code === 'not_found') setFailure('ended')
-      else if (code === 'invalid_end_date') {
-        setServerEndDateError(true)
-        setShown((prev) => new Set([...prev, 'endDate']))
-        focusError('endDate')
-      } else setFailure('failed')
-    }
-  }
-
-  function retry() {
-    if (lastInput.current) void send(lastInput.current)
+    void flow.send(toUpdateCommitmentInput(details, form))
   }
 
   const daysError = shown.has('days') ? validation.days : undefined
@@ -294,7 +265,6 @@ function CommitmentEditForm({
     lastWeek !== null && lastWeek < form.target ? lastWeekNote(lastWeek, form.target) : undefined
   const activityIcon =
     details.presetKey !== null ? presetIcon(details.presetKey) : CUSTOM_ACTIVITY_ICON
-  const canRetry = failure === 'offline' || failure === 'failed'
 
   return (
     <form noValidate className="flex flex-col" onSubmit={save}>
@@ -376,7 +346,10 @@ function CommitmentEditForm({
 
       <div className="sticky bottom-0 flex flex-col gap-3 bg-card pt-[14px]">
         {failure ? (
-          <InlineRetry onRetry={canRetry ? retry : undefined} retryLabel={PLAN_COPY.retry}>
+          <InlineRetry
+            onRetry={canRetry(failure) ? () => void flow.retry() : undefined}
+            retryLabel={PLAN_COPY.retry}
+          >
             {failureText(failure)}
           </InlineRetry>
         ) : null}
@@ -389,7 +362,7 @@ function CommitmentEditForm({
           // Not while a save is in flight (no disabled look in this design: taps are ignored).
           aria-disabled={busy || undefined}
           onClick={() => {
-            if (busyRef.current) return
+            if (flow.isBusy()) return
             onEnd({ commitmentId: details.commitmentId, name: details.activityName })
           }}
         >

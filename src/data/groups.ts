@@ -16,6 +16,7 @@ import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
 import { setLastSeenCount } from '@/data/group-notices'
 import { deviceTimeZone, MY_PROFILE_KEY } from '@/data/profile'
+import { retryOnline } from '@/data/query-client'
 
 /**
  * The signed-in member's groups: a `MyGroupsSnapshot` (current groups plus the ones they are no
@@ -83,7 +84,7 @@ export function useMyGroups() {
     queryKey: MY_GROUPS_KEY,
     queryFn: () => repository.listMine(),
     select: selectGroups,
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -95,7 +96,7 @@ export function useEndedMemberships() {
     queryKey: MY_GROUPS_KEY,
     queryFn: () => repository.listMine(),
     select: selectEnded,
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -142,7 +143,7 @@ export function useInvite(groupId: string, enabled: boolean) {
     queryKey: inviteKey(groupId),
     queryFn: () => repository.invite(groupId, false),
     enabled,
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -227,7 +228,7 @@ export function useMembers(groupId: string, enabled: boolean) {
     queryKey: membersKey(groupId),
     queryFn: () => repository.members(groupId),
     enabled,
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }

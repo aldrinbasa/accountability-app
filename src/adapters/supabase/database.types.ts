@@ -23,7 +23,45 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "commitment_versions": {
+            "checkins": {
+                  Row: {
+                    "caption": string | null,"captured_at": string,"commitment_id": string,"counted_at": string,"created_at": string,"full_pruned_at": string | null,"group_id": string,"id": string,"is_late": boolean,"received_at": string,"session_id": string | null,"updated_at": string,"user_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "caption"?: string | null,"captured_at": string,"commitment_id": string,"counted_at": string,"created_at"?: string,"full_pruned_at"?: string | null,"group_id": string,"id": string,"is_late": boolean,"received_at": string,"session_id"?: string | null,"updated_at"?: string,"user_id": string
+                  }
+                  Update: {
+                    "caption"?: string | null,"captured_at"?: string,"commitment_id"?: string,"counted_at"?: string,"created_at"?: string,"full_pruned_at"?: string | null,"group_id"?: string,"id"?: string,"is_late"?: boolean,"received_at"?: string,"session_id"?: string | null,"updated_at"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "checkins_commitment_id_fkey"
+      columns: ["commitment_id"]
+isOneToOne: false
+      referencedRelation: "commitments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "checkins_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "checkins_session_id_fkey"
+      columns: ["session_id"]
+isOneToOne: false
+      referencedRelation: "sessions"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "checkins_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"commitment_versions": {
                   Row: {
                     "commitment_id": string,"created_at": string,"days": (number)[] | null,"effective_week_start": string,"end_date": string | null,"group_id": string,"id": string,"target": number | null,"updated_at": string
                   }
@@ -88,6 +126,38 @@ isOneToOne: false
     },{
       foreignKeyName: "commitments_user_id_fkey"
       columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"feed_events": {
+                  Row: {
+                    "actor_id": string | null,"created_at": string,"group_id": string,"id": string,"kind": string,"payload": NonNullable<Json>,"subject_id": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "actor_id"?: string | null,"created_at"?: string,"group_id": string,"id"?: string,"kind": string,"payload"?: NonNullable<Json>,"subject_id"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "actor_id"?: string | null,"created_at"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"payload"?: NonNullable<Json>,"subject_id"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "feed_events_actor_id_fkey"
+      columns: ["actor_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feed_events_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "feed_events_subject_id_fkey"
+      columns: ["subject_id"]
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
@@ -300,7 +370,15 @@ isOneToOne: false
                 }
           }
           Views: {
-            "group_activity_options": {
+            "feed_items": {
+                  Row: {
+                    "activity_name": string | null,"actor_avatar_path": string | null,"actor_id": string | null,"actor_name": string | null,"caption": string | null,"captured_at": string | null,"commitment_id": string | null,"commitment_kind": string | null,"counted_position": number | null,"full_pruned_at": string | null,"group_id": string | null,"is_extra": boolean | null,"is_late": boolean | null,"item_id": string | null,"item_kind": string | null,"miss_count": number | null,"payload": Json | null,"preset_key": string | null,"received_at": string | null,"sort_at": string | null,"subject_id": string | null,"subject_name": string | null,"target": number | null,"task_name": string | null
+                  }
+                  ComputedFields: never
+                  Relationships: [
+                    
+                  ]
+                },"group_activity_options": {
                   Row: {
                     "created_by": string,"custom_name": string | null,"group_id": string,"id": string,"locked_schedule_type": string | null,"preset_key": string | null
                   }
@@ -361,11 +439,49 @@ isOneToOne: false
               "ends_after_week_start": string
             }[]
                            },
+"get_checkin_targets":
+{ Args: { "p_group_id": string }; Returns: {
+              "activity_name": string,"commitment_id": string,"custom_name": string,"deadline": string,"done_count": number,"due_today": boolean,"kind": string,"member_today": string,"name": string,"preset_key": string,"schedule_type": string,"target": number,"wont_count": string
+            }[]
+                           },
 "get_commitment":
 { Args: { "p_commitment_id": string }; Returns: {
               "activity_name": string,"can_edit": boolean,"changes_from": string,"commitment_id": string,"custom_name": string,"days": (number)[],"end_date": string,"group_id": string,"min_end_date": string,"preset_key": string,"schedule_type": string,"state": string,"target": number
             }[]
                            },
+"get_friends_today":
+{ Args: { "p_group_id": string }; Returns: {
+              "activity_name": string | null,
+"actor_avatar_path": string | null,
+"actor_id": string | null,
+"actor_name": string | null,
+"caption": string | null,
+"captured_at": string | null,
+"commitment_id": string | null,
+"commitment_kind": string | null,
+"counted_position": number | null,
+"full_pruned_at": string | null,
+"group_id": string | null,
+"is_extra": boolean | null,
+"is_late": boolean | null,
+"item_id": string | null,
+"item_kind": string | null,
+"miss_count": number | null,
+"payload": Json | null,
+"preset_key": string | null,
+"received_at": string | null,
+"sort_at": string | null,
+"subject_id": string | null,
+"subject_name": string | null,
+"target": number | null,
+"task_name": string | null
+            }[]
+                          SetofOptions: {
+        from: "*"
+        to: "feed_items"
+        isOneToOne: false
+        isSetofReturn: true
+      } },
 "get_invite":
 { Args: { "p_code": string }; Returns: {
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
@@ -383,7 +499,7 @@ isOneToOne: false
                            },
 "get_today_items":
 { Args: { "p_group_id": string }; Returns: {
-              "activity_name": string,"can_delete": boolean,"commitment_id": string,"counted": number,"custom_name": string,"days": (number)[],"deadline": string,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"target": number
+              "activity_name": string,"can_delete": boolean,"commitment_id": string,"counted": number,"counted_today": boolean,"custom_name": string,"days": (number)[],"deadline": string,"done_count": number,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"target": number,"target_met": boolean
             }[]
                            },
 "get_today_summary":
@@ -400,6 +516,11 @@ isOneToOne: false
 "plan_preview":
 { Args: { "p_end_date"?: string,"p_group_id": string,"p_target"?: number }; Returns: {
               "last_week_target": number,"member_today": string,"min_end_date": string,"starts_on": string,"week_end": string,"week_start": string
+            }[]
+                           },
+"post_checkin":
+{ Args: { "p_caption"?: string,"p_captured_at": string,"p_commitment_id": string,"p_id": string }; Returns: {
+              "checkin_id": string,"counted": boolean,"done_count": number,"is_late": boolean,"session_id": string,"target": number
             }[]
                            },
 "remove_member":

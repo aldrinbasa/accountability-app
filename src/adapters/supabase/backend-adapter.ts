@@ -12,7 +12,23 @@ import {
   type PresetActivity,
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
+import {
+  checkinPhotoPath,
+  isWontCount,
+  type CheckinTarget,
+  type PostCheckinInput,
+  type PostCheckinResult,
+} from '@/domain/checkin'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
+import {
+  isFeedEventKind,
+  type FeedCheckin,
+  type FeedCursor,
+  type FeedItem,
+  type FeedMiss,
+  type FeedRows,
+  type FeedRowsRequest,
+} from '@/domain/feed'
 import {
   isEndReason,
   isInviteStatus,
@@ -35,7 +51,7 @@ import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
-import { supabase } from '@/adapters/supabase/client'
+import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
@@ -154,17 +170,18 @@ export function toMyGroups(rows: readonly GroupRow[], userId: string): MyGroupsS
 }
 
 type MemberRow = Pick<Tables<'memberships'>, 'id' | 'user_id' | 'role' | 'joined_at'> & {
-  profiles: Pick<Tables<'profiles'>, 'display_name'> | null
+  profiles: Pick<Tables<'profiles'>, 'display_name' | 'avatar_path'> | null
 }
 
-/** A group's current memberships with each member's display name. */
-const MEMBER_COLUMNS = 'id, user_id, role, joined_at, profiles(display_name)'
+/** A group's current memberships with each member's display name and avatar path. */
+const MEMBER_COLUMNS = 'id, user_id, role, joined_at, profiles(display_name, avatar_path)'
 
 export function toGroupMembers(rows: readonly MemberRow[]): GroupMember[] {
   return rows.map((row) => ({
     membershipId: row.id,
     userId: row.user_id,
     displayName: row.profiles?.display_name ?? '',
+    avatarPath: row.profiles?.avatar_path ?? null,
     role: toRole(row.role),
     joinedAt: row.joined_at,
   }))
@@ -307,6 +324,8 @@ export function toTodayItems(rows: readonly TodayItemRow[]): TodayItem[] {
       deadline: row.deadline ?? null,
       startsOn: row.starts_on ?? null,
       canDelete: row.can_delete ?? false,
+      countedToday: row.counted_today ?? false,
+      targetMet: row.target_met ?? false,
     }
   })
 }
@@ -412,14 +431,254 @@ export function toUpdateCommitmentArgs(input: UpdateCommitmentInput) {
   }
 }
 
+type CheckinTargetRow = Database['public']['Functions']['get_checkin_targets']['Returns'][number]
+
+/**
+ * `get_checkin_targets` rows as domain targets, in the server's order. The generated type misses the
+ * nullable columns. An unknown kind, schedule type or reason is a server bug: fail loudly.
+ */
+export function toCheckinTargets(rows: readonly CheckinTargetRow[]): CheckinTarget[] {
+  return rows.map((row) => {
+    const scheduleType = row.schedule_type ?? null
+    const wontCount = row.wont_count ?? null
+    if (row.kind !== 'commitment' && row.kind !== 'task') {
+      throw new BackendError('unknown', `checkin target ${row.commitment_id} has kind ${row.kind}`)
+    }
+    if (scheduleType !== null && !isScheduleType(scheduleType)) {
+      throw new BackendError(
+        'unknown',
+        `checkin target ${row.commitment_id} has schedule type ${scheduleType}`,
+      )
+    }
+    if (wontCount !== null && !isWontCount(wontCount)) {
+      throw new BackendError(
+        'unknown',
+        `checkin target ${row.commitment_id} has wont_count ${wontCount}`,
+      )
+    }
+    return {
+      commitmentId: row.commitment_id,
+      kind: row.kind,
+      presetKey: row.preset_key ?? null,
+      activityName: row.activity_name ?? row.custom_name ?? row.preset_key ?? '',
+      name: row.name ?? null,
+      scheduleType,
+      dueToday: row.due_today ?? false,
+      memberToday: row.member_today,
+      deadline: row.deadline ?? null,
+      target: row.target ?? 0,
+      doneCount: row.done_count ?? 0,
+      wontCount,
+    }
+  })
+}
+
+type PostCheckinRow = Database['public']['Functions']['post_checkin']['Returns'][number]
+
+/** The `post_checkin` row as a domain result (`session_id` is null for an extra). */
+export function toPostCheckinResult(row: PostCheckinRow): PostCheckinResult {
+  return {
+    checkinId: row.checkin_id,
+    sessionId: row.session_id ?? null,
+    counted: row.counted,
+    isLate: row.is_late,
+    doneCount: row.done_count,
+    target: row.target,
+  }
+}
+
+/** `post_checkin` arguments (the caption only when there is one). */
+export function toPostCheckinArgs(input: PostCheckinInput) {
+  return {
+    p_id: input.id,
+    p_commitment_id: input.commitmentId,
+    p_captured_at: input.capturedAt,
+    ...(input.caption !== null ? { p_caption: input.caption } : {}),
+  }
+}
+
+type FeedItemRow = Tables<'feed_items'>
+
+/** The view's columns, in its order. */
+const FEED_COLUMNS =
+  'group_id, item_kind, item_id, sort_at, actor_id, actor_name, actor_avatar_path, subject_id, subject_name, commitment_id, commitment_kind, activity_name, preset_key, task_name, captured_at, received_at, is_late, is_extra, caption, full_pruned_at, counted_position, target, payload, miss_count'
+
+/** A string field of an event's `payload`, else null. */
+function payloadString(payload: FeedItemRow['payload'], key: string): string | null {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const value = payload[key]
+  return typeof value === 'string' ? value : null
+}
+
+/** A miss row (Story 3.5): the live title and count, the payload's tease, day and schedule type. */
+function toFeedMiss(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedMiss | null {
+  const missCount = row.miss_count ?? 0
+  if (missCount <= 0) return null
+  const scheduleType = payloadString(row.payload, 'schedule_type')
+  return {
+    type: 'miss',
+    id,
+    groupId,
+    sortAt,
+    actorId: row.actor_id,
+    actorName: row.actor_name ?? '',
+    commitmentId: row.commitment_id,
+    title: row.task_name ?? row.activity_name ?? payloadString(row.payload, 'activity_name') ?? '',
+    scheduleType:
+      scheduleType === 'fixed_days' || scheduleType === 'times_per_week' ? scheduleType : null,
+    missCount,
+    tease: payloadString(row.payload, 'tease'),
+    missedOn: payloadString(row.payload, 'missed_on'),
+  }
+}
+
+/**
+ * One `feed_items` row as a domain item, or null for a kind the app does not render or a row
+ * missing what every item needs.
+ */
+export function toFeedItem(row: FeedItemRow): FeedItem | null {
+  const { item_id: id, group_id: groupId, sort_at: sortAt, item_kind: kind } = row
+  if (!id || !groupId || !sortAt || !kind) return null
+  if (kind === 'checkin') {
+    if (!row.actor_id || !row.commitment_id || !row.captured_at || !row.received_at) return null
+    return {
+      type: 'checkin',
+      id,
+      groupId,
+      sortAt,
+      authorId: row.actor_id,
+      authorName: row.actor_name ?? '',
+      authorAvatarPath: row.actor_avatar_path,
+      commitmentId: row.commitment_id,
+      commitmentKind: row.commitment_kind === 'task' ? 'task' : 'commitment',
+      activityName: row.activity_name ?? row.preset_key ?? '',
+      presetKey: row.preset_key,
+      taskName: row.task_name,
+      capturedAt: row.captured_at,
+      receivedAt: row.received_at,
+      isLate: row.is_late ?? false,
+      isExtra: row.is_extra ?? false,
+      caption: row.caption,
+      fullPrunedAt: row.full_pruned_at,
+      countedPosition: row.counted_position,
+      target: row.target,
+    }
+  }
+  if (kind === 'miss') return toFeedMiss(row, id, groupId, sortAt)
+  if (!isFeedEventKind(kind)) return null
+  return {
+    type: 'event',
+    kind,
+    id,
+    groupId,
+    sortAt,
+    actorId: row.actor_id,
+    actorName: row.actor_name ?? '',
+    subjectId: row.subject_id,
+    subjectName: row.subject_name,
+  }
+}
+
+function rowCursor(row: FeedItemRow | undefined): FeedCursor | null {
+  return row?.sort_at && row.item_id ? { sortAt: row.sort_at, itemId: row.item_id } : null
+}
+
+/**
+ * Raw `feed_items` rows (newest first) as a page: the mapped items plus the raw count and cursors.
+ */
+export function toFeedRows(rows: readonly FeedItemRow[]): FeedRows {
+  const items: FeedItem[] = []
+  for (const row of rows) {
+    const item = toFeedItem(row)
+    if (item) items.push(item)
+  }
+  return {
+    items,
+    rowCount: rows.length,
+    newest: rowCursor(rows[0]),
+    oldest: rowCursor(rows[rows.length - 1]),
+  }
+}
+
+/**
+ * The PostgREST `or` filter for rows after a cursor in one direction: `lt` for older, `gt` for
+ * newer. The timestamp is quoted (it holds `:` and `+`); ids are UUIDs.
+ */
+export function keysetFilter(cursor: FeedCursor, direction: 'lt' | 'gt'): string {
+  const at = `"${cursor.sortAt}"`
+  return `sort_at.${direction}.${at},and(sort_at.eq.${at},item_id.${direction}.${cursor.itemId})`
+}
+
+/** Signed check-in photo URLs live 10 minutes (AD-9). */
+const PHOTO_URL_TTL_S = 600
+
+interface StorageErrorLike {
+  message: string
+  /** HTTP status; undefined when the request got no response (the fetch threw). */
+  status?: number
+  statusCode?: string
+  code?: string
+  error?: string
+}
+
+/** storage-js marks its errors with `__isStorageError` (its own `isStorageError` check). */
+function isStorageError(error: unknown): error is StorageErrorLike {
+  return typeof error === 'object' && error !== null && '__isStorageError' in error
+}
+
+/** The private bucket for check-in photos (`{group_id}/{checkin_id}/{1080|360}.webp`). */
+const CHECKINS_BUCKET = 'checkins'
+
+/** The private bucket for profile photos (`{user_id}/{version}.webp`, Story 3.6). */
+const AVATARS_BUCKET = 'avatars'
+
+/**
+ * Whether a Storage upload error means the object is already there (a retried upload whose first
+ * response was lost): HTTP 409, or Storage's `Duplicate` / `ResourceAlreadyExists` code.
+ */
+export function isAlreadyUploaded(error: unknown): boolean {
+  if (!isStorageError(error)) return false
+  return (
+    error.status === 409 ||
+    error.statusCode === '409' ||
+    error.code === 'ResourceAlreadyExists' ||
+    error.error === 'Duplicate' ||
+    /already exists/i.test(error.message)
+  )
+}
+
+/**
+ * Maps a Storage upload error onto a `BackendError`: no response at all (the fetch threw, so there
+ * is no HTTP status) is `network`; a 403 from the INSERT policy (row-level security: no longer a current member) is
+ * `not_member`, which is final; anything else `unknown`.
+ */
+export function toStorageBackendError(error: unknown): BackendError {
+  const message = error instanceof Error ? error.message : String(error)
+  const status = isStorageError(error) ? error.status : undefined
+  const statusCode = isStorageError(error) ? error.statusCode : undefined
+  // Only the INSERT policy's refusal; an auth failure (e.g. an expired token) can also carry 403.
+  if ((status === 403 || statusCode === '403') && /row-level security/i.test(message)) {
+    return new BackendError('not_member', message)
+  }
+  if (status === undefined || status === 0) return new BackendError('network', message)
+  return new BackendError('unknown', message)
+}
+
 /**
  * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
  * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
- * message is a known AD-14 code becomes that code.
+ * message is a known AD-14 code becomes that code, keeping the exception's DETAIL (`details`).
  */
 function toBackendError(error: PostgrestError, status: number): BackendError {
   if (status === 0) return new BackendError('network', error.message)
-  if (isRpcErrorCode(error.message)) return new BackendError(error.message)
+  if (isRpcErrorCode(error.message)) {
+    return new BackendError(error.message, error.message, error.details || null)
+  }
   return new BackendError('unknown', error.message)
 }
 
@@ -470,9 +729,50 @@ function requireUser(user: User | null | undefined, rejected: AuthErrorCode): Au
 }
 
 /**
+ * Uploads one WebP object (no upsert, a year of cache). An object that already exists counts as
+ * uploaded (a retry whose first response was lost).
+ */
+async function uploadWebp(bucket: string, path: string, photo: Blob): Promise<void> {
+  let error: unknown
+  try {
+    const result = await supabase.storage.from(bucket).upload(path, photo, {
+      contentType: 'image/webp',
+      upsert: false,
+      cacheControl: '31536000',
+    })
+    error = result.error
+  } catch (thrown) {
+    error = thrown
+  }
+  if (!error || isAlreadyUploaded(error)) return
+  throw toStorageBackendError(error)
+}
+
+/** 10-minute signed URLs for `paths` in `bucket`, one request; unreadable paths map to null. */
+async function signPaths(
+  bucket: string,
+  paths: readonly string[],
+): Promise<Record<string, string | null>> {
+  if (paths.length === 0) return {}
+  const result = await supabase.storage
+    .from(bucket)
+    .createSignedUrls([...paths], PHOTO_URL_TTL_S)
+    .catch((thrown: unknown) => {
+      throw toStorageBackendError(thrown)
+    })
+  if (result.error) throw toStorageBackendError(result.error)
+  const urls: Record<string, string | null> = {}
+  for (const path of paths) urls[path] = null
+  for (const entry of result.data) {
+    if (entry.path && !entry.error && entry.signedUrl) urls[entry.path] = entry.signedUrl
+  }
+  return urls
+}
+
+/**
  * Supabase implementation of `BackendPort`: auth (1.3), profiles (1.4), groups (1.6), invites (1.7),
  * members, leave and remove (1.8), activities (2.1), plan preview and add commitment (2.2), tasks
- * (2.4), Today (2.5), My plan (2.6).
+ * (2.4), Today (2.5), My plan (2.6), check-ins (3.2), avatars (3.6).
  */
 export const supabaseBackendAdapter: BackendPort = {
   async getSession() {
@@ -551,6 +851,28 @@ export const supabaseBackendAdapter: BackendPort = {
     if (error) throw toBackendError(error, status)
     if (!data) throw new BackendError('unknown', 'save_profile returned no row')
     return toProfile(data)
+  },
+
+  async uploadAvatar(path, photo) {
+    await uploadWebp(AVATARS_BUCKET, path, photo)
+  },
+
+  async setAvatarPath(path) {
+    const userId = await sessionUserId('avatar')
+    // Own row only (RLS and the Story 1.4 column grant).
+    const { data, error, status } = await supabase
+      .from('profiles')
+      .update({ avatar_path: path })
+      .eq('id', userId)
+      .select(PROFILE_COLUMNS)
+      .maybeSingle()
+    if (error) throw toBackendError(error, status)
+    if (!data) throw new BackendError('unknown', 'avatar_path update returned no row')
+    return toProfile(data)
+  },
+
+  signAvatarPhotos(paths) {
+    return signPaths(AVATARS_BUCKET, paths)
   },
 
   async setTimeZone(timeZone, groupId) {
@@ -756,5 +1078,72 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'end_commitment returned no row')
     return { endsAfterWeekStart: row.ends_after_week_start }
+  },
+
+  async getCheckinTargets(groupId) {
+    const { data, error, status } = await supabase.rpc('get_checkin_targets', {
+      p_group_id: groupId,
+    })
+    if (error) throw toBackendError(error, status)
+    return toCheckinTargets(data ?? [])
+  },
+
+  async uploadCheckinPhoto(groupId, checkinId, size, photo) {
+    await uploadWebp(CHECKINS_BUCKET, checkinPhotoPath(groupId, checkinId, size), photo)
+  },
+
+  async postCheckin(input) {
+    const { data, error, status } = await supabase.rpc('post_checkin', toPostCheckinArgs(input))
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'post_checkin returned no row')
+    return toPostCheckinResult(row)
+  },
+
+  async listFeed(groupId, request: FeedRowsRequest) {
+    let query = supabase.from('feed_items').select(FEED_COLUMNS).eq('group_id', groupId)
+    const newer = request.after !== undefined
+    if (request.before) query = query.or(keysetFilter(request.before, 'lt'))
+    if (request.after) query = query.or(keysetFilter(request.after, 'gt'))
+    const { data, error, status } = await query
+      .order('sort_at', { ascending: newer })
+      .order('item_id', { ascending: newer })
+      .limit(request.limit)
+    if (error) throw toBackendError(error, status)
+    const rows = data ?? []
+    return toFeedRows(newer ? [...rows].reverse() : rows)
+  },
+
+  async getFeedCheckin(groupId, checkinId) {
+    const { data, error, status } = await supabase
+      .from('feed_items')
+      .select(FEED_COLUMNS)
+      .eq('group_id', groupId)
+      .eq('item_kind', 'checkin')
+      .eq('item_id', checkinId)
+      .maybeSingle()
+    if (error) throw toBackendError(error, status)
+    return data ? toFeedItem(data) : null
+  },
+
+  async listFriendsToday(groupId) {
+    const { data, error, status } = await supabase
+      .rpc('get_friends_today', { p_group_id: groupId })
+      .select(FEED_COLUMNS)
+    if (error) throw toBackendError(error, status)
+    const items: FeedCheckin[] = []
+    for (const row of data ?? []) {
+      const item = toFeedItem(row)
+      if (item?.type === 'checkin') items.push(item)
+    }
+    return items
+  },
+
+  signCheckinPhotos(paths) {
+    return signPaths(CHECKINS_BUCKET, paths)
+  },
+
+  checkinPhotoCacheUrl(path) {
+    return `${supabaseUrl}/storage/v1/object/sign/${CHECKINS_BUCKET}/${path}`
   },
 }

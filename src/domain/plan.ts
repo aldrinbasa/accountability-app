@@ -5,6 +5,7 @@ import {
   type PresetActivity,
   type ScheduleType,
 } from '@/domain/activities'
+import { DAY_LONG, DAY_SHORT, MONTH_SHORT, parseIsoDate } from '@/domain/dates'
 
 /**
  * `plan_preview`: the dates the Plan sheet shows, computed by the server (AD-11). Dates are
@@ -47,14 +48,11 @@ export interface AddCommitmentResult {
 
 /** The seven days of the Weekday selector, Monday first (ISO numbering). */
 export const WEEKDAYS: readonly { iso: number; letter: string; name: string }[] = [
-  { iso: 1, letter: 'M', name: 'Monday' },
-  { iso: 2, letter: 'T', name: 'Tuesday' },
-  { iso: 3, letter: 'W', name: 'Wednesday' },
-  { iso: 4, letter: 'T', name: 'Thursday' },
-  { iso: 5, letter: 'F', name: 'Friday' },
-  { iso: 6, letter: 'S', name: 'Saturday' },
-  { iso: 7, letter: 'S', name: 'Sunday' },
-]
+  1, 2, 3, 4, 5, 6, 7,
+].map((iso) => {
+  const name = DAY_LONG[iso % 7]
+  return { iso, letter: name.charAt(0), name }
+})
 
 /** Times per week: 1 to 7, default 3 (Stepper). */
 export const TARGET_MIN = 1
@@ -94,30 +92,16 @@ export const SCHEDULE_TYPE_OPTIONS: readonly { value: ScheduleType; label: strin
   { value: 'times_per_week', label: 'Times per week' },
 ]
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-/**
- * A server date (`YYYY-MM-DD`) as a calendar date. Read in UTC, so the device zone never moves it
- * to another day; this is formatting only, never week math.
- */
-function calendarDate(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!match) return null
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
 /** "16 Nov". */
 export function formatDayMonth(value: string): string {
-  const date = calendarDate(value)
+  const date = parseIsoDate(value)
   if (!date) return value
-  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`
+  return `${date.getUTCDate()} ${MONTH_SHORT[date.getUTCMonth()]}`
 }
 
 /** "Mon 16 Nov". */
 export function formatShortDate(value: string): string {
-  const date = calendarDate(value)
+  const date = parseIsoDate(value)
   if (!date) return value
   return `${DAY_SHORT[date.getUTCDay()]} ${formatDayMonth(value)}`
 }
@@ -396,8 +380,8 @@ function isoDate(date: Date): string {
  * from the server; this only lists the days between them.
  */
 export function deadlineOptions(memberToday: string, weekEnd: string): DeadlineOption[] {
-  const start = calendarDate(memberToday)
-  if (!start || calendarDate(weekEnd) === null || weekEnd < memberToday) return []
+  const start = parseIsoDate(memberToday)
+  if (!start || parseIsoDate(weekEnd) === null || weekEnd < memberToday) return []
   const options: DeadlineOption[] = []
   // A week has at most 7 days left; the cap guards against bad input.
   for (let offset = 0; offset < 7; offset += 1) {

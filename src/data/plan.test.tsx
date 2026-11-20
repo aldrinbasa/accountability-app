@@ -257,6 +257,8 @@ describe('task data (Story 2.4)', () => {
         deadline: null,
         startsOn: null,
         canDelete: false,
+        countedToday: false,
+        targetMet: false,
       },
     ]
     const backend = createFakeBackend(undefined, { today: { [TEST_GROUP.id]: { items } } })

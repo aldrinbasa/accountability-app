@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
+import { retryOnline } from '@/data/query-client'
 
 /** `['presetActivities']`: the 20 global presets. They never change at runtime. */
 export const PRESET_ACTIVITIES_KEY = ['presetActivities'] as const
@@ -37,7 +38,7 @@ export function usePresetActivities() {
     queryKey: PRESET_ACTIVITIES_KEY,
     queryFn: () => repository.presets(),
     staleTime: Infinity,
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -48,7 +49,7 @@ export function useGroupActivities(groupId: string) {
   return useQuery({
     queryKey: groupActivitiesKey(groupId),
     queryFn: () => repository.groupActivities(groupId),
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }

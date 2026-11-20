@@ -658,6 +658,46 @@ describe('Plan sheet (task edit mode)', () => {
     expect(name).toHaveAccessibleDescription('Give the task a short name.')
   })
 
+  it('offline on rename: the Plan sheet offline copy with Retry; Retry sends the trimmed name', async () => {
+    const { user, dialog, backend } = await openEdit()
+    const name = within(dialog).getByRole('textbox', { name: 'Name' })
+    await user.clear(name)
+    await user.type(name, ' Big shop ')
+    setOnline(false)
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(OFFLINE)
+    expect(backend.renameTask).not.toHaveBeenCalled()
+    setOnline(true)
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.renameTask).toHaveBeenCalledWith('task-1', 'Big shop')
+  })
+
+  it('a failed rename shows the generic copy; Retry sends again', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.renameTask).mockRejectedValueOnce(new BackendError('unknown'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), '!')
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(FAILED)
+    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(backend.renameTask).toHaveBeenCalledTimes(2)
+    expect(backend.renameTask).toHaveBeenLastCalledWith('task-1', 'Grocery run!')
+  })
+
+  it('not_found on rename: "That\'s not on your plan anymore." without Retry', async () => {
+    const backend = createFakeBackend(undefined, { tasks: [TASK] })
+    vi.mocked(backend.renameTask).mockRejectedValueOnce(new BackendError('not_found'))
+    const { user, dialog } = await openEdit(TASK, backend)
+    await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), '!')
+    await user.click(save(dialog))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "That's not on your plan anymore.",
+    )
+    expect(within(dialog).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
+  })
+
   it('a failed load shows "Couldn\'t load this task. Tap Retry." and Retry refetches', async () => {
     const backend = createFakeBackend(undefined, { tasks: [TASK] })
     // The read retries once by itself before showing the failure.

@@ -166,7 +166,7 @@ describe('invites and joining', () => {
 
 describe('leave, remove and admin handover', () => {
   function member(membershipId: string, userId: string, joinedAt: string): GroupMember {
-    return { membershipId, userId, displayName: userId, role: 'member', joinedAt }
+    return { membershipId, userId, displayName: userId, avatarPath: null, role: 'member', joinedAt }
   }
 
   it('orders members like the database handover: earliest joined, ties by membership id', () => {

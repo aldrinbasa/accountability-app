@@ -6,6 +6,7 @@ import { TodayScreen } from '@/app/screens/today'
 import { Sheet } from '@/ui/sheet'
 import { useState } from 'react'
 import { createFakeBackend, renderRoutes, withBackend } from '@/test/fake-backend'
+import { feedCheckin } from '@/test/feed-items'
 
 /** Test-only Feed route with a sheet already open. */
 function FeedWithSheet() {
@@ -99,6 +100,20 @@ describe('bottom nav', () => {
     expect(router.state.location.pathname).toBe('/today')
   })
 
+  it('rebuilds history as [Today, deep link] on a cold start on a check-in deep link', async () => {
+    const id = '00000000-0000-4000-a000-000000000001'
+    const backend = createFakeBackend(undefined, { feed: { 'group-1': [feedCheckin({ id })] } })
+    const { router } = renderRoutes([`/feed/c/${id}?g=group-1`], backend)
+    await screen.findByRole('heading', { level: 1, name: 'Feed · Gym Rats' })
+    await vi.waitFor(() => expect(router.state.location.state).toMatchObject({ fromToday: true }))
+    expect(router.state.location.pathname).toBe(`/feed/c/${id}`)
+    expect(router.state.location.search).toBe('?g=group-1')
+
+    await act(() => router.navigate(-1))
+    expect(router.state.location.pathname).toBe('/today')
+    expect(router.state.location.search).toBe('?g=group-1')
+  })
+
   it('re-tapping the active tab scrolls to the top', async () => {
     const user = userEvent.setup()
     const router = renderAt('/today')
@@ -116,7 +131,7 @@ describe('bottom nav', () => {
     renderAt('/today')
     await screen.findByRole('heading', { level: 1 })
     await user.click(tab('Feed'))
-    expect(screen.getByRole('heading', { level: 1, name: 'Feed' })).toHaveFocus()
+    expect(screen.getByRole('heading', { level: 1, name: 'Feed · Gym Rats' })).toHaveFocus()
   })
 
   it('redirects / to /today, keeping the group query', async () => {

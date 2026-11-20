@@ -1,7 +1,14 @@
 import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js'
 import type { AuthErrorCode } from '@/domain/auth'
 import type { BackendErrorCode } from '@/domain/error-codes'
-import { givenNameOf, supabaseBackendAdapter as adapter } from '@/adapters/supabase/backend-adapter'
+import {
+  givenNameOf,
+  keysetFilter,
+  supabaseBackendAdapter as adapter,
+  toFeedItem,
+  toFeedRows,
+} from '@/adapters/supabase/backend-adapter'
+import type { Tables } from '@/adapters/supabase/database.types'
 
 const auth = vi.hoisted(() => ({
   signInWithOtp: vi.fn(),
@@ -16,16 +23,28 @@ const db = vi.hoisted(() => {
     eq: vi.fn(),
     is: vi.fn(),
     order: vi.fn(),
+    or: vi.fn(),
+    limit: vi.fn(),
+    update: vi.fn(),
     maybeSingle: vi.fn(),
   }
   query.select.mockReturnValue(query)
+  query.update.mockReturnValue(query)
+  query.or.mockReturnValue(query)
   query.eq.mockReturnValue(query)
   query.is.mockReturnValue(query)
   return { query, from: vi.fn(() => query), rpc: vi.fn() }
 })
 
+// supabase.storage.from(bucket).upload(path, body, options).
+const storage = vi.hoisted(() => {
+  const bucket = { upload: vi.fn(), createSignedUrls: vi.fn() }
+  return { bucket, from: vi.fn(() => bucket) }
+})
+
 vi.mock('@/adapters/supabase/client', () => ({
-  supabase: { auth, from: db.from, rpc: db.rpc },
+  supabase: { auth, from: db.from, rpc: db.rpc, storage: { from: storage.from } },
+  supabaseUrl: 'https://proj.supabase.co',
 }))
 
 const USER = { id: 'user-1', email: 'jo@example.com' }
@@ -170,6 +189,62 @@ const PROFILE = {
   pendingWeekStart: '2026-11-23',
 }
 const pgError = (message: string) => ({ message, code: 'P0001', details: '', hint: '' })
+
+describe('avatars (Story 3.6)', () => {
+  it('uploads the avatar to the avatars bucket at its path, no upsert; a duplicate counts as done', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockReset()
+    storage.from.mockClear()
+    storage.bucket.upload.mockResolvedValueOnce({ data: { path: 'p' }, error: null })
+    await adapter.uploadAvatar('user-1/v1.webp', photo)
+    expect(storage.from).toHaveBeenCalledWith('avatars')
+    expect(storage.bucket.upload).toHaveBeenCalledWith(
+      'user-1/v1.webp',
+      photo,
+      expect.objectContaining({ contentType: 'image/webp', upsert: false }),
+    )
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: Object.assign(new Error('The resource already exists'), {
+        __isStorageError: true,
+        status: 409,
+      }),
+    })
+    await expect(adapter.uploadAvatar('user-1/v1.webp', photo)).resolves.toBeUndefined()
+    storage.bucket.upload.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await backendCodeOf(adapter.uploadAvatar('user-1/v1.webp', photo))).toBe('network')
+  })
+
+  it("sets the own row's avatar_path and returns the stored profile", async () => {
+    auth.getSession.mockResolvedValue({ data: { session: { user: USER } }, error: null })
+    db.query.maybeSingle.mockResolvedValue({
+      data: { ...ROW, avatar_path: 'user-1/v1.webp' },
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.setAvatarPath('user-1/v1.webp')).resolves.toEqual({
+      ...PROFILE,
+      avatarPath: 'user-1/v1.webp',
+    })
+    expect(db.from).toHaveBeenCalledWith('profiles')
+    expect(db.query.update).toHaveBeenCalledWith({ avatar_path: 'user-1/v1.webp' })
+    expect(db.query.eq).toHaveBeenCalledWith('id', 'user-1')
+  })
+
+  it('signs avatar paths in the avatars bucket', async () => {
+    storage.from.mockClear()
+    storage.bucket.createSignedUrls.mockResolvedValueOnce({
+      data: [
+        { path: 'u/v.webp', signedUrl: 'https://x/sign/avatars/u/v.webp?token=a', error: null },
+      ],
+      error: null,
+    })
+    await expect(adapter.signAvatarPhotos(['u/v.webp'])).resolves.toEqual({
+      'u/v.webp': 'https://x/sign/avatars/u/v.webp?token=a',
+    })
+    expect(storage.from).toHaveBeenCalledWith('avatars')
+  })
+})
 
 describe('profiles', () => {
   it('reads the own row by the session user id', async () => {
@@ -504,14 +579,14 @@ describe('members, leave and remove', () => {
           user_id: 'user-1',
           role: 'admin',
           joined_at: '2026-11-01T10:00:00+00:00',
-          profiles: { display_name: 'Jo' },
+          profiles: { display_name: 'Jo', avatar_path: 'user-1/v1.webp' },
         },
         {
           id: 'm2',
           user_id: 'user-2',
           role: 'member',
           joined_at: '2026-11-02T10:00:00+00:00',
-          profiles: { display_name: 'Sam' },
+          profiles: { display_name: 'Sam', avatar_path: null },
         },
       ],
       error: null,
@@ -522,6 +597,7 @@ describe('members, leave and remove', () => {
         membershipId: 'm1',
         userId: 'user-1',
         displayName: 'Jo',
+        avatarPath: 'user-1/v1.webp',
         role: 'admin',
         joinedAt: '2026-11-01T10:00:00+00:00',
       },
@@ -529,6 +605,7 @@ describe('members, leave and remove', () => {
         membershipId: 'm2',
         userId: 'user-2',
         displayName: 'Sam',
+        avatarPath: null,
         role: 'member',
         joinedAt: '2026-11-02T10:00:00+00:00',
       },
@@ -919,6 +996,9 @@ describe('today', () => {
     deadline: '2026-11-20',
     starts_on: null,
     can_delete: false,
+    done_count: 1,
+    counted_today: true,
+    target_met: true,
   }
   const RING_ROW = {
     commitment_id: 'c1',
@@ -935,6 +1015,9 @@ describe('today', () => {
     deadline: null,
     starts_on: null,
     can_delete: false,
+    done_count: 0,
+    counted_today: false,
+    target_met: false,
   }
 
   it('get_today_items maps the rows in the server order, nulls kept', async () => {
@@ -955,6 +1038,8 @@ describe('today', () => {
         deadline: '2026-11-20',
         startsOn: null,
         canDelete: false,
+        countedToday: true,
+        targetMet: true,
       },
       {
         commitmentId: 'c1',
@@ -971,6 +1056,8 @@ describe('today', () => {
         deadline: null,
         startsOn: null,
         canDelete: false,
+        countedToday: false,
+        targetMet: false,
       },
     ])
     expect(db.rpc).toHaveBeenLastCalledWith('get_today_items', { p_group_id: 'g1' })
@@ -1214,5 +1301,516 @@ describe('my plan', () => {
       status: 0,
     })
     expect(await backendCodeOf(adapter.endCommitment('c1'))).toBe('network')
+  })
+})
+
+/** A storage-js error as the client returns it (marked with `__isStorageError`). */
+function storageError(message: string, status?: number, statusCode?: string) {
+  return Object.assign(new Error(message), {
+    __isStorageError: true,
+    ...(status === undefined ? {} : { status }),
+    ...(statusCode === undefined ? {} : { statusCode }),
+  })
+}
+
+describe('check-ins', () => {
+  beforeEach(() => {
+    storage.bucket.upload.mockReset()
+    storage.from.mockClear()
+  })
+
+  it('get_checkin_targets maps the rows in the server order with the reasons', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          commitment_id: 'c1',
+          kind: 'commitment',
+          preset_key: 'gym',
+          custom_name: null,
+          activity_name: 'Gym',
+          name: null,
+          schedule_type: 'fixed_days',
+          due_today: true,
+          member_today: '2026-11-20',
+          deadline: null,
+          target: 3,
+          done_count: 1,
+          wont_count: null,
+        },
+        {
+          commitment_id: 't1',
+          kind: 'task',
+          preset_key: null,
+          custom_name: 'Pottery',
+          activity_name: 'Pottery',
+          name: 'Glaze',
+          schedule_type: null,
+          due_today: false,
+          member_today: '2026-11-20',
+          deadline: '2026-11-22',
+          target: 1,
+          done_count: 1,
+          wont_count: 'done',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getCheckinTargets('g1')).toEqual([
+      {
+        commitmentId: 'c1',
+        kind: 'commitment',
+        presetKey: 'gym',
+        activityName: 'Gym',
+        name: null,
+        scheduleType: 'fixed_days',
+        dueToday: true,
+        memberToday: '2026-11-20',
+        deadline: null,
+        target: 3,
+        doneCount: 1,
+        wontCount: null,
+      },
+      {
+        commitmentId: 't1',
+        kind: 'task',
+        presetKey: null,
+        activityName: 'Pottery',
+        name: 'Glaze',
+        scheduleType: null,
+        dueToday: false,
+        memberToday: '2026-11-20',
+        deadline: '2026-11-22',
+        target: 1,
+        doneCount: 1,
+        wontCount: 'done',
+      },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_checkin_targets', { p_group_id: 'g1' })
+  })
+
+  it('get_checkin_targets fails loudly on an unknown reason and maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          commitment_id: 'c1',
+          kind: 'commitment',
+          preset_key: 'gym',
+          custom_name: null,
+          activity_name: 'Gym',
+          name: null,
+          schedule_type: 'fixed_days',
+          due_today: true,
+          member_today: '2026-11-20',
+          deadline: null,
+          target: 3,
+          done_count: 0,
+          wont_count: 'maybe',
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await backendCodeOf(adapter.getCheckinTargets('g1'))).toBe('unknown')
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getCheckinTargets('g1'))).toBe('not_member')
+  })
+
+  it('uploads a rendition to {group}/{checkin}/{size}.webp in the private bucket, no upsert', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockResolvedValueOnce({ data: { path: 'p' }, error: null })
+    await adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo)
+    expect(storage.from).toHaveBeenCalledWith('checkins')
+    expect(storage.bucket.upload).toHaveBeenCalledWith(
+      'g1/k1/1080.webp',
+      photo,
+      expect.objectContaining({ contentType: 'image/webp', upsert: false }),
+    )
+  })
+
+  it('an object that already exists counts as uploaded', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('The resource already exists', 409, '409'),
+    })
+    await expect(adapter.uploadCheckinPhoto('g1', 'k1', 360, photo)).resolves.toBeUndefined()
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Duplicate', 400, '409'),
+    })
+    await expect(adapter.uploadCheckinPhoto('g1', 'k1', 360, photo)).resolves.toBeUndefined()
+  })
+
+  it('an upload with no response is network; a policy refusal (403) is not_member; else unknown', async () => {
+    const photo = new Blob(['x'], { type: 'image/webp' })
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Failed to fetch'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('network')
+    storage.bucket.upload.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('network')
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('new row violates row-level security policy', 403, '403'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe(
+      'not_member',
+    )
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('jwt expired', 400, '403'),
+    })
+    // An auth failure is not a policy refusal: it stays retryable.
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('unknown')
+    storage.bucket.upload.mockResolvedValueOnce({
+      data: null,
+      error: storageError('Internal error', 500, '500'),
+    })
+    expect(await backendCodeOf(adapter.uploadCheckinPhoto('g1', 'k1', 1080, photo))).toBe('unknown')
+  })
+
+  it('post_checkin sends the payload (no caption when empty) and maps the result', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          checkin_id: 'k1',
+          session_id: null,
+          counted: false,
+          is_late: false,
+          done_count: 2,
+          target: 3,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    const input = {
+      id: 'k1',
+      groupId: 'g1',
+      commitmentId: 'c1',
+      capturedAt: '2026-11-20T01:00:00.000Z',
+      caption: null,
+    }
+    expect(await adapter.postCheckin(input)).toEqual({
+      checkinId: 'k1',
+      sessionId: null,
+      counted: false,
+      isLate: false,
+      doneCount: 2,
+      target: 3,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('post_checkin', {
+      p_id: 'k1',
+      p_commitment_id: 'c1',
+      p_captured_at: '2026-11-20T01:00:00.000Z',
+    })
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          checkin_id: 'k1',
+          session_id: 's1',
+          counted: true,
+          is_late: true,
+          done_count: 3,
+          target: 3,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await adapter.postCheckin({ ...input, caption: 'leg day' })
+    expect(db.rpc).toHaveBeenLastCalledWith('post_checkin', {
+      p_id: 'k1',
+      p_commitment_id: 'c1',
+      p_captured_at: '2026-11-20T01:00:00.000Z',
+      p_caption: 'leg day',
+    })
+  })
+
+  it('post_checkin maps every rejection code', async () => {
+    const input = {
+      id: 'k1',
+      groupId: 'g1',
+      commitmentId: 'c1',
+      capturedAt: '2026-11-20T01:00:00.000Z',
+      caption: null,
+    }
+    for (const code of [
+      'bad_capture_time',
+      'not_member',
+      'commitment_ended',
+      'week_locked',
+      'photo_missing',
+      'checkin_conflict',
+      'invalid_caption',
+    ]) {
+      db.rpc.mockResolvedValueOnce({ data: null, error: pgError(code), status: 400 })
+      expect(await backendCodeOf(adapter.postCheckin(input))).toBe(code)
+    }
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.postCheckin(input))).toBe('unknown')
+  })
+
+  it("post_checkin keeps week_locked's detail (lock time and group zone)", async () => {
+    const detail = '{"lock_at" : "2026-11-26T00:00:00+00:00", "time_zone" : "Europe/London"}'
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { ...pgError('week_locked'), details: detail },
+      status: 400,
+    })
+    const error = await adapter
+      .postCheckin({
+        id: 'k1',
+        groupId: 'g1',
+        commitmentId: 'c1',
+        capturedAt: '2026-11-20T01:00:00.000Z',
+        caption: null,
+      })
+      .catch((thrown: unknown) => thrown)
+    expect(error).toMatchObject({ code: 'week_locked', detail })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await adapter.leaveGroup('g1').catch((thrown: unknown) => thrown)).toMatchObject({
+      code: 'not_member',
+      detail: null,
+    })
+  })
+})
+
+function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_items'> {
+  return {
+    group_id: 'g-1',
+    item_kind: 'checkin',
+    item_id: 'c-1',
+    sort_at: '2026-11-20T07:12:30.123456+00:00',
+    actor_id: 'u-1',
+    actor_name: 'Marco',
+    actor_avatar_path: null,
+    subject_id: null,
+    subject_name: null,
+    commitment_id: 'cm-1',
+    commitment_kind: 'commitment',
+    activity_name: 'Gym',
+    preset_key: 'gym',
+    task_name: null,
+    captured_at: '2026-11-20T07:12:00+00:00',
+    received_at: '2026-11-20T07:12:30.123456+00:00',
+    is_late: false,
+    is_extra: false,
+    caption: 'leg day',
+    full_pruned_at: null,
+    counted_position: 2,
+    target: 3,
+    payload: null,
+    miss_count: null,
+    ...overrides,
+  }
+}
+
+describe('feed mapping', () => {
+  it('maps check-ins and stickies, drops kinds the app does not render, keeps the raw cursors', () => {
+    const rows = [
+      feedRow(),
+      feedRow({
+        item_kind: 'admin_handover',
+        item_id: 'e-1',
+        sort_at: '2026-11-20T07:00:00+00:00',
+        actor_name: 'Jo',
+        subject_id: 'u-2',
+        subject_name: 'Marco',
+        commitment_id: null,
+      }),
+      feedRow({ item_kind: 'miss', item_id: 'e-2', sort_at: '2026-11-19T23:00:00+00:00' }),
+    ]
+    const page = toFeedRows(rows)
+    expect(page.rowCount).toBe(3)
+    expect(page.newest).toEqual({ sortAt: '2026-11-20T07:12:30.123456+00:00', itemId: 'c-1' })
+    expect(page.oldest).toEqual({ sortAt: '2026-11-19T23:00:00+00:00', itemId: 'e-2' })
+    expect(page.items.map((item) => item.id)).toEqual(['c-1', 'e-1'])
+    expect(page.items[0]).toMatchObject({
+      type: 'checkin',
+      authorName: 'Marco',
+      activityName: 'Gym',
+      countedPosition: 2,
+      target: 3,
+      isExtra: false,
+      caption: 'leg day',
+    })
+    expect(page.items[1]).toMatchObject({
+      type: 'event',
+      kind: 'admin_handover',
+      actorName: 'Jo',
+      subjectName: 'Marco',
+    })
+  })
+
+  it("maps a miss from the live title and count and the payload's tease, day and schedule", () => {
+    const miss = feedRow({
+      item_kind: 'miss',
+      item_id: 'm-1',
+      actor_id: 'u-4',
+      actor_name: 'Dev',
+      commitment_id: 'cm-2',
+      activity_name: 'Gym',
+      task_name: null,
+      captured_at: null,
+      received_at: null,
+      is_late: null,
+      is_extra: null,
+      caption: null,
+      counted_position: null,
+      target: null,
+      miss_count: 2,
+      payload: {
+        schedule_type: 'times_per_week',
+        tease: 'couch_wins',
+        missed_on: '2026-11-22',
+        count: 3,
+        activity_name: 'Old name',
+      },
+    })
+    expect(toFeedItem(miss)).toEqual({
+      type: 'miss',
+      id: 'm-1',
+      groupId: 'g-1',
+      sortAt: '2026-11-20T07:12:30.123456+00:00',
+      actorId: 'u-4',
+      actorName: 'Dev',
+      commitmentId: 'cm-2',
+      title: 'Gym',
+      scheduleType: 'times_per_week',
+      missCount: 2,
+      tease: 'couch_wins',
+      missedOn: '2026-11-22',
+    })
+    expect(toFeedItem({ ...miss, task_name: 'Tax forms' })).toMatchObject({ title: 'Tax forms' })
+    expect(
+      toFeedItem({
+        ...miss,
+        activity_name: null,
+        payload: { schedule_type: 'fixed_days', activity_name: 'Paint' },
+      }),
+    ).toMatchObject({ title: 'Paint', scheduleType: 'fixed_days', tease: null, missedOn: null })
+    // Nothing left missed: not rendered.
+    expect(toFeedItem({ ...miss, miss_count: 0 })).toBeNull()
+  })
+
+  it('quotes the timestamp in the keyset filter', () => {
+    expect(keysetFilter({ sortAt: '2026-11-20T07:12:30.123456+00:00', itemId: 'c-1' }, 'lt')).toBe(
+      'sort_at.lt."2026-11-20T07:12:30.123456+00:00",and(sort_at.eq."2026-11-20T07:12:30.123456+00:00",item_id.lt.c-1)',
+    )
+  })
+
+  it('signs every path in one call and maps refused paths to null', async () => {
+    storage.bucket.createSignedUrls.mockResolvedValue({
+      data: [
+        {
+          path: 'g/c1/360.webp',
+          signedUrl: 'https://x/sign/checkins/g/c1/360.webp?token=a',
+          error: null,
+        },
+        { path: 'g/c2/360.webp', signedUrl: '', error: 'Either the object does not exist' },
+      ],
+      error: null,
+    })
+    const urls = await adapter.signCheckinPhotos(['g/c1/360.webp', 'g/c2/360.webp'])
+    expect(storage.bucket.createSignedUrls).toHaveBeenCalledWith(
+      ['g/c1/360.webp', 'g/c2/360.webp'],
+      600,
+    )
+    expect(urls).toEqual({
+      'g/c1/360.webp': 'https://x/sign/checkins/g/c1/360.webp?token=a',
+      'g/c2/360.webp': null,
+    })
+  })
+
+  it('builds the token-less cache URL of a photo', () => {
+    expect(adapter.checkinPhotoCacheUrl('g/c1/1080.webp')).toBe(
+      'https://proj.supabase.co/storage/v1/object/sign/checkins/g/c1/1080.webp',
+    )
+  })
+})
+
+describe('feed reads', () => {
+  const NEWER = feedRow({ item_id: 'c-new', sort_at: '2026-11-20T08:00:00+00:00' })
+  const OLDER = feedRow({ item_id: 'c-old', sort_at: '2026-11-20T07:00:00+00:00' })
+  const CURSOR = { sortAt: '2026-11-20T07:30:00.5+00:00', itemId: 'c-mid' }
+
+  beforeEach(() => {
+    for (const fn of [
+      db.from,
+      db.query.select,
+      db.query.eq,
+      db.query.or,
+      db.query.order,
+      db.query.limit,
+    ]) {
+      fn.mockClear()
+    }
+  })
+
+  function answer(rows: Tables<'feed_items'>[]) {
+    db.query.order.mockReturnValueOnce(db.query).mockReturnValueOnce(db.query)
+    db.query.limit.mockResolvedValueOnce({ data: rows, error: null, status: 200 })
+  }
+
+  it('reads the newest page of a group, newest first', async () => {
+    answer([NEWER, OLDER])
+    const page = await adapter.listFeed('g-1', { limit: 20 })
+    expect(db.from).toHaveBeenCalledWith('feed_items')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g-1')
+    expect(db.query.or).not.toHaveBeenCalled()
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'sort_at', { ascending: false })
+    expect(db.query.order).toHaveBeenNthCalledWith(2, 'item_id', { ascending: false })
+    expect(db.query.limit).toHaveBeenCalledWith(20)
+    expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+  })
+
+  it('reads older than a cursor', async () => {
+    answer([OLDER])
+    await adapter.listFeed('g-1', { before: CURSOR, limit: 20 })
+    expect(db.query.or).toHaveBeenCalledWith(keysetFilter(CURSOR, 'lt'))
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'sort_at', { ascending: false })
+  })
+
+  it('reads newer than a cursor oldest first, and hands them back newest first', async () => {
+    answer([OLDER, NEWER])
+    const page = await adapter.listFeed('g-1', { after: CURSOR, limit: 10 })
+    expect(db.query.or).toHaveBeenCalledWith(keysetFilter(CURSOR, 'gt'))
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'sort_at', { ascending: true })
+    expect(db.query.order).toHaveBeenNthCalledWith(2, 'item_id', { ascending: true })
+    expect(db.query.limit).toHaveBeenCalledWith(10)
+    expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+    expect(page.newest?.itemId).toBe('c-new')
+  })
+
+  it('reads Friends today through get_friends_today, check-ins only', async () => {
+    const select = vi.fn().mockResolvedValue({
+      data: [NEWER, feedRow({ item_kind: 'member_joined', item_id: 'e-1' }), OLDER],
+      error: null,
+      status: 200,
+    })
+    db.rpc.mockReturnValueOnce({ select })
+    const items = await adapter.listFriendsToday('g-1')
+    expect(db.rpc).toHaveBeenCalledWith('get_friends_today', { p_group_id: 'g-1' })
+    expect(select).toHaveBeenCalledWith(expect.stringContaining('miss_count'))
+    expect(items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+
+    db.rpc.mockReturnValueOnce({
+      select: vi.fn().mockResolvedValue({ data: null, error: pgError('boom'), status: 500 }),
+    })
+    expect(await backendCodeOf(adapter.listFriendsToday('g-1'))).toBe('unknown')
+  })
+
+  it('reads one check-in of the group, or null', async () => {
+    db.query.maybeSingle.mockResolvedValueOnce({ data: NEWER, error: null, status: 200 })
+    expect(await adapter.getFeedCheckin('g-1', 'c-new')).toMatchObject({ id: 'c-new' })
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g-1')
+    expect(db.query.eq).toHaveBeenCalledWith('item_kind', 'checkin')
+    expect(db.query.eq).toHaveBeenCalledWith('item_id', 'c-new')
+
+    db.query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 })
+    expect(await adapter.getFeedCheckin('g-1', 'c-gone')).toBeNull()
   })
 })

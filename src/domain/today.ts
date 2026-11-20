@@ -1,4 +1,5 @@
 import type { ScheduleType } from '@/domain/activities'
+import { DAY_LONG, DAY_SHORT, parseIsoDate } from '@/domain/dates'
 import { formatShortDate, PLAN_COPY } from '@/domain/plan'
 
 /** Where `get_today_items` placed a row. */
@@ -39,8 +40,12 @@ export interface TodayItem {
    * row, the first week's times-per-week target (null for fixed days).
    */
   target: number | null
-  /** Check-ins that count this week (0 until Epic 3). */
+  /** Check-ins that count this week (`done_count`, from `private.counted_checkins`). */
   counted: number
+  /** A check-in that counts was made today (member-local day). */
+  countedToday: boolean
+  /** The week's target is met (`counted >= target`). */
+  targetMet: boolean
   /** Tasks only, `YYYY-MM-DD`. */
   deadline: string | null
   /** `starts_next_week` rows only: the first Monday, `YYYY-MM-DD`. */
@@ -59,9 +64,9 @@ export interface TodaySummary {
   weekNumber: number
   /** Sessions this week. */
   planned: number
-  /** Sessions that count (0 until Epic 3). */
+  /** Sessions that are done (`private.session_status`). */
   done: number
-  /** `planned - done`. */
+  /** Open sessions not done yet. */
   left: number
   /**
    * The member has an active commitment (this week or from next week) or an open task in the group,
@@ -87,31 +92,20 @@ export const TODAY_COPY = {
   fixedDays: 'Fixed days',
   task: 'Task',
   edit: 'Edit',
+  done: 'Done',
+  countedToday: 'counted today',
+  targetMet: 'target met',
 } as const
 
-const DAY_SHORT_BY_ISO = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const DAY_LONG_BY_UTC_DAY = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-]
-
 function utcDay(value: string): number | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value)
-  if (!match) return null
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))
-  return Number.isNaN(date.getTime()) ? null : date.getUTCDay()
+  return parseIsoDate(value)?.getUTCDay() ?? null
 }
 
 /** "Mon" for a server date (`YYYY-MM-DD`). Formatting only: the date comes from the server. */
 export function shortDayName(value: string): string {
   const day = utcDay(value)
   if (day === null) return value
-  return DAY_SHORT_BY_ISO[(day + 6) % 7] ?? value
+  return DAY_SHORT[day] ?? value
 }
 
 /**
@@ -124,7 +118,7 @@ export function todayDayName(
 ): string {
   if (memberToday) {
     const day = utcDay(memberToday)
-    if (day !== null) return DAY_LONG_BY_UTC_DAY[day] ?? memberToday
+    if (day !== null) return DAY_LONG[day] ?? memberToday
   }
   return new Intl.DateTimeFormat('en', { weekday: 'long' }).format(now)
 }
@@ -133,7 +127,7 @@ export function todayDayName(
 export function daysText(days: readonly number[]): string {
   return [...days]
     .sort((a, b) => a - b)
-    .map((iso) => DAY_SHORT_BY_ISO[iso - 1])
+    .map((iso): string | undefined => (iso >= 1 && iso <= 7 ? DAY_SHORT[iso % 7] : undefined))
     .filter((name): name is string => typeof name === 'string')
     .join(' ')
 }
@@ -149,15 +143,29 @@ export function itemTitle(item: Pick<TodayItem, 'name' | 'activityName'>): strin
 }
 
 /**
+ * Whether a row is done for now (the server's flags, not recomputed): fixed days counted today, or a
+ * task whose one check-in counted. Done rows show the check doodle instead of Check in. A
+ * times-per-week row is never done: it shows "counted today" or "target met" and keeps Check in.
+ */
+export function rowDone(item: TodayItem): boolean {
+  if (item.section === 'starts_next_week') return false
+  if (item.kind === 'task') return item.targetMet
+  return item.scheduleType === 'fixed_days' && item.countedToday
+}
+
+/**
  * The schedule meta under a row's title (one formatter for every row):
  * "Fixed days · Mon Wed Fri", "3 times per week · 1 to go", "Task · by Sun", and for a commitment
- * that starts next week "4 times per week · starts Mon 23 Nov".
+ * that starts next week "4 times per week · starts Mon 23 Nov". A done row adds "· Done"; times per
+ * week adds "· counted today" or, at its target, "· target met".
  */
 export function scheduleMeta(item: TodayItem): string {
+  const done = rowDone(item) ? ` · ${TODAY_COPY.done}` : ''
   if (item.kind === 'task') {
-    return item.deadline
+    const base = item.deadline
       ? `${TODAY_COPY.task} · by ${shortDayName(item.deadline)}`
       : TODAY_COPY.task
+    return base + done
   }
   const schedule =
     item.scheduleType === 'fixed_days'
@@ -167,10 +175,14 @@ export function scheduleMeta(item: TodayItem): string {
     return item.startsOn ? `${schedule} · starts ${formatShortDate(item.startsOn)}` : schedule
   }
   if (item.scheduleType === 'times_per_week' && item.target !== null) {
+    if (item.targetMet) return `${schedule} · ${TODAY_COPY.targetMet}`
     const toGo = Math.max(0, item.target - item.counted)
-    return toGo > 0 ? `${schedule} · ${toGo} to go` : schedule
+    const parts = [schedule]
+    if (toGo > 0) parts.push(`${toGo} to go`)
+    if (item.countedToday) parts.push(TODAY_COPY.countedToday)
+    return parts.join(' · ')
   }
-  return schedule
+  return schedule + done
 }
 
 /** Whether a row shows the Progress ring: times per week, in this week. */

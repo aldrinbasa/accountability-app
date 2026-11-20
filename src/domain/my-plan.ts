@@ -1,4 +1,5 @@
 import type { ScheduleType } from '@/domain/activities'
+import { ERROR_COPY } from '@/domain/error-codes'
 import { formatShortDate } from '@/domain/plan'
 import { daysText, shortDayName, timesPerWeekText, TODAY_COPY } from '@/domain/today'
 
@@ -124,9 +125,9 @@ export const MY_PLAN_COPY = {
   endBody: 'It stops after this Sunday. Past check-ins stay in the Feed.',
   end: 'End',
   ending: 'Ending…',
-  wrappedUp: "That's already wrapped up.",
+  wrappedUp: ERROR_COPY.commitment_ended,
   loadFailed: "Couldn't load this commitment. Tap Retry.",
-  emptyLine: 'No plan here yet.',
+  emptyLine: TODAY_COPY.noPlanLine,
 } as const
 
 /** "Changes start Mon 23 Nov." */

@@ -1,7 +1,7 @@
 /**
  * Shared guard for the "Update ready." service-worker toast. The toast must never interrupt the
- * camera overlay (Story 3.1) or a running upload (Story 3.2), so those stories flip these flags and
- * the update prompt re-checks when the guard clears.
+ * camera overlay (Story 3.1) or a running upload (the Story 3.3 outbox), so those stories flip these
+ * flags and the update prompt re-checks when the guard clears.
  */
 type Listener = () => void
 
@@ -25,7 +25,7 @@ export function setCameraOpen(open: boolean): void {
   notify()
 }
 
-/** Story 3.2: true while a check-in upload runs. */
+/** Story 3.3: true while the check-in outbox uploads or posts (src/app/outbox-host.tsx). */
 export function setUploadRunning(running: boolean): void {
   if (uploadRunning === running) return
   uploadRunning = running

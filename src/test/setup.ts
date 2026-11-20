@@ -1,8 +1,13 @@
 import '@testing-library/jest-dom/vitest'
-// A real IndexedDB for the persisted query cache (idb persister).
+// A real IndexedDB for the persisted query cache and the check-in outbox (idb).
 import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, vi } from 'vitest'
 import { resetDeviceMemory } from '@/data/device-storage'
+import { resetOutboxDb } from '@/data/outbox-db'
+import { resetQueryCacheDb } from '@/data/query-persistence'
+import { clearPostMoment } from '@/data/post-moment'
+import { FakeIntersectionObserver } from '@/test/intersection-observer'
 
 // Some runners expose a broken global `localStorage` (Node's experimental stub, active without a
 // backing file). Install a deterministic in-memory Storage so app persistence works in tests.
@@ -61,6 +66,19 @@ if (hasWindow) {
   installMatchMedia(false)
   // jsdom does not implement scrolling; the shell scrolls to top on a tab re-tap and on navigation.
   Object.defineProperty(window, 'scrollTo', { writable: true, configurable: true, value: vi.fn() })
+  // jsdom does not play media; the camera viewfinder calls play() on its stream.
+  Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+    configurable: true,
+    writable: true,
+    value: () => Promise.resolve(),
+  })
+  // jsdom has no IntersectionObserver; the Feed's next-page sentinel uses it. Tests drive it through
+  // `intersectAll()`.
+  Object.defineProperty(window, 'IntersectionObserver', {
+    writable: true,
+    configurable: true,
+    value: FakeIntersectionObserver,
+  })
   // jsdom has no pointer capture; sonner calls it when a toast is pressed (swipe tracking).
   for (const name of ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const) {
     if (!(name in Element.prototype)) {
@@ -70,9 +88,14 @@ if (hasWindow) {
 }
 
 // Reset shared global state so tests are order-independent.
-afterEach(() => {
+afterEach(async () => {
+  // A fresh, empty IndexedDB per test (the outbox and the saved query cache).
+  await resetOutboxDb()
+  await resetQueryCacheDb()
+  globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
   sessionStorage.clear()
   resetDeviceMemory()
+  clearPostMoment()
   if (hasWindow) installMatchMedia(false)
 })

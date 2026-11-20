@@ -2,12 +2,15 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Camera } from '@phosphor-icons/react'
 import { backendErrorCode, errorCopy } from '@/domain/error-codes'
 import {
+  AVATAR_COPY,
+  avatarPhotoLabel,
   DISPLAY_NAME_MAX,
   FALLBACK_TIME_ZONE,
   PROFILE_COPY,
   prefillName,
   trimDisplayName,
   validateDisplayName,
+  type SavedAvatar,
 } from '@/domain/profile'
 import { useAuthSession } from '@/data/auth-session'
 import { deviceTimeZone, useSaveProfile } from '@/data/profile'
@@ -17,26 +20,38 @@ import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
 import { TextField } from '@/ui/text-field'
 import { dismissToast, showToast } from '@/ui/toast'
+import { useCameraLauncher } from '@/features/camera/camera-launcher'
 
 const SETUP_COPY = {
   heading: 'What do your friends call you?',
   nameLabel: 'Display name',
   continue: 'Continue',
   saving: 'Saving…',
-  addPhoto: 'Add a photo',
   photoLater: 'add a photo later',
-  photoSoon: 'Photos come with the camera. Soon.',
 } as const
+
+/** Setup's photo: in Storage, shown from the encoded blob until Continue saves its path. */
+interface SetupPhoto {
+  saved: SavedAvatar
+  url: string
+}
 
 /**
  * `/setup`: the display name friends see. Prefilled from the Google given name (cut to 24). Saves
- * through `save_profile` with the device time zone. Leaving the screen after a save (to the pending
+ * through `save_profile` with the device time zone. "Add a photo" opens the camera in avatar mode
+ * (Story 3.6): Use photo uploads it, Setup shows it from the local blob, and Continue saves the name
+ * and then the photo's path (a failed path update keeps Setup with "Couldn't save. Try again.").
+ * Skipping the photo saves the name only. Leaving the screen after a save (to the pending
  * `next` path, or /today) belongs to the profile gate in src/app, which sees the new profile.
  */
 export function SetupScreen() {
   const session = useAuthSession()
   const user = session.user
   const saveProfile = useSaveProfile()
+  const { openCamera } = useCameraLauncher()
+  const [photo, setPhoto] = useState<SetupPhoto | null>(null)
+  // The current object URL, revoked when replaced and on unmount.
+  const photoUrl = useRef<string | null>(null)
 
   const [name, setName] = useState(() => prefillName(user?.givenName))
   const [nameError, setNameError] = useState<string | null>(null)
@@ -59,8 +74,18 @@ export function SetupScreen() {
     return () => {
       mounted.current = false
       dismissFailureToast()
+      if (photoUrl.current !== null) URL.revokeObjectURL(photoUrl.current)
+      photoUrl.current = null
     }
   }, [])
+
+  function onPhotoSaved(saved: SavedAvatar) {
+    if (!mounted.current) return
+    if (photoUrl.current !== null) URL.revokeObjectURL(photoUrl.current)
+    const url = URL.createObjectURL(saved.photo)
+    photoUrl.current = url
+    setPhoto({ saved, url })
+  }
 
   function dismissFailureToast() {
     if (failureToast.current === null) return
@@ -90,15 +115,20 @@ export function SetupScreen() {
     setNameError(null)
     dismissFailureToast()
     const zone = deviceTimeZone()
+    const avatarPath = photo?.saved.path ?? null
     try {
       try {
-        await saveProfile.mutateAsync({ displayName: value, timeZone: zone })
+        await saveProfile.mutateAsync({ displayName: value, timeZone: zone, avatarPath })
       } catch (error) {
         // A zone the browser knows but Postgres does not would lock the member out: save with UTC
         // instead (Story 2.7 lets them pick a zone later).
         const badZone = backendErrorCode(error) === 'invalid_time_zone'
         if (!badZone || zone === FALLBACK_TIME_ZONE) throw error
-        await saveProfile.mutateAsync({ displayName: value, timeZone: FALLBACK_TIME_ZONE })
+        await saveProfile.mutateAsync({
+          displayName: value,
+          timeZone: FALLBACK_TIME_ZONE,
+          avatarPath,
+        })
       }
       dismissFailureToast()
     } catch (error) {
@@ -136,11 +166,18 @@ export function SetupScreen() {
           id={user?.id ?? ''}
           name={name}
           size={104}
+          src={photo?.url ?? null}
+          label={photo ? avatarPhotoLabel(trimDisplayName(name) || name) : undefined}
           badge={
             <button
               type="button"
-              aria-label={SETUP_COPY.addPhoto}
-              onClick={() => showToast(SETUP_COPY.photoSoon)}
+              aria-label={photo ? AVATAR_COPY.changePhoto : AVATAR_COPY.addPhoto}
+              onClick={(event) =>
+                openCamera(
+                  { mode: 'avatar', saveToProfile: false, onSaved: onPhotoSaved },
+                  event.currentTarget,
+                )
+              }
               className="on-object inline-flex size-target-min items-center justify-center rounded-full"
             >
               <span className="inline-flex size-9 items-center justify-center rounded-full border-[2.5px] border-obj-ink bg-pola text-obj-ink shadow-obj">
@@ -149,7 +186,7 @@ export function SetupScreen() {
             </button>
           }
         />
-        <p className="type-hand-sm text-muted">{SETUP_COPY.photoLater}</p>
+        {photo ? null : <p className="type-hand-sm text-muted">{SETUP_COPY.photoLater}</p>}
       </div>
 
       <form noValidate className="flex flex-col gap-4" onSubmit={(event) => void save(event)}>

@@ -48,6 +48,8 @@ export const routes: RouteObject[] = [
           { index: true, element: <RedirectToToday /> },
           { path: 'today', element: <TodayScreen /> },
           { path: 'feed', element: <FeedScreen /> },
+          // A check-in deep link: the Feed anchored on that polaroid (Story 3.4).
+          { path: 'feed/c/:checkinId', element: <FeedScreen /> },
           { path: 'board', element: <BoardScreen /> },
           { path: 'me', element: <MeScreen /> },
           { path: 'me/settings', element: <SettingsScreen /> },

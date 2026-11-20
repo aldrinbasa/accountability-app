@@ -27,6 +27,50 @@ export const PROFILE_COPY = {
   retry: 'Retry',
 } as const
 
+/** Avatars are one 256 px square WebP (Story 3.6). */
+export const AVATAR_EDGE = 256
+
+/** WebP quality for the avatar (the same as check-in photos). */
+export const AVATAR_PHOTO_QUALITY = 0.8
+
+/**
+ * The avatar's object path in bucket `avatars`: `{user_id}/{version}.webp`, both lowercase UUIDs
+ * (the Storage INSERT policy accepts nothing else). A new version per photo: objects are never
+ * overwritten.
+ */
+export function avatarObjectPath(userId: string, version: string): string {
+  return `${userId.toLowerCase()}/${version.toLowerCase()}.webp`
+}
+
+/** A profile photo that is in Storage: its object path and the encoded WebP (for a local preview). */
+export interface SavedAvatar {
+  path: string
+  photo: Blob
+}
+
+/** Copy for the profile photo (Story 3.6 ACs). */
+export const AVATAR_COPY = {
+  rowLabel: 'Profile photo',
+  addPhoto: 'Add a photo',
+  changePhoto: 'Change photo',
+  /** The preview's heading (visually hidden). */
+  preview: 'Your new profile photo',
+  retake: 'Retake',
+  usePhoto: 'Use photo',
+  saving: 'Saving…',
+  offline: "You're offline. Photos need a signal to save.",
+  failed: "Couldn't save your photo. Tap Retry.",
+  discardTitle: 'Discard this photo?',
+  keep: 'Keep',
+  discard: 'Discard',
+  retry: 'Retry',
+} as const
+
+/** The avatar image's alt text: "Jo's photo". */
+export function avatarPhotoLabel(name: string): string {
+  return `${name}'s photo`
+}
+
 /** Characters as the database counts them (code points), so an emoji is one, not two. */
 function characters(value: string): string[] {
   return Array.from(value)

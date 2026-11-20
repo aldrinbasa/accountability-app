@@ -20,11 +20,12 @@ if (!configuredUrl || !configuredKey) {
 }
 
 // createClient rejects empty strings, so fall back to harmless placeholders.
-const url = configuredUrl || 'http://127.0.0.1:54321'
+/** The project URL (Storage URLs are built on it). */
+export const supabaseUrl = configuredUrl || 'http://127.0.0.1:54321'
 const anonKey = configuredKey || 'anon-placeholder-key'
 
 /** The single Supabase client (anon key + user session; all access enforced by RLS). */
-export const supabase = createClient<Database>(url, anonKey, {
+export const supabase = createClient<Database>(supabaseUrl, anonKey, {
   auth: {
     // PKCE for Google: the code verifier stays in this browser, and the redirect brings back `?code=`.
     flowType: 'pkce',

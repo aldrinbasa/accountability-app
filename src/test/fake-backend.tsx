@@ -4,7 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type {
+  CheckinPhotoSize,
+  CheckinTarget,
+  PostCheckinInput,
+  PostCheckinResult,
+} from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
+import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
@@ -12,9 +19,15 @@ import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
+import type { CameraPort } from '@/ports/camera-port'
+import type { ImageEncodePort } from '@/ports/image-encode-port'
 import { BackendProvider } from '@/data/backend-context'
+import { ImageEncoderContext } from '@/data/image-encoder-context'
 import { INSTALLED_KEY } from '@/data/install-state'
 import { routes } from '@/app/router'
+import { CameraPortContext } from '@/app/camera-port-context'
+import { createFakeCamera } from '@/test/fake-camera'
+import { createFakeEncoder } from '@/test/fake-image-encoder'
 
 export const TEST_USER: AuthUser = { id: 'user-1', email: 'jo@example.com' }
 
@@ -45,6 +58,7 @@ export const TEST_MEMBERS: GroupMember[] = [
     membershipId: 'm-1',
     userId: TEST_USER.id,
     displayName: 'Jo',
+    avatarPath: null,
     role: 'admin',
     joinedAt: '2026-11-01T10:00:00.000Z',
   },
@@ -52,6 +66,7 @@ export const TEST_MEMBERS: GroupMember[] = [
     membershipId: 'm-2',
     userId: 'user-2',
     displayName: 'Priya',
+    avatarPath: null,
     role: 'member',
     joinedAt: '2026-11-02T10:00:00.000Z',
   },
@@ -59,6 +74,7 @@ export const TEST_MEMBERS: GroupMember[] = [
     membershipId: 'm-3',
     userId: 'user-3',
     displayName: 'Sam',
+    avatarPath: null,
     role: 'member',
     joinedAt: '2026-11-03T10:00:00.000Z',
   },
@@ -195,6 +211,17 @@ export function createFakeBackend(
     myPlan?: Record<string, MyPlanItem[]>
     /** The member's own commitments that `getCommitment` knows (default none). */
     commitments?: CommitmentDetails[]
+    /** The camera picker's rows per group id (default none). */
+    checkinTargets?: Record<string, CheckinTarget[]>
+    /**
+     * `post_checkin`'s answer (default: counted, on time, `doneCount` 1 of `target` 1). Overridden
+     * per test for failures.
+     */
+    postCheckin?: (input: PostCheckinInput) => PostCheckinResult
+    /** Feed items per group id, any order (the fake sorts newest first). Default none. */
+    feed?: Record<string, FeedItem[]>
+    /** Friends today per group id, newest first as given. Default none. */
+    friendsToday?: Record<string, FeedCheckin[]>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -216,6 +243,19 @@ export function createFakeBackend(
   const commitments = new Map<string, CommitmentDetails>(
     (options.commitments ?? []).map((c) => [c.commitmentId, c]),
   )
+  const checkinTargets = options.checkinTargets ?? {}
+  const postResult =
+    options.postCheckin ??
+    ((input: PostCheckinInput): PostCheckinResult => ({
+      checkinId: input.id,
+      sessionId: `session-${input.commitmentId}`,
+      counted: true,
+      isLate: false,
+      doneCount: 1,
+      target: 1,
+    }))
+  const feed = options.feed ?? {}
+  const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -493,7 +533,109 @@ export function createFakeBackend(
       groups = groups.map((g) => (g.id === groupId ? updated : g))
       return state(updated)
     }),
+    getCheckinTargets: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return checkinTargets[groupId] ?? []
+    }),
+    uploadCheckinPhoto: vi.fn(
+      async (_groupId: string, _checkinId: string, _size: CheckinPhotoSize, _photo: Blob) => {},
+    ),
+    postCheckin: vi.fn(async (input: PostCheckinInput) => {
+      if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
+      const result = postResult(input)
+      // A post lands at the head of the group's Friends today, like the server's list.
+      const target = (checkinTargets[input.groupId] ?? []).find(
+        (t) => t.commitmentId === input.commitmentId,
+      )
+      const at = new Date().toISOString()
+      friendsToday[input.groupId] = [
+        {
+          type: 'checkin',
+          id: input.id,
+          groupId: input.groupId,
+          sortAt: at,
+          authorId: user?.id ?? TEST_USER.id,
+          authorName: profile?.displayName ?? '',
+          authorAvatarPath: null,
+          commitmentId: input.commitmentId,
+          commitmentKind: target?.kind ?? 'commitment',
+          activityName: target?.activityName ?? '',
+          presetKey: target?.presetKey ?? null,
+          taskName: target?.name ?? null,
+          capturedAt: input.capturedAt,
+          receivedAt: at,
+          isLate: result.isLate,
+          isExtra: !result.counted,
+          caption: input.caption,
+          fullPrunedAt: null,
+          countedPosition: result.counted ? result.doneCount : null,
+          target: result.counted ? result.target : null,
+        },
+        ...(friendsToday[input.groupId] ?? []).filter((item) => item.id !== input.id),
+      ]
+      return result
+    }),
+    // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
+    listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {
+      const all = groups.some((group) => group.id === groupId)
+        ? [...(feed[groupId] ?? [])].sort((a, b) => -compareFeed(cursorOf(a), cursorOf(b)))
+        : []
+      let rows: FeedItem[]
+      if (request.before) {
+        const before = request.before
+        rows = all.filter((item) => compareFeed(cursorOf(item), before) < 0).slice(0, request.limit)
+      } else if (request.after) {
+        const after = request.after
+        rows = all.filter((item) => compareFeed(cursorOf(item), after) > 0).slice(-request.limit)
+      } else {
+        rows = all.slice(0, request.limit)
+      }
+      return {
+        items: rows,
+        rowCount: rows.length,
+        newest: rows[0] ? cursorOf(rows[0]) : null,
+        oldest: rows.length > 0 ? cursorOf(rows[rows.length - 1] as FeedItem) : null,
+      }
+    }),
+    getFeedCheckin: vi.fn(async (groupId: string, checkinId: string) => {
+      if (!groups.some((group) => group.id === groupId)) return null
+      return (
+        (feed[groupId] ?? []).find((item) => item.type === 'checkin' && item.id === checkinId) ??
+        null
+      )
+    }),
+    // RLS: a non-member gets nothing.
+    listFriendsToday: vi.fn(async (groupId: string) =>
+      groups.some((group) => group.id === groupId) ? [...(friendsToday[groupId] ?? [])] : [],
+    ),
+    signCheckinPhotos: vi.fn(async (paths: readonly string[]) =>
+      Object.fromEntries(paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/sign/${path}?token=t`])),
+    ),
+    checkinPhotoCacheUrl: vi.fn((path: string) => `${FAKE_PHOTO_ORIGIN}/sign/${path}`),
+    uploadAvatar: vi.fn(async (_path: string, _photo: Blob) => {}),
+    setAvatarPath: vi.fn(async (path: string) => {
+      if (!profile) throw new BackendError('unknown', 'no profile row')
+      profile = { ...profile, avatarPath: path }
+      return profile
+    }),
+    signAvatarPhotos: vi.fn(async (paths: readonly string[]) =>
+      Object.fromEntries(
+        paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/avatars/${path}?token=t`]),
+      ),
+    ),
   }
+}
+
+/** Where the fake's signed photo URLs point. */
+export const FAKE_PHOTO_ORIGIN = 'https://photos.test'
+
+function cursorOf(item: FeedItem): FeedCursor {
+  return { sortAt: item.sortAt, itemId: item.id }
+}
+
+function compareFeed(a: FeedCursor, b: FeedCursor): number {
+  if (a.sortAt !== b.sortAt) return a.sortAt < b.sortAt ? -1 : 1
+  return a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0
 }
 
 /** A fresh query cache per render: no retries' worth of shared state between tests. */
@@ -508,11 +650,15 @@ export function withBackend(
   children: ReactNode,
   onSignedOut?: () => void,
   queryClient: QueryClient = createTestQueryClient(),
+  camera: CameraPort = createFakeCamera(),
+  encoder: ImageEncodePort = createFakeEncoder(),
 ) {
   return (
     <QueryClientProvider client={queryClient}>
       <BackendProvider backend={backend} onSignedOut={onSignedOut}>
-        {children}
+        <ImageEncoderContext.Provider value={encoder}>
+          <CameraPortContext.Provider value={camera}>{children}</CameraPortContext.Provider>
+        </ImageEncoderContext.Provider>
       </BackendProvider>
     </QueryClientProvider>
   )
@@ -522,12 +668,25 @@ export function withBackend(
 export function renderRoutes(
   initialEntries: InitialEntry[],
   backend: BackendPort = createFakeBackend(),
-  options: { initialIndex?: number; onSignedOut?: () => void; queryClient?: QueryClient } = {},
+  options: {
+    initialIndex?: number
+    onSignedOut?: () => void
+    queryClient?: QueryClient
+    camera?: CameraPort
+    encoder?: ImageEncodePort
+  } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries, initialIndex: options.initialIndex })
   const queryClient = options.queryClient ?? createTestQueryClient()
   const utils = render(
-    withBackend(backend, <RouterProvider router={router} />, options.onSignedOut, queryClient),
+    withBackend(
+      backend,
+      <RouterProvider router={router} />,
+      options.onSignedOut,
+      queryClient,
+      options.camera,
+      options.encoder,
+    ),
   )
   return { router, backend, queryClient, ...utils }
 }

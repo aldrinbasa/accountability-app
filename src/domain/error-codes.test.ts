@@ -89,4 +89,14 @@ describe('BackendError', () => {
     expect(backendErrorCode('not_admin')).toBe('unknown')
     expect(backendErrorCode(undefined)).toBe('unknown')
   })
+
+  it('maps the check-in codes to copy (Story 3.2)', () => {
+    expect(errorCopy('bad_capture_time')).toBe(
+      "Your phone's clock is ahead. Fix its date and time, then retake the photo.",
+    )
+    expect(errorCopy('week_locked')).toBe("That week has locked, so this photo can't count.")
+    expect(errorCopy('photo_missing')).toBe("The photo didn't finish uploading. Tap Retry.")
+    expect(errorCopy('checkin_conflict')).toBe('That photo was already posted.')
+    expect(errorCopy('invalid_caption')).toBe('Keep the caption to 80 characters.')
+  })
 })
