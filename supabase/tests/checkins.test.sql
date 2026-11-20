@@ -15,7 +15,7 @@
 -- test_overrides so tests.freeze_time moves their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(82);
+select plan(84);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -665,6 +665,28 @@ select throws_ok(
   format('select * from public.post_checkin(%L, %L, %L, null)', current_setting('test.b4'),
     current_setting('test.walk'), '2026-11-22 12:00:00+00'),
   'P0001', 'week_locked', 'week_locked: at lock_at'
+);
+-- Story 3.3: the exception's DETAIL names the lock time and the group zone of that week.
+do $$
+declare
+  v_detail text;
+begin
+  perform * from public.post_checkin(current_setting('test.b4')::uuid,
+    current_setting('test.walk')::uuid, '2026-11-22 12:00:00+00', null);
+exception when others then
+  get stacked diagnostics v_detail = pg_exception_detail;
+  perform pg_catalog.set_config('test.lock_detail', coalesce(v_detail, ''), true);
+end;
+$$;
+select is(
+  (current_setting('test.lock_detail')::jsonb ->> 'lock_at')::timestamptz,
+  '2026-11-26 00:00:00+00'::timestamptz,
+  'week_locked: the detail carries lock_at (Thu 26 Nov 00:00 London)'
+);
+select is(
+  current_setting('test.lock_detail')::jsonb ->> 'time_zone',
+  'Europe/London',
+  'week_locked: the detail carries the group zone of that week'
 );
 
 -- ===== Storage INSERT policy =====
