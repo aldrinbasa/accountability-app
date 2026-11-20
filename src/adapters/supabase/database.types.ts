@@ -133,14 +133,14 @@ isOneToOne: false
                   ]
                 },"feed_events": {
                   Row: {
-                    "actor_id": string | null,"created_at": string,"group_id": string,"id": string,"kind": string,"payload": NonNullable<Json>,"subject_id": string | null
+                    "actor_id": string | null,"created_at": string,"group_id": string,"id": string,"kind": string,"payload": NonNullable<Json>,"subject_id": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "actor_id"?: string | null,"created_at"?: string,"group_id": string,"id"?: string,"kind": string,"payload"?: NonNullable<Json>,"subject_id"?: string | null
+                    "actor_id"?: string | null,"created_at"?: string,"group_id": string,"id"?: string,"kind": string,"payload"?: NonNullable<Json>,"subject_id"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "actor_id"?: string | null,"created_at"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"payload"?: NonNullable<Json>,"subject_id"?: string | null
+                    "actor_id"?: string | null,"created_at"?: string,"group_id"?: string,"id"?: string,"kind"?: string,"payload"?: NonNullable<Json>,"subject_id"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
