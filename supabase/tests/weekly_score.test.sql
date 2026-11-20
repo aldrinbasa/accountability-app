@@ -121,6 +121,8 @@ reset role;
 alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 alter function public.post_checkin(uuid, uuid, timestamptz, text) set search_path = test_overrides, pg_catalog;
 alter function public.get_group_week(uuid) set search_path = test_overrides, pg_catalog;
+-- The frozen clock (Fri 20 Nov 12:00 UTC) for every routine pointed at test_overrides.
+select tests.freeze_time('2026-11-20 12:00:00+00');
 
 -- Frozen sessions by fixture (Epic 5 adds the real status): session_status reads this table first.
 create table tests.frozen_sessions (id uuid primary key);
@@ -352,7 +354,6 @@ select is(pg_temp.rank_row('frank', 'g2', '2026-11-16'), '100|1|1|0|null',
   'a waiting group returns its member''s row with rank null');
 
 -- ===== get_group_week =====
-select tests.freeze_time('2026-11-20 12:00:00+00');
 select tests.authenticate_as('alice');
 select is(
   (select w.week_start::text || '|' || w.lock_at::text from public.get_group_week(current_setting('test.g1')::uuid) w),
