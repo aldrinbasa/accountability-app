@@ -156,6 +156,8 @@ select public.join_group(current_setting('test.c1'));
 -- ===== Test helpers (temporary, as the table owner) =====
 reset role;
 alter function private.tick() set search_path = test_overrides, pg_catalog;
+alter function private.tick_step_4_misses() set search_path = test_overrides, pg_catalog;
+alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_8_heartbeat(smallint, text, timestamptz) set search_path = test_overrides, pg_catalog;
 

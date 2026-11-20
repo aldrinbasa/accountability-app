@@ -87,6 +87,7 @@ alter function public.add_commitment(uuid, text, uuid, text, text, integer[], in
   set search_path = test_overrides, pg_catalog;
 alter function private.commitment_is_active(public.commitments) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
+alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 
 -- Joined three weeks before the week under test (Wed 28 Oct) and mid-week (Tue 17 Nov).
 update public.memberships set joined_at = '2026-10-28 09:00:00+00'

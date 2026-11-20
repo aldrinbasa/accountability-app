@@ -39,7 +39,7 @@ select is(
   array['group_id', 'item_kind', 'item_id', 'sort_at', 'actor_id', 'actor_name', 'actor_avatar_path',
         'subject_id', 'subject_name', 'commitment_id', 'commitment_kind', 'activity_name',
         'preset_key', 'task_name', 'captured_at', 'received_at', 'is_late', 'is_extra', 'caption',
-        'full_pruned_at', 'counted_position', 'target', 'payload']::text[],
+        'full_pruned_at', 'counted_position', 'target', 'payload', 'miss_count']::text[],
   'feed_items has the story''s columns in order'
 );
 select ok(
@@ -160,6 +160,7 @@ alter function public.add_commitment(uuid, text, uuid, text, text, integer[], in
   set search_path = test_overrides, pg_catalog;
 alter function private.commitment_is_active(public.commitments) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
+alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 
 select pg_catalog.set_config('test.a1', '00000000-0000-4000-a000-0000000034a1', true);
 select pg_catalog.set_config('test.a3', '00000000-0000-4000-a000-0000000034a3', true);
@@ -446,16 +447,16 @@ select is(
   'account_deleted: a member_left row with end_reason account_deleted in the payload (a handover follows if bob was admin)'
 );
 
--- ===== Kinds the client ignores still type-check; the last member deletes the group =====
+-- ===== A miss with no session still missed is hidden (Story 3.5); the last member deletes the group =====
 reset role;
 insert into public.feed_events (group_id, kind, actor_id, payload)
 values (current_setting('test.g2')::uuid, 'miss', tests.get_supabase_uid('dave'), '{"actor_name": "Dave"}');
 select tests.authenticate_as('dave');
 select is(
-  (select f.item_kind || '|' || f.actor_name from public.feed_items f
-   where f.group_id = current_setting('test.g2')::uuid),
-  'miss|Dave',
-  'a miss row passes through the view (the client renders it from Story 3.5)'
+  (select count(*)::integer from public.feed_items f
+   where f.group_id = current_setting('test.g2')::uuid and f.item_kind = 'miss'),
+  0,
+  'a miss row with no session still missed stays out of the view (misses.test.sql covers the rest)'
 );
 select public.leave_group(current_setting('test.g2')::uuid);
 reset role;

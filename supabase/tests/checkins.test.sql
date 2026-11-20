@@ -144,6 +144,7 @@ alter function public.add_commitment(uuid, text, uuid, text, text, integer[], in
 alter function private.commitment_is_active(public.commitments) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
 alter function public.end_commitment(uuid) set search_path = test_overrides, pg_catalog;
+alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 
 -- Ids. Every check-in id below is fixed; photos are keyed by them.
 select pg_catalog.set_config('test.e1', '00000000-0000-4000-a000-0000000000e1', true);

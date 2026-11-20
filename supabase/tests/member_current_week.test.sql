@@ -141,6 +141,7 @@ select is(
 -- ===== get_today_summary and add_task in the same window =====
 reset role;
 alter function public.get_today_summary(uuid) set search_path = test_overrides, pg_catalog;
+alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 alter function public.add_task(uuid, text, uuid, text, text, date) set search_path = test_overrides, pg_catalog;
 
 select tests.freeze_time('2026-11-22 11:30:00+00');

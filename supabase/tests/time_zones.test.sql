@@ -122,6 +122,8 @@ alter function public.set_time_zone(text, uuid) set search_path = test_overrides
 alter function private.tick_step_1_sessions() set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_2_time_zones() set search_path = test_overrides, pg_catalog;
 alter function private.tick() set search_path = test_overrides, pg_catalog;
+alter function private.tick_step_4_misses() set search_path = test_overrides, pg_catalog;
+alter function private.session_status(public.sessions) set search_path = test_overrides, pg_catalog;
 alter function private.tick_step_8_heartbeat(smallint, text, timestamptz) set search_path = test_overrides, pg_catalog;
 
 -- A fixed-days commitment with one version, written directly. p_group is a setting name (g1, g2).
