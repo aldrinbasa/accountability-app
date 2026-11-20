@@ -11,7 +11,7 @@
 -- the frozen clock through post_checkin's search_path override (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(48);
+select plan(49);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -21,7 +21,7 @@ select tests.create_supabase_user('erin');
 
 -- ===== Shape =====
 select columns_are('public', 'feed_events',
-  array['id', 'group_id', 'kind', 'actor_id', 'subject_id', 'payload', 'created_at'],
+  array['id', 'group_id', 'kind', 'actor_id', 'subject_id', 'payload', 'created_at', 'updated_at'],
   'feed_events has the story''s columns');
 select ok(
   (select c.relrowsecurity from pg_catalog.pg_class c where c.oid = 'public.feed_events'::regclass),
@@ -427,6 +427,23 @@ select tests.authenticate_as('alice');
 select is(
   (select count(*)::integer from public.feed_events e where e.group_id = current_setting('test.g1')::uuid),
   0, 'left: alice reads no feed events of the group'
+);
+
+-- ===== Account deletion (Story 7.2 calls end_membership with account_deleted) =====
+reset role;
+select private.end_membership(
+  (select m.id from public.memberships m
+   where m.group_id = current_setting('test.g1')::uuid and m.user_id = tests.get_supabase_uid('bob')
+     and m.ended_at is null),
+  'account_deleted');
+select is(
+  (select e.kind || '|' || (e.actor_id = tests.get_supabase_uid('bob'))::text || '|'
+          || (e.payload ->> 'end_reason') || '|' || (e.payload ->> 'actor_name')
+   from public.feed_events e
+   where e.group_id = current_setting('test.g1')::uuid and e.kind = 'member_left'
+     and e.payload ->> 'end_reason' = 'account_deleted'),
+  'member_left|true|account_deleted|Bob',
+  'account_deleted: a member_left row with end_reason account_deleted in the payload (a handover follows if bob was admin)'
 );
 
 -- ===== Kinds the client ignores still type-check; the last member deletes the group =====

@@ -30,7 +30,9 @@ create table public.feed_events (
   subject_id uuid null references public.profiles (id) on delete set null,
   -- Names at write time (actor_name, subject_name), membership_id, end_reason; misses add theirs.
   payload jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default pg_catalog.now()
+  created_at timestamptz not null default pg_catalog.now(),
+  -- Rows are never edited; only a profile delete's set-null cascade stamps it.
+  updated_at timestamptz not null default pg_catalog.now()
 );
 
 -- 2. Indexes
@@ -66,6 +68,10 @@ revoke execute on function private.feed_events_append_only() from public, anon, 
 create trigger feed_events_append_only
   before update or delete on public.feed_events
   for each row execute function private.feed_events_append_only();
+
+create trigger feed_events_set_updated_at
+  before update on public.feed_events
+  for each row execute function private.set_updated_at();
 
 -- 4. Row level security: current members of the group read its events. No client writes.
 alter table public.feed_events enable row level security;
