@@ -42,7 +42,8 @@ function useMinuteClock(running: boolean): Date {
 /**
  * The time zone picker (Story 2.7; 24 choices at Aldrin's request, 2026-11-20): a search field over
  * the 24 whole-hour GMT choices ("GMT+8 · Manila, Singapore, Hong Kong", each with its current local
- * time), led by the current or waiting zone when it is not one of them ("Kolkata · Asia (current)").
+ * time), led by the current or waiting zone when it is not one of them ("Kolkata · Asia (current)",
+ * "Kolkata · Asia (waiting)").
  * The chosen zone (the waiting one, else the current one) is checked. One tap on another zone saves
  * it and closes the sheet.
  */
@@ -58,7 +59,7 @@ export function TimeZoneSheet({
   const now = useMinuteClock(open)
   const chosen = zones.pendingTimeZone ?? zones.timeZone
   const all = useMemo(
-    () => pickerOptions([zones.timeZone, zones.pendingTimeZone]),
+    () => pickerOptions(zones.timeZone, zones.pendingTimeZone),
     [zones.timeZone, zones.pendingTimeZone],
   )
   const shown = useMemo(() => filterOptions(all, query), [all, query])

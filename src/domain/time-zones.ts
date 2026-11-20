@@ -65,32 +65,36 @@ export interface ZoneChoice {
   zone: string
 }
 
-/** The picker's 24 choices, GMT−11 to GMT+12 (Aldrin, 2026-11-20). Labels use standard offsets. */
+/**
+ * The picker's 24 choices, GMT−11 to GMT+12 (Aldrin, 2026-11-20). Labels use standard offsets.
+ * Every sample city follows the same offsets and daylight-saving rules as the zone its row saves, all
+ * year (Epic 2 retro F2; `time-zones.test.ts` checks each city's own IANA zone through 2027).
+ */
 export const ZONE_CHOICES: readonly ZoneChoice[] = [
   { offset: -11, cities: ['Pago Pago', 'Midway'], zone: 'Pacific/Pago_Pago' },
-  { offset: -10, cities: ['Honolulu'], zone: 'Pacific/Honolulu' },
-  { offset: -9, cities: ['Anchorage'], zone: 'America/Anchorage' },
-  { offset: -8, cities: ['Los Angeles', 'Vancouver'], zone: 'America/Los_Angeles' },
-  { offset: -7, cities: ['Denver', 'Phoenix'], zone: 'America/Denver' },
-  { offset: -6, cities: ['Chicago', 'Mexico City'], zone: 'America/Chicago' },
+  { offset: -10, cities: ['Honolulu', 'Tahiti', 'Rarotonga'], zone: 'Pacific/Honolulu' },
+  { offset: -9, cities: ['Anchorage', 'Juneau'], zone: 'America/Anchorage' },
+  { offset: -8, cities: ['Los Angeles', 'Vancouver', 'Seattle'], zone: 'America/Los_Angeles' },
+  { offset: -7, cities: ['Denver', 'Calgary', 'Edmonton'], zone: 'America/Denver' },
+  { offset: -6, cities: ['Chicago', 'Houston', 'Winnipeg'], zone: 'America/Chicago' },
   { offset: -5, cities: ['New York', 'Toronto'], zone: 'America/New_York' },
-  { offset: -4, cities: ['Halifax', 'Caracas'], zone: 'America/Halifax' },
-  { offset: -3, cities: ['São Paulo', 'Buenos Aires'], zone: 'America/Sao_Paulo' },
-  { offset: -2, cities: ['South Georgia'], zone: 'Atlantic/South_Georgia' },
-  { offset: -1, cities: ['Azores', 'Cape Verde'], zone: 'Atlantic/Azores' },
+  { offset: -4, cities: ['Halifax', 'Bermuda'], zone: 'America/Halifax' },
+  { offset: -3, cities: ['São Paulo', 'Buenos Aires', 'Montevideo'], zone: 'America/Sao_Paulo' },
+  { offset: -2, cities: ['South Georgia', 'Fernando de Noronha'], zone: 'Atlantic/South_Georgia' },
+  { offset: -1, cities: ['Azores', 'Ponta Delgada'], zone: 'Atlantic/Azores' },
   { offset: 0, cities: ['London', 'Lisbon'], zone: 'Europe/London' },
-  { offset: 1, cities: ['Paris', 'Berlin', 'Lagos'], zone: 'Europe/Paris' },
-  { offset: 2, cities: ['Athens', 'Cairo', 'Johannesburg'], zone: 'Europe/Athens' },
+  { offset: 1, cities: ['Paris', 'Berlin', 'Rome'], zone: 'Europe/Paris' },
+  { offset: 2, cities: ['Athens', 'Helsinki', 'Kyiv'], zone: 'Europe/Athens' },
   { offset: 3, cities: ['Moscow', 'Istanbul', 'Nairobi'], zone: 'Europe/Moscow' },
   { offset: 4, cities: ['Dubai', 'Baku'], zone: 'Asia/Dubai' },
   { offset: 5, cities: ['Karachi', 'Tashkent'], zone: 'Asia/Karachi' },
-  { offset: 6, cities: ['Dhaka', 'Almaty'], zone: 'Asia/Dhaka' },
+  { offset: 6, cities: ['Dhaka', 'Bishkek'], zone: 'Asia/Dhaka' },
   { offset: 7, cities: ['Bangkok', 'Jakarta', 'Ho Chi Minh City'], zone: 'Asia/Bangkok' },
   { offset: 8, cities: ['Manila', 'Singapore', 'Hong Kong'], zone: 'Asia/Manila' },
   { offset: 9, cities: ['Tokyo', 'Seoul'], zone: 'Asia/Tokyo' },
-  { offset: 10, cities: ['Sydney', 'Brisbane'], zone: 'Australia/Sydney' },
+  { offset: 10, cities: ['Sydney', 'Melbourne', 'Canberra'], zone: 'Australia/Sydney' },
   { offset: 11, cities: ['Nouméa', 'Solomon Islands'], zone: 'Pacific/Noumea' },
-  { offset: 12, cities: ['Auckland', 'Fiji'], zone: 'Pacific/Auckland' },
+  { offset: 12, cities: ['Auckland', 'Wellington'], zone: 'Pacific/Auckland' },
 ]
 
 /** "GMT+8", "GMT+0", "GMT−11" (a real minus sign). */
@@ -136,15 +140,20 @@ function normalize(value: string): string {
 
 /**
  * The picker's rows: the current and waiting zones that are not among the 24 first ("Kolkata · Asia
- * (current)"; choosing one keeps it), then the 24 choices from GMT−11 to GMT+12.
+ * (current)", "Kolkata · Asia (waiting)"; choosing one keeps it), then the 24 choices from GMT−11 to
+ * GMT+12.
  */
-export function pickerOptions(include: readonly (string | null | undefined)[]): PickerOption[] {
+export function pickerOptions(current: string, pending: string | null = null): PickerOption[] {
   const extras: PickerOption[] = []
-  for (const zone of include) {
+  const marked: [string | null, string][] = [
+    [current, 'current'],
+    [pending, 'waiting'],
+  ]
+  for (const [zone, mark] of marked) {
     if (!zone || ZONE_CHOICES.some((c) => c.zone === zone) || extras.some((e) => e.zone === zone)) {
       continue
     }
-    const label = `${zoneLabel(zone)} (current)`
+    const label = `${zoneLabel(zone)} (${mark})`
     extras.push({ zone, label, search: normalize(`${label} ${zone}`), offset: null })
   }
   return [

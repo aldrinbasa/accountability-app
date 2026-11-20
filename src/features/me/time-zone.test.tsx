@@ -58,7 +58,7 @@ describe('Me > Settings: Time zone', () => {
         .filter((b) => b.getAttribute('aria-label') !== 'Close')
     expect(options()).toHaveLength(24)
     expect(options()[0]).toHaveAccessibleName(option('GMT−11, Pago Pago, Midway'))
-    expect(options()[23]).toHaveAccessibleName(option('GMT+12, Auckland, Fiji'))
+    expect(options()[23]).toHaveAccessibleName(option('GMT+12, Auckland, Wellington'))
 
     await user.type(search, '+8')
     expect(options().map((b) => b.getAttribute('aria-label'))).toEqual([

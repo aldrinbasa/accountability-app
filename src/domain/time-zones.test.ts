@@ -63,17 +63,31 @@ describe('picker choices', () => {
     expect(displayZone('UTC')).toBe('UTC')
   })
 
-  it('puts a current or waiting zone outside the 24 first, marked (current), once', () => {
-    const options = pickerOptions(['Asia/Kolkata', 'Asia/Kolkata', 'Asia/Manila', null])
+  it('puts the current zone outside the 24 first, marked (current), once', () => {
+    const options = pickerOptions('Asia/Kolkata', 'Asia/Kolkata')
     expect(options).toHaveLength(25)
     expect(options[0]).toMatchObject({ zone: 'Asia/Kolkata', label: 'Kolkata · Asia (current)' })
     expect(options[1].label).toBe('GMT−11 · Pago Pago, Midway')
-    expect(options[24].label).toBe('GMT+12 · Auckland, Fiji')
-    expect(pickerOptions(['Asia/Manila'])).toHaveLength(24)
+    expect(options[24].label).toBe('GMT+12 · Auckland, Wellington')
+    expect(pickerOptions('Asia/Manila')).toHaveLength(24)
+    expect(pickerOptions('Asia/Manila', 'Asia/Tokyo')).toHaveLength(24)
+  })
+
+  it('marks a waiting zone outside the 24 (waiting), not (current) (retro F3)', () => {
+    expect(pickerOptions('Asia/Manila', 'Asia/Kolkata')[0]).toMatchObject({
+      zone: 'Asia/Kolkata',
+      label: 'Kolkata · Asia (waiting)',
+    })
+    const both = pickerOptions('Asia/Kolkata', 'Australia/Adelaide')
+    expect(both).toHaveLength(26)
+    expect(both.slice(0, 2).map((o) => o.label)).toEqual([
+      'Kolkata · Asia (current)',
+      'Adelaide · Australia (waiting)',
+    ])
   })
 
   it('filters by offset exactly, or by city, case- and accent-insensitive', () => {
-    const options = pickerOptions(['Asia/Kolkata'])
+    const options = pickerOptions('Asia/Kolkata')
     const zones = (query: string) => filterOptions(options, query).map((o) => o.zone)
     expect(zones('GMT+8')).toEqual(['Asia/Manila'])
     expect(zones('+8')).toEqual(['Asia/Manila'])
@@ -86,6 +100,119 @@ describe('picker choices', () => {
     expect(zones('kolkata')).toEqual(['Asia/Kolkata'])
     expect(zones('  ')).toHaveLength(25)
     expect(zones('Mars')).toEqual([])
+  })
+})
+
+/** Each sample city's own IANA zone (retro F2): a city added to `ZONE_CHOICES` must be listed here. */
+const CITY_ZONES: Record<string, string> = {
+  'Pago Pago': 'Pacific/Pago_Pago',
+  Midway: 'Pacific/Midway',
+  Honolulu: 'Pacific/Honolulu',
+  Tahiti: 'Pacific/Tahiti',
+  Rarotonga: 'Pacific/Rarotonga',
+  Anchorage: 'America/Anchorage',
+  Juneau: 'America/Juneau',
+  'Los Angeles': 'America/Los_Angeles',
+  Vancouver: 'America/Vancouver',
+  Seattle: 'America/Los_Angeles',
+  Denver: 'America/Denver',
+  Calgary: 'America/Edmonton',
+  Edmonton: 'America/Edmonton',
+  Chicago: 'America/Chicago',
+  Houston: 'America/Chicago',
+  Winnipeg: 'America/Winnipeg',
+  'New York': 'America/New_York',
+  Toronto: 'America/Toronto',
+  Halifax: 'America/Halifax',
+  Bermuda: 'Atlantic/Bermuda',
+  'São Paulo': 'America/Sao_Paulo',
+  'Buenos Aires': 'America/Argentina/Buenos_Aires',
+  Montevideo: 'America/Montevideo',
+  'South Georgia': 'Atlantic/South_Georgia',
+  'Fernando de Noronha': 'America/Noronha',
+  Azores: 'Atlantic/Azores',
+  'Ponta Delgada': 'Atlantic/Azores',
+  London: 'Europe/London',
+  Lisbon: 'Europe/Lisbon',
+  Paris: 'Europe/Paris',
+  Berlin: 'Europe/Berlin',
+  Rome: 'Europe/Rome',
+  Athens: 'Europe/Athens',
+  Helsinki: 'Europe/Helsinki',
+  Kyiv: 'Europe/Kyiv',
+  Moscow: 'Europe/Moscow',
+  Istanbul: 'Europe/Istanbul',
+  Nairobi: 'Africa/Nairobi',
+  Dubai: 'Asia/Dubai',
+  Baku: 'Asia/Baku',
+  Karachi: 'Asia/Karachi',
+  Tashkent: 'Asia/Tashkent',
+  Dhaka: 'Asia/Dhaka',
+  Bishkek: 'Asia/Bishkek',
+  Bangkok: 'Asia/Bangkok',
+  Jakarta: 'Asia/Jakarta',
+  'Ho Chi Minh City': 'Asia/Ho_Chi_Minh',
+  Manila: 'Asia/Manila',
+  Singapore: 'Asia/Singapore',
+  'Hong Kong': 'Asia/Hong_Kong',
+  Tokyo: 'Asia/Tokyo',
+  Seoul: 'Asia/Seoul',
+  Sydney: 'Australia/Sydney',
+  Melbourne: 'Australia/Melbourne',
+  Canberra: 'Australia/Sydney',
+  Nouméa: 'Pacific/Noumea',
+  'Solomon Islands': 'Pacific/Guadalcanal',
+  Auckland: 'Pacific/Auckland',
+  Wellington: 'Pacific/Auckland',
+}
+
+const offsetFormats = new Map<string, Intl.DateTimeFormat>()
+
+/** Minutes east of GMT in `zone` at `at`, through the runtime's IANA data. */
+function offsetMinutes(zone: string, at: number): number {
+  let format = offsetFormats.get(zone)
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' })
+    offsetFormats.set(zone, format)
+  }
+  const name = format.formatToParts(at).find((p) => p.type === 'timeZoneName')?.value ?? ''
+  const match = /^GMT(?:([+-])(\d{2}):(\d{2}))?$/.exec(name)
+  if (!match) throw new Error(`unexpected offset name ${name} for ${zone}`)
+  if (!match[1]) return 0
+  return (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3]))
+}
+
+/** Every 6 hours through 2026 and 2027, so each daylight-saving switch on either side is covered. */
+const SAMPLE_TIMES = Array.from(
+  { length: 2 * 365 * 4 },
+  (_, i) => Date.UTC(2026, 0, 1) + i * 6 * 3_600_000,
+)
+
+describe('picker sample cities (retro F2)', () => {
+  it.each(ZONE_CHOICES.map((c) => [choiceLabel(c), c] as const))(
+    '%s: every city shares the saved zone offset all year, standard offset as labelled',
+    (_label, choice) => {
+      const saved = SAMPLE_TIMES.map((at) => offsetMinutes(choice.zone, at))
+      expect(Math.min(...saved)).toBe(choice.offset * 60)
+      expect(choice.cities.length).toBeGreaterThanOrEqual(2)
+      expect(choice.cities.length).toBeLessThanOrEqual(3)
+      for (const city of choice.cities) {
+        const zone = CITY_ZONES[city]
+        expect(zone, `${city} needs an entry in CITY_ZONES`).toBeDefined()
+        const mismatches = SAMPLE_TIMES.filter((at, i) => offsetMinutes(zone, at) !== saved[i]).map(
+          (at) => new Date(at).toISOString(),
+        )
+        expect(mismatches, `${city} (${zone}) vs ${choice.zone}`).toEqual([])
+      }
+    },
+  )
+
+  it('catches a city on different rules (Phoenix is not Denver, Brisbane is not Sydney)', () => {
+    const differs = (a: string, b: string) =>
+      SAMPLE_TIMES.some((at) => offsetMinutes(a, at) !== offsetMinutes(b, at))
+    expect(differs('America/Phoenix', 'America/Denver')).toBe(true)
+    expect(differs('Australia/Brisbane', 'Australia/Sydney')).toBe(true)
+    expect(differs('Africa/Cairo', 'Europe/Athens')).toBe(true)
   })
 })
 
