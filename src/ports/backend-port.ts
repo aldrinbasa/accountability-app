@@ -26,6 +26,7 @@ import type {
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
+import type { Streak } from '@/domain/streaks'
 
 /**
  * The app's one backend contract (AD-1). Story 1.3 adds the auth surface; later stories add reads,
@@ -212,6 +213,11 @@ export interface BackendPort {
    * first, plus whether the group is waiting. Rejects with `not_member`.
    */
   getBoard(groupId: string, weekStart: string): Promise<Board>
+  /**
+   * `get_streaks`: the current streak of every commitment (null for a task) of the group's current
+   * members, with whether it is back to 0 after a reset (Story 4.2). Rejects with `not_member`.
+   */
+  getStreaks(groupId: string): Promise<Streak[]>
 
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on

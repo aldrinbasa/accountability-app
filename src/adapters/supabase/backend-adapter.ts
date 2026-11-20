@@ -13,6 +13,7 @@ import {
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import type { Board, BoardRow, GroupWeek } from '@/domain/board'
+import type { Streak } from '@/domain/streaks'
 import {
   checkinPhotoPath,
   isWontCount,
@@ -518,6 +519,18 @@ export function toBoard(rows: readonly BoardRpcRow[]): Board {
       rank: row.rank ?? null,
     })),
   }
+}
+
+type StreakRpcRow = Database['public']['Functions']['get_streaks']['Returns'][number]
+
+/** `get_streaks` rows as streaks. The generated type misses the nullable streak (null for a task). */
+export function toStreaks(rows: readonly StreakRpcRow[]): Streak[] {
+  return rows.map((row): Streak => ({
+    commitmentId: row.commitment_id,
+    userId: row.user_id,
+    currentStreak: row.current_streak ?? null,
+    backToZero: row.back_to_zero ?? false,
+  }))
 }
 
 /** `post_checkin` arguments (the caption only when there is one). */
@@ -1148,6 +1161,12 @@ export const supabaseBackendAdapter: BackendPort = {
     })
     if (error) throw toBackendError(error, status)
     return toBoard(data ?? [])
+  },
+
+  async getStreaks(groupId) {
+    const { data, error, status } = await supabase.rpc('get_streaks', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toStreaks(data ?? [])
   },
 
   async listFeed(groupId, request: FeedRowsRequest) {

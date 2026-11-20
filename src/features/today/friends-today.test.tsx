@@ -150,6 +150,8 @@ describe('Friends today', () => {
       rank: null,
       passedUserIds: [],
       passedShownIn: null,
+      streakBefore: null,
+      streakPopped: false,
       photoUrl: 'blob:local-photo',
       caption: 'first one',
       // After any fetch in this test, so the server list is older than the post.
@@ -192,6 +194,8 @@ describe('Friends today', () => {
       rank: null,
       passedUserIds: [],
       passedShownIn: null,
+      streakBefore: null,
+      streakPopped: false,
       photoUrl: null,
       caption: null,
       postedAt: Date.now() - 60_000,
@@ -220,6 +224,8 @@ describe('Friends today', () => {
       rank: null,
       passedUserIds: [],
       passedShownIn: null,
+      streakBefore: null,
+      streakPopped: false,
       photoUrl: null,
       caption: null,
       // Before any fetch in this test: the server's list is newer and decides.

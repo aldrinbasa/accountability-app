@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-rou
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { Board, GroupWeek } from '@/domain/board'
+import type { Streak } from '@/domain/streaks'
 import type {
   CheckinPhotoSize,
   CheckinTarget,
@@ -232,6 +233,8 @@ export function createFakeBackend(
     friendsToday?: Record<string, FeedCheckin[]>
     /** `get_board` per group id (default: no rows, `waiting` from the group's member count). */
     board?: Record<string, Board>
+    /** `get_streaks` per group id (default none). */
+    streaks?: Record<string, Streak[]>
     /** `get_group_week` per group id (default `TEST_GROUP_WEEK`). */
     groupWeeks?: Record<string, GroupWeek>
     /**
@@ -279,6 +282,7 @@ export function createFakeBackend(
   const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
   const board: Record<string, Board> = { ...options.board }
   const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
+  const streaks: Record<string, Streak[]> = { ...options.streaks }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -630,6 +634,10 @@ export function createFakeBackend(
       const group = groups.find((g) => g.id === groupId)
       if (!group) throw new BackendError('not_member')
       return board[groupId] ?? { waiting: group.memberCount < 2, rows: [] }
+    }),
+    getStreaks: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return streaks[groupId] ?? []
     }),
     // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
     listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {

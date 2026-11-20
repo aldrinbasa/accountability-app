@@ -1,6 +1,7 @@
-import { useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { CloudSlash, Couch, ListChecks } from '@phosphor-icons/react'
 import { GROUP_COPY } from '@/domain/groups'
+import { streakMeta, streaksByCommitment, type Streak } from '@/domain/streaks'
 import type { CameraTarget } from '@/domain/camera'
 import {
   itemsIn,
@@ -12,7 +13,8 @@ import {
   type TodayItem,
 } from '@/domain/today'
 import { useToday } from '@/data/plan'
-import { usePostMoment, withPostMoment } from '@/data/post-moment'
+import { markStreakPopped, streakPopFor, usePostMoment, withPostMoment } from '@/data/post-moment'
+import { useStreaks } from '@/data/streaks'
 import { EmptyState } from '@/ui/empty-state'
 import { useCameraLauncher } from '@/features/camera/camera-launcher'
 import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
@@ -49,6 +51,8 @@ function Rows({
   onMore,
   onCheckIn,
   bumpId = null,
+  streaks,
+  popId = null,
 }: {
   items: readonly TodayItem[]
   onMore: (item: TodayItem, button: HTMLButtonElement) => void
@@ -56,6 +60,10 @@ function Rows({
   onCheckIn?: (item: TodayItem, button: HTMLButtonElement) => void
   /** The row whose count bumps in the post moment. */
   bumpId?: string | null
+  /** Streaks by commitment for the meta (Due today and This week only). */
+  streaks?: ReadonlyMap<string, Streak>
+  /** The row whose streak plays the milestone pop. */
+  popId?: string | null
 }) {
   return (
     <ul className="flex flex-col gap-2">
@@ -66,11 +74,16 @@ function Rows({
           onMore={(button) => onMore(item, button)}
           onCheckIn={onCheckIn ? (button) => onCheckIn(item, button) : undefined}
           bump={item.commitmentId === bumpId}
+          streak={streaks ? streakMeta(streaks.get(item.commitmentId)) : null}
+          streakPop={item.commitmentId === popId}
         />
       ))}
     </ul>
   )
 }
+
+/** The milestone pop's length plus a margin before it is marked played. */
+const STREAK_POP_MS = 600
 
 /** What a row's Check in pre-picks in the camera's Target chip. */
 function cameraTarget(groupId: string, item: TodayItem): CameraTarget {
@@ -129,6 +142,25 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   // The last post's counts on its row until Today refetches after it; then the server's alone.
   const data = query.data ? withPostMoment(query.data, moment, query.dataUpdatedAt) : undefined
   const bumpId = moment && !moment.played && !moment.isLate ? moment.commitmentId : null
+  // Streaks in the rows' meta (Story 4.2); the post's row pops once at 3, 10 or 25.
+  const streaksQuery = useStreaks(groupId)
+  const streaks = streaksByCommitment(streaksQuery.data)
+  const popId =
+    moment &&
+    streakPopFor(
+      moment,
+      streaks.get(moment.commitmentId)?.currentStreak,
+      streaksQuery.dataUpdatedAt,
+    )
+      ? moment.commitmentId
+      : null
+  const popCheckinId = popId !== null && moment ? moment.checkinId : null
+  useEffect(() => {
+    if (popCheckinId === null) return
+    // The 500 ms pop has run (or reduced motion skipped it): never again for this post.
+    const timer = setTimeout(() => markStreakPopped(popCheckinId), STREAK_POP_MS)
+    return () => clearTimeout(timer)
+  }, [popCheckinId])
   // A refetch removed the row whose actions are open (deleted elsewhere, its week moved on): close.
   if (
     actionsOpen &&
@@ -191,12 +223,26 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
         {empty === 'nothing_due' ? (
           <EmptyState icon={Couch} line={TODAY_COPY.nothingDue} />
         ) : (
-          <Rows items={due} onMore={openActions} onCheckIn={checkIn} bumpId={bumpId} />
+          <Rows
+            items={due}
+            onMore={openActions}
+            onCheckIn={checkIn}
+            bumpId={bumpId}
+            streaks={streaks}
+            popId={popId}
+          />
         )}
       </Section>
       {thisWeek.length > 0 ? (
         <Section title={TODAY_COPY.thisWeek}>
-          <Rows items={thisWeek} onMore={openActions} onCheckIn={checkIn} bumpId={bumpId} />
+          <Rows
+            items={thisWeek}
+            onMore={openActions}
+            onCheckIn={checkIn}
+            bumpId={bumpId}
+            streaks={streaks}
+            popId={popId}
+          />
         </Section>
       ) : null}
       {next.length > 0 ? (

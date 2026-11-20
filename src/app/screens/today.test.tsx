@@ -1,8 +1,10 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BackendError } from '@/domain/error-codes'
 import type { TaskDetails } from '@/domain/plan'
+import type { Streak } from '@/domain/streaks'
 import type { TodayItem, TodaySummary } from '@/domain/today'
+import { clearPostMoment, getPostMoment, setPostMoment } from '@/data/post-moment'
 import {
   createFakeBackend,
   renderRoutes,
@@ -98,12 +100,28 @@ const GARAGE_TASK: TaskDetails = {
   canRename: true,
 }
 
-function withToday(items: TodayItem[], summary: TodaySummary = WEDNESDAY, waiting = false) {
+function withToday(
+  items: TodayItem[],
+  summary: TodaySummary = WEDNESDAY,
+  waiting = false,
+  streaks: Streak[] = [],
+) {
   return createFakeBackend(undefined, {
     groups: [{ ...TEST_GROUP, memberCount: waiting ? 1 : 3 }],
     today: { [TEST_GROUP.id]: { items, summary } },
     tasks: [GARAGE_TASK],
+    streaks: { [TEST_GROUP.id]: streaks },
   })
+}
+
+function streak(commitmentId: string, currentStreak: number | null, backToZero = false): Streak {
+  return { commitmentId, userId: 'u1', currentStreak, backToZero }
+}
+
+/** A row's schedule meta paragraph (under its title). */
+async function metaOf(title: string): Promise<HTMLElement> {
+  const heading = await screen.findByRole('heading', { level: 3, name: title })
+  return heading.nextElementSibling as HTMLElement
 }
 
 describe('Today states', () => {
@@ -432,5 +450,98 @@ describe('Today loading', () => {
     vi.mocked(backend.getTodayItems).mockResolvedValue([ROW])
     await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('heading', { level: 3, name: 'Gym' })).toBeInTheDocument()
+  })
+})
+
+describe('Today streaks (Story 4.2)', () => {
+  afterEach(() => clearPostMoment())
+
+  it('the meta closes with the streak, "back to 0" after a reset, nothing for a task or a new commitment', async () => {
+    renderRoutes(
+      ['/today'],
+      withToday(
+        [
+          ROW,
+          { ...TASK_TODAY, counted: 1, countedToday: true, targetMet: true },
+          { ...RUN, counted: 3, countedToday: true, targetMet: true },
+          TASK_SUNDAY,
+          READ_NEXT,
+        ],
+        WEDNESDAY,
+        false,
+        [
+          streak('c-gym', 6),
+          streak('t-groceries', null),
+          streak('c-run', 0, true),
+          streak('t-garage', null),
+          streak('c-read', 0),
+        ],
+      ),
+    )
+    await waitFor(async () =>
+      expect(await metaOf('Gym')).toHaveTextContent(/^Fixed days · Mon Wed Fri · streak 6$/),
+    )
+    expect(await metaOf('Run')).toHaveTextContent(/^3 times per week · target met · back to 0$/)
+    expect(await metaOf('Grocery run')).toHaveTextContent(/^Task · by Wed · Done$/)
+    expect(await metaOf('Garage')).toHaveTextContent(/^Task · by Sun$/)
+    expect(await metaOf('Read')).toHaveTextContent(/^4 times per week · starts Mon 23 Nov$/)
+    expect(screen.queryByText(/streak 0/)).not.toBeInTheDocument()
+  })
+
+  it('a done row reads "Done · streak 7"', async () => {
+    renderRoutes(
+      ['/today'],
+      withToday([{ ...ROW, counted: 1, countedToday: true }], WEDNESDAY, false, [
+        streak('c-gym', 7),
+      ]),
+    )
+    await waitFor(async () =>
+      expect(await metaOf('Gym')).toHaveTextContent(/^Fixed days · Mon Wed Fri · Done · streak 7$/),
+    )
+  })
+
+  it('a post taking the streak to 3 pops the numeral once, after the refetch shows it', async () => {
+    const backend = withToday([ROW], WEDNESDAY, false, [streak('c-gym', 2)])
+    const { queryClient } = renderRoutes(['/today'], backend)
+    await waitFor(async () => expect(await metaOf('Gym')).toHaveTextContent(/streak 2$/))
+
+    act(() =>
+      setPostMoment({
+        checkinId: 'k1',
+        groupId: TEST_GROUP.id,
+        commitmentId: 'c-gym',
+        title: 'Gym',
+        doneCount: 1,
+        target: 3,
+        counted: true,
+        isLate: false,
+        weeklyPoints: null,
+        rank: null,
+        passedUserIds: [],
+        passedShownIn: null,
+        streakBefore: 2,
+        streakPopped: false,
+        photoUrl: null,
+        caption: null,
+        postedAt: Date.now() - 1,
+        played: true,
+        announced: true,
+      }),
+    )
+    // Not yet refetched: the old value, no pop.
+    expect(document.querySelector('.animate-streak-pop')).toBeNull()
+
+    vi.mocked(backend.getStreaks).mockResolvedValue([streak('c-gym', 3)])
+    await act(() => queryClient.invalidateQueries({ queryKey: ['streaks'] }))
+    await waitFor(() =>
+      expect(document.querySelector('.animate-streak-pop')).toHaveTextContent('streak 3'),
+    )
+    await waitFor(() => expect(getPostMoment()?.streakPopped).toBe(true))
+    expect(document.querySelector('.animate-streak-pop')).toBeNull()
+    expect(await metaOf('Gym')).toHaveTextContent(/streak 3$/)
+
+    // Another refetch never pops again for this post.
+    await act(() => queryClient.invalidateQueries({ queryKey: ['streaks'] }))
+    expect(document.querySelector('.animate-streak-pop')).toBeNull()
   })
 })

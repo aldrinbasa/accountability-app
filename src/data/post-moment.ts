@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { isStreakMilestone } from '@/domain/streaks'
 import type { TodayData } from '@/domain/today'
 
 /**
@@ -27,6 +28,13 @@ export interface PostMoment {
   passedUserIds: string[]
   /** The Today mount that first showed the passed chip; a later mount no longer shows it. */
   passedShownIn: number | null
+  /**
+   * The commitment's streak in the cache when the post was accepted (Story 4.2), null when none was
+   * cached: a refetched streak exactly 1 higher at 3, 10 or 25 plays the milestone pop.
+   */
+  streakBefore: number | null
+  /** The milestone pop has played (once per post). */
+  streakPopped: boolean
   /** A local URL of the 1080 rendition, or null where object URLs don't exist. */
   photoUrl: string | null
   caption: string | null
@@ -81,6 +89,13 @@ export function markPostMomentAnnounced(checkinId: string): void {
 export function markPassedShown(checkinId: string, mountId: number): void {
   if (!current || current.checkinId !== checkinId || current.passedShownIn !== null) return
   current = { ...current, passedShownIn: mountId }
+  emit()
+}
+
+/** The streak milestone pop has played: never again for this post. */
+export function markStreakPopped(checkinId: string): void {
+  if (!current || current.checkinId !== checkinId || current.streakPopped) return
+  current = { ...current, streakPopped: true }
   emit()
 }
 
@@ -164,4 +179,20 @@ export function withPostMoment(
         : item,
     ),
   }
+}
+
+/**
+ * Whether the post's row plays the streak milestone pop now (Story 4.2): streaks fetched after the
+ * post (`streaksUpdatedAt` newer than `postedAt`) show the commitment's streak exactly 1 above the
+ * cached value at the post, and the new value is 3, 10 or 25. Once per post (`streakPopped`).
+ */
+export function streakPopFor(
+  moment: PostMoment | null,
+  streak: number | null | undefined,
+  streaksUpdatedAt: number,
+): boolean {
+  if (!moment || moment.streakPopped || !moment.counted || moment.streakBefore === null)
+    return false
+  if (streaksUpdatedAt <= moment.postedAt || typeof streak !== 'number') return false
+  return streak === moment.streakBefore + 1 && isStreakMilestone(streak)
 }

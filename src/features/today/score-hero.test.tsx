@@ -56,6 +56,8 @@ const MOMENT: PostMoment = {
   rank: 1,
   passedUserIds: ['user-priya'],
   passedShownIn: null,
+  streakBefore: null,
+  streakPopped: false,
   photoUrl: null,
   caption: null,
   postedAt: 0,

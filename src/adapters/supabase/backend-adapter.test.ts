@@ -1705,6 +1705,31 @@ describe('board (Story 4.1)', () => {
   })
 })
 
+describe('streaks (Story 4.2)', () => {
+  it('get_streaks maps the rows, a task keeping its null streak', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        { commitment_id: 'c1', user_id: 'u1', current_streak: 6, back_to_zero: false },
+        { commitment_id: 'c2', user_id: 'u1', current_streak: 0, back_to_zero: true },
+        { commitment_id: 't1', user_id: 'u2', current_streak: null, back_to_zero: false },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getStreaks('g1')).toEqual([
+      { commitmentId: 'c1', userId: 'u1', currentStreak: 6, backToZero: false },
+      { commitmentId: 'c2', userId: 'u1', currentStreak: 0, backToZero: true },
+      { commitmentId: 't1', userId: 'u2', currentStreak: null, backToZero: false },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_streaks', { p_group_id: 'g1' })
+  })
+
+  it('get_streaks maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getStreaks('g1'))).toBe('not_member')
+  })
+})
+
 describe('feed mapping', () => {
   it('maps check-ins and stickies, drops kinds the app does not render, keeps the raw cursors', () => {
     const rows = [

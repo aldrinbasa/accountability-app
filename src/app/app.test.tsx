@@ -178,6 +178,8 @@ describe('App', () => {
         rank: null,
         passedUserIds: [],
         passedShownIn: null,
+        streakBefore: null,
+        streakPopped: false,
         photoUrl: null,
         caption: null,
         postedAt: Date.now(),

@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import type { Streak } from '@/domain/streaks'
 import { boardGroupKey, groupWeekKey } from '@/data/board'
 import { checkinTargetsKey } from '@/data/checkin'
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/data/checkin-outbox'
 import { todayKey } from '@/data/plan'
 import { localPhotoUrl, setPostMoment } from '@/data/post-moment'
+import { streaksKey } from '@/data/streaks'
 import { setUploadRunning } from '@/ui/update-guard'
 
 /**
@@ -18,12 +20,17 @@ import { setUploadRunning } from '@/ui/update-guard'
  * window regains focus or becomes visible, and on `online`; its own backoff timer and new entries
  * wake it too. While it uploads or posts, the "Update ready" toast waits (`setUploadRunning`). Each
  * accepted send plays the post moment (also a late, background send) and refetches Today, the
- * picker, the Feed and the board of its group.
+ * picker, the Feed, the board and the streaks of its group.
  */
 export function OutboxHost({ userId, children }: { userId: string; children: ReactNode }) {
   const queryClient = useQueryClient()
 
   function onSent({ entry, result }: SentCheckin) {
+    // The streak before the post, for the milestone pop once the refetch shows it 1 higher.
+    const streakBefore =
+      queryClient
+        .getQueryData<Streak[]>(streaksKey(entry.groupId))
+        ?.find((streak) => streak.commitmentId === entry.commitmentId)?.currentStreak ?? null
     setPostMoment({
       checkinId: result.checkinId,
       groupId: entry.groupId,
@@ -37,6 +44,8 @@ export function OutboxHost({ userId, children }: { userId: string; children: Rea
       rank: result.rank,
       passedUserIds: result.passedUserIds,
       passedShownIn: null,
+      streakBefore,
+      streakPopped: false,
       photoUrl: entry.photos ? localPhotoUrl(outboxPhotoBlob(entry.photos[1080])) : null,
       caption: entry.caption,
       postedAt: Date.now(),
@@ -51,6 +60,8 @@ export function OutboxHost({ userId, children }: { userId: string; children: Rea
     void queryClient.invalidateQueries({ queryKey: boardGroupKey(entry.groupId) })
     // A week may have turned while Today stayed open: the board then follows the new week.
     void queryClient.invalidateQueries({ queryKey: groupWeekKey(entry.groupId) })
+    // Streaks (Story 4.2): the refetch shows the kept session's +1.
+    void queryClient.invalidateQueries({ queryKey: streaksKey(entry.groupId) })
   }
 
   const outbox = useCheckinOutboxForUser(userId, { onSent, onRunningChange: setUploadRunning })

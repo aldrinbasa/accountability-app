@@ -344,6 +344,25 @@ select {
   animation: count-bump 400ms ease-out both;
 }
 
+/* A streak reaching 3, 10 or 25 pops once: 500 ms (Story 4.2). */
+@keyframes streak-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.4);
+  }
+  70% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@utility animate-streak-pop {
+  animation: streak-pop 500ms ease-out both;
+}
+
 /* The rank chip swaps in with a short wobble: 300 ms (Story 4.1). */
 @keyframes chip-wobble {
   0% {

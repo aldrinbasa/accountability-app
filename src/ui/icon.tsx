@@ -6,7 +6,7 @@ import { cn } from '@/ui/lib/utils'
 export type IconSize = 20 | 24 | 32 | 44 | 64
 
 /** Soft-tone color: coral by default; cobalt for error icons (DESIGN.md Do's and Don'ts). */
-export type IconTone = 'primary' | 'error' | 'obj-error' | 'sticky'
+export type IconTone = 'primary' | 'error' | 'obj-error' | 'sticky' | 'streak'
 
 export interface IconProps {
   /** A Phosphor icon component, e.g. `Sun` from `@phosphor-icons/react`. Always drawn Duotone. */

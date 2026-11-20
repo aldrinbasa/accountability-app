@@ -23,6 +23,8 @@ const MOMENT: Moment = {
   rank: null,
   passedUserIds: [],
   passedShownIn: null,
+  streakBefore: null,
+  streakPopped: false,
   photoUrl: null,
   caption: 'leg day',
   postedAt: Date.now(),

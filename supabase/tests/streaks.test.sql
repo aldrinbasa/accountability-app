@@ -17,7 +17,7 @@
 -- moves their clock.
 begin;
 set local timezone = 'UTC';
-select plan(34);
+select plan(36);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -294,6 +294,15 @@ select pg_temp.add_session('bike', '2026-11-16', 1, false);
 select is(pg_temp.now_streak('bike'), 0, 'times per week: a missed past week resets to 0 now');
 select is(pg_temp.back_to_zero('bike'), true, 'a times-per-week reset after a met week is "back to 0"');
 
+-- Cook, 2 per week, never met: 9 Nov 1 of 2 (ended). W: one open row. 0 and not "back to 0".
+select pg_catalog.set_config('test.cook', pg_temp.add_plan('alice', 'cook_at_home', null, 2::smallint)::text, true);
+select pg_temp.check_in(pg_temp.add_session('cook', '2026-11-09', 1, false));
+select pg_temp.add_session('cook', '2026-11-09', 2, false);
+select pg_temp.add_session('cook', '2026-11-16', 1, false);
+select is(pg_temp.now_streak('cook'), 0, 'times per week: never met: 0');
+select is(pg_temp.back_to_zero('cook'), false,
+  'a times-per-week commitment never met is not "back to 0" (done check-ins alone are not a streak)');
+
 -- ===== Tasks =====
 select pg_catalog.set_config('test.tax', pg_temp.add_plan('alice', 'groceries', null, null, 'task')::text, true);
 select pg_temp.check_in(pg_temp.add_session('tax', '2026-11-16', 0, false));
@@ -328,7 +337,7 @@ select throws_ok(
 select tests.authenticate_as('bob');
 select is(
   (select pg_catalog.count(*)::integer from public.get_streaks(current_setting('test.g1')::uuid)),
-  9,
+  10,
   'get_streaks: every commitment and task of the current members (dave, who left, excluded)'
 );
 select is(
