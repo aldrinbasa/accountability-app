@@ -14,7 +14,7 @@
 -- routines that read the clock get their search_path pointed at test_overrides.
 begin;
 set local timezone = 'UTC';
-select plan(36);
+select plan(38);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -42,9 +42,9 @@ select ok(
 );
 select is(
   (select pg_catalog.string_agg(b.key || '|' || b.name || '|' || b.how_earned || '|' || b.line, ';')
-   from public.badges b),
+   from public.badges b where b.key = 'weekly_winner'),
   'weekly_winner|Weekly Winner|Most weekly points when the week locks|Top of the board. Enjoy it while it lasts.',
-  'the catalog holds only weekly_winner, with its name, how earned and line'
+  'the catalog holds weekly_winner with its name, how earned and line (Story 4.6 adds the rest)'
 );
 select ok(
   (select bool_and(c.relrowsecurity) from pg_catalog.pg_class c
@@ -267,7 +267,8 @@ select is(
 );
 select is(
   (select pg_catalog.string_agg(a.membership_id::text || a.week_start::text, ',' order by a.membership_id)
-   from public.badge_awards a where a.group_id = current_setting('test.g1')::uuid),
+   from public.badge_awards a
+   where a.group_id = current_setting('test.g1')::uuid and a.badge_key = 'weekly_winner'),
   (select pg_catalog.string_agg(m.id::text || '2026-11-09', ',' order by m.id)
    from public.memberships m
    where m.group_id = current_setting('test.g1')::uuid
@@ -285,7 +286,7 @@ select is(private.lock_due_weeks(), null::text, 're-run: clean');
 select is(private.lock_week(current_setting('test.g1')::uuid, '2026-11-09'), false,
   'lock_week on the locked week returns false');
 select is(
-  (select pg_catalog.count(*)::text from public.badge_awards)
+  (select pg_catalog.count(*)::text from public.badge_awards where badge_key = 'weekly_winner')
   || '|' || (select pg_catalog.count(*) from public.feed_events where kind = 'weekly_winner'),
   '2|1',
   're-runs write no duplicate award or event'
@@ -365,18 +366,19 @@ select is(
 -- ===== RLS =====
 select tests.authenticate_as('bob');
 select is(
-  (select pg_catalog.count(*)::text from public.badge_awards where group_id = current_setting('test.g1')::uuid)
+  (select pg_catalog.count(*)::text from public.badge_awards
+   where group_id = current_setting('test.g1')::uuid and badge_key = 'weekly_winner')
   || '|' || (select pg_catalog.count(*) from public.badge_awards where group_id <> current_setting('test.g1')::uuid)
   || '|' || (select pg_catalog.count(*) from public.badges)
   || '|' || (select pg_catalog.count(*) from public.feed_items
              where group_id = current_setting('test.g1')::uuid and item_kind = 'weekly_winner'),
-  '3|0|1|2',
+  '3|0|15|2',
   'a member reads the group''s awards (no other group''s), the catalog and the winner feed items'
 );
 select tests.authenticate_as('kim');
 select is(
   (select pg_catalog.count(*)::text from public.badge_awards) || '|' || (select pg_catalog.count(*) from public.badges),
-  '0|1',
+  '0|15',
   'an outsider reads no awards but the catalog'
 );
 select throws_ok(
@@ -396,6 +398,56 @@ select is(
   || '|' || pg_temp.awards('g4', '2026-11-09') || '|' || pg_temp.events('g4', '2026-11-09'),
   'true||',
   'an unscored week (nobody at its lock): locked, no award, no feed event'
+);
+
+-- ===== A winner stored at rank 4 and an anonymized winner (deferred from the 4.5 review) =====
+-- "Quad": gus, hal, ivy and jo all on 100 in P, split by sessions 4, 3, 2, 1 (ranks 1 to 4).
+select tests.create_supabase_user('gus');
+select tests.create_supabase_user('hal');
+select tests.create_supabase_user('ivy');
+select tests.create_supabase_user('jo');
+select tests.authenticate_as('gus');
+select public.save_profile('Gus', 'UTC');
+select pg_catalog.set_config('test.g5', public.create_group('Quad')::text, true);
+select pg_catalog.set_config('test.code5', (select code from public.create_invite(current_setting('test.g5')::uuid, false)), true);
+select tests.authenticate_as('hal');
+select public.save_profile('Hal', 'UTC');
+select public.join_group(current_setting('test.code5'));
+select tests.authenticate_as('ivy');
+select public.save_profile('Ivy', 'UTC');
+select public.join_group(current_setting('test.code5'));
+select tests.authenticate_as('jo');
+select public.save_profile('Jo', 'UTC');
+select public.join_group(current_setting('test.code5'));
+reset role;
+update public.memberships set joined_at = '2026-10-01 00:00:00+00'
+where group_id = current_setting('test.g5')::uuid;
+select pg_catalog.set_config('test.q1', pg_temp.add_plan('gus', 'g5', 'gym', 4::smallint)::text, true);
+select pg_catalog.set_config('test.q2', pg_temp.add_plan('hal', 'g5', 'gym', 3::smallint)::text, true);
+select pg_catalog.set_config('test.q3', pg_temp.add_plan('ivy', 'g5', 'gym', 2::smallint)::text, true);
+select pg_catalog.set_config('test.q4', pg_temp.add_plan('jo', 'g5', 'gym', 1::smallint)::text, true);
+select pg_temp.week('q1', '2026-11-09', 4, 4);
+select pg_temp.week('q2', '2026-11-09', 3, 3);
+select pg_temp.week('q3', '2026-11-09', 2, 2);
+select pg_temp.week('q4', '2026-11-09', 1, 1);
+select private.ensure_group_week(current_setting('test.g5')::uuid, '2026-11-09');
+select private.lock_week(current_setting('test.g5')::uuid, '2026-11-09');
+select tests.authenticate_as('gus');
+select is(
+  (select pg_catalog.string_agg(w.display_name || ':' || w.rank || ':' || w.is_winner, ',')
+   from public.get_winner_week(current_setting('test.g5')::uuid, '2026-11-09') w),
+  'Gus:1:true,Hal:2:true,Ivy:3:true,Jo:4:true',
+  'get_winner_week lists a co-winner stored at rank 4 with the other winners'
+);
+reset role;
+update public.week_results set user_id = null
+where group_id = current_setting('test.g5')::uuid and user_id = tests.get_supabase_uid('ivy');
+select tests.authenticate_as('gus');
+select is(
+  (select pg_catalog.string_agg(w.display_name || ':' || pg_catalog.cardinality(w.winner_user_ids), ',')
+   from public.get_winner_week(current_setting('test.g5')::uuid, '2026-11-09') w),
+  'Gus:4,Hal:4,Jo:4',
+  'an anonymized winner row is left off the podium; the week still counts every winner'
 );
 
 select * from finish();
