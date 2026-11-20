@@ -502,6 +502,11 @@ isOneToOne: false
               "activity_name": string,"can_delete": boolean,"can_edit": boolean,"commitment_id": string,"custom_name": string,"days": (number)[],"deadline": string,"end_date": string,"ends_on": string,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"state": string,"target": number
             }[]
                            },
+"get_streaks":
+{ Args: { "p_group_id": string }; Returns: {
+              "back_to_zero": boolean,"commitment_id": string,"current_streak": number,"user_id": string
+            }[]
+                           },
 "get_task":
 { Args: { "p_commitment_id": string }; Returns: {
               "can_delete": boolean,"can_rename": boolean,"commitment_id": string,"custom_name": string,"deadline": string,"group_id": string,"name": string,"preset_key": string
