@@ -23,7 +23,59 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "checkins": {
+            "badge_awards": {
+                  Row: {
+                    "awarded_at": string,"badge_key": string,"created_at": string,"group_id": string,"id": string,"membership_id": string,"updated_at": string,"user_id": string | null,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "awarded_at"?: string,"badge_key": string,"created_at"?: string,"group_id": string,"id"?: string,"membership_id": string,"updated_at"?: string,"user_id"?: string | null,"week_start": string
+                  }
+                  Update: {
+                    "awarded_at"?: string,"badge_key"?: string,"created_at"?: string,"group_id"?: string,"id"?: string,"membership_id"?: string,"updated_at"?: string,"user_id"?: string | null,"week_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "badge_awards_badge_key_fkey"
+      columns: ["badge_key"]
+isOneToOne: false
+      referencedRelation: "badges"
+      referencedColumns: ["key"]
+    },{
+      foreignKeyName: "badge_awards_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "badge_awards_membership_id_fkey"
+      columns: ["membership_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "badge_awards_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"badges": {
+                  Row: {
+                    "created_at": string,"how_earned": string,"icon": string,"key": string,"line": string,"name": string,"sort_order": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"how_earned": string,"icon": string,"key": string,"line": string,"name": string,"sort_order": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"how_earned"?: string,"icon"?: string,"key"?: string,"line"?: string,"name"?: string,"sort_order"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"checkins": {
                   Row: {
                     "caption": string | null,"captured_at": string,"commitment_id": string,"counted_at": string,"created_at": string,"full_pruned_at": string | null,"group_id": string,"id": string,"is_late": boolean,"received_at": string,"session_id": string | null,"updated_at": string,"user_id": string
                   }
@@ -531,7 +583,7 @@ isOneToOne: false
                            },
 "get_board":
 { Args: { "p_group_id": string,"p_week_start": string }; Returns: {
-              "avatar_path": string,"best_streak": number,"display_name": string,"is_current_week": boolean,"lock_at": string,"locked": boolean,"miss_count": number,"plan": Json,"rank": number,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"task_count": number,"time_zone": string,"user_id": string,"waiting": boolean,"weekly_points": number
+              "avatar_path": string,"best_streak": number,"display_name": string,"is_current_week": boolean,"is_winner": boolean,"lock_at": string,"locked": boolean,"miss_count": number,"plan": Json,"rank": number,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"task_count": number,"time_zone": string,"user_id": string,"waiting": boolean,"weekly_points": number
             }[]
                            },
 "get_checkin_targets":
@@ -610,6 +662,11 @@ isOneToOne: false
 "get_today_summary":
 { Args: { "p_group_id": string }; Returns: {
               "done": number,"has_plan": boolean,"left": number,"member_today": string,"planned": number,"week_number": number,"week_start": string
+            }[]
+                           },
+"get_winner_week":
+{ Args: { "p_group_id": string,"p_week_start": string }; Returns: {
+              "avatar_path": string,"display_name": string,"is_winner": boolean,"lock_at": string,"rank": number,"ranked": boolean,"scored": boolean,"user_id": string,"week_start": string,"weekly_points": number,"winner_user_ids": (string)[]
             }[]
                            },
 "join_group":
