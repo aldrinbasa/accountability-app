@@ -116,6 +116,6 @@ test('badges show pending, then earned at the lock, on Me and on a friend’s pr
   await expect(ben.getByText('100 all-time points in Badge Club')).toBeVisible()
   await expect(ben.getByRole('button', { name: /^First Proof, earned / })).toBeVisible()
   await expect(ben.getByRole('button', { name: /^Weekly Winner, earned / })).toBeVisible()
-  await ben.getByRole('button', { name: 'Back' }).click()
+  await ben.getByRole('button', { name: 'Back', exact: true }).click()
   await expect(ben).toHaveURL(new RegExp(`/board\\?g=${groupId}$`))
 })
