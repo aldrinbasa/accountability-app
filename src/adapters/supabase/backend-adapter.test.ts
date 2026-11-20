@@ -1481,4 +1481,28 @@ describe('check-ins', () => {
     db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
     expect(await backendCodeOf(adapter.postCheckin(input))).toBe('unknown')
   })
+
+  it("post_checkin keeps week_locked's detail (lock time and group zone)", async () => {
+    const detail = '{"lock_at" : "2026-11-26T00:00:00+00:00", "time_zone" : "Europe/London"}'
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { ...pgError('week_locked'), details: detail },
+      status: 400,
+    })
+    const error = await adapter
+      .postCheckin({
+        id: 'k1',
+        groupId: 'g1',
+        commitmentId: 'c1',
+        capturedAt: '2026-11-20T01:00:00.000Z',
+        caption: null,
+      })
+      .catch((thrown: unknown) => thrown)
+    expect(error).toMatchObject({ code: 'week_locked', detail })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await adapter.leaveGroup('g1').catch((thrown: unknown) => thrown)).toMatchObject({
+      code: 'not_member',
+      detail: null,
+    })
+  })
 })

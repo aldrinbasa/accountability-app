@@ -54,8 +54,9 @@ type ProfileState = 'loading' | 'failed' | 'none' | 'has'
  * Inside the auth gate: a member without a profile goes to /setup, with the asked-for path saved as
  * the pending `next` (the sign-in layout cleared it on the way in). With a profile, /setup forwards
  * to the pending `next` (cleared) or /today: that is also how Setup leaves after a save. While the
- * profile loads it shows blank paper; if the read fails it shows the app (fail open, a returning
- * member is the likely case) and the query refetches on focus. /install is never redirected: a new
+ * profile loads (or the saved cache is restored) it shows blank paper; if the read fails or is paused
+ * offline it shows the app (fail open, a returning member is the likely case) and the query
+ * refetches on focus and on reconnect. /install is never redirected: a new
  * member sees the install guide before Setup.
  */
 function ProfileGate() {
@@ -67,13 +68,14 @@ function ProfileGate() {
   // Picked once per visit to /setup, so StrictMode's second effect run keeps the same target.
   const target = useRef<string | null>(null)
 
-  const state: ProfileState = profile.isPending
-    ? 'loading'
-    : profile.data === undefined
-      ? 'failed'
-      : profile.data === null
-        ? 'none'
-        : 'has'
+  const state: ProfileState =
+    profile.isPending && profile.fetchStatus !== 'paused'
+      ? 'loading'
+      : profile.data === undefined
+        ? 'failed'
+        : profile.data === null
+          ? 'none'
+          : 'has'
 
   useEffect(() => {
     if (!onSetup) target.current = null

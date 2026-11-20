@@ -2,7 +2,7 @@ import {
   captionCount,
   checkinAlt,
   checkinPhotoPath,
-  isRetryablePostError,
+  formatLateLabel,
   isWontCount,
   normalizeCaption,
   pickerStatus,
@@ -101,25 +101,35 @@ describe('posting copy and rules', () => {
     expect(postedAnnouncement('Gym', 4, 5)).toBe('Posted. Gym 4 of 5.')
   })
 
-  it('retries only network, unknown and photo_missing', () => {
-    for (const code of ['network', 'unknown', 'photo_missing'] as const) {
-      expect(isRetryablePostError(code)).toBe(true)
-    }
-    for (const code of [
-      'week_locked',
-      'commitment_ended',
-      'not_member',
-      'bad_capture_time',
-      'checkin_conflict',
-      'invalid_caption',
-    ] as const) {
-      expect(isRetryablePostError(code)).toBe(false)
-    }
-  })
-
   it('builds the object path and the alt text', () => {
     expect(checkinPhotoPath('g1', 'k1', 360)).toBe('g1/k1/360.webp')
     expect(checkinAlt('Gym', null)).toBe('Your Gym check-in')
     expect(checkinAlt('Gym', 'leg day')).toBe('Your Gym check-in, caption: leg day')
+  })
+})
+
+describe('formatLateLabel', () => {
+  const captured = '2026-11-20T07:00:00.000Z'
+  const after = (minutes: number) => new Date(Date.parse(captured) + minutes * 60_000).toISOString()
+
+  it.each([
+    [10, 'sent 10 min later', 'sent 10 minutes later'],
+    [59, 'sent 59 min later', 'sent 59 minutes later'],
+    [60, 'sent 1 h later', 'sent 1 hour later'],
+    [5 * 60 + 30, 'sent 5 h later', 'sent 5 hours later'],
+    [23 * 60 + 59, 'sent 23 h later', 'sent 23 hours later'],
+    [24 * 60, 'sent 1 day later', 'sent 1 day later'],
+    [48 * 60, 'sent 2 days later', 'sent 2 days later'],
+    [71 * 60 + 59, 'sent 2 days later', 'sent 2 days later'],
+  ])('%i min → %s', (minutes, text, spoken) => {
+    expect(formatLateLabel(captured, after(minutes))).toEqual({ text, spoken })
+  })
+
+  it('rounds seconds down and never goes below 0 min', () => {
+    expect(formatLateLabel(captured, '2026-11-20T07:10:59.000Z').text).toBe('sent 10 min later')
+    expect(formatLateLabel(captured, '2026-11-20T06:59:00.000Z')).toEqual({
+      text: 'sent 0 min later',
+      spoken: 'sent 0 minutes later',
+    })
   })
 })

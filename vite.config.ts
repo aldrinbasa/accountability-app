@@ -4,11 +4,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// The build version (Story 3.3): the persisted query cache's `buster`, so a new build never opens
+// on data shaped by the old one. The deployed commit on Vercel, else the CI commit, else build time.
+const buildId = process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || `local-${Date.now()}`
+
 // https://vite.dev/config/  |  Tailwind v4 uses the @tailwindcss/vite plugin (CSS-first, no tailwind.config.js)
 export default defineConfig({
   define: {
     // Camera first-frame timing (Story 3.1): logged in dev and Vercel Preview builds, never in prod.
     __PROOFY_LOG_CAMERA__: JSON.stringify(process.env.VERCEL_ENV !== 'production'),
+    __PROOFY_BUILD_ID__: JSON.stringify(buildId),
   },
   plugins: [
     react(),
@@ -44,8 +49,9 @@ export default defineConfig({
         ],
       },
       injectManifest: {
-        // Fonts and icons are precached so the app renders offline after one visit.
-        globPatterns: ['**/*.{js,css,html,svg,woff2,png,webmanifest}'],
+        // Fonts and icons are precached so the app renders offline after one visit; so are the two
+        // WASM WebP encoders (Story 3.3), so an iPhone can encode a check-in photo offline.
+        globPatterns: ['**/*.{js,css,html,svg,woff2,png,webmanifest,wasm}'],
       },
       devOptions: { enabled: false },
     }),

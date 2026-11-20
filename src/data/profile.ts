@@ -4,6 +4,7 @@ import { FALLBACK_TIME_ZONE, type Profile } from '@/domain/profile'
 import { chooseZone, type TimeZoneState } from '@/domain/time-zones'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
+import { retryOnline } from '@/data/query-client'
 
 /** The signed-in member's own profile. Sign-out clears the whole query cache, this key included. */
 export const MY_PROFILE_KEY = ['profile', 'me'] as const
@@ -37,7 +38,7 @@ export function useMyProfile() {
   return useQuery({
     queryKey: MY_PROFILE_KEY,
     queryFn: () => repository.getMine(),
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -101,4 +102,22 @@ export function deviceTimeZone(): string {
   } catch {
     return FALLBACK_TIME_ZONE
   }
+}
+
+const selectZone = (profile: Profile | null): string | null => profile?.timeZone ?? null
+
+/**
+ * The member's zone for showing times (offline Banner, outbox Banners): the cached profile's, else
+ * the device's. Reads the cache only: it never fetches the profile itself (the profile gate does),
+ * so mounting it cannot restart a failed read.
+ */
+export function useMemberTimeZone(): string {
+  const repository = useProfileRepository('useMemberTimeZone')
+  const { data } = useQuery({
+    queryKey: MY_PROFILE_KEY,
+    queryFn: () => repository.getMine(),
+    enabled: false,
+    select: selectZone,
+  })
+  return data ?? deviceTimeZone()
 }

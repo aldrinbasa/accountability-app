@@ -25,6 +25,7 @@ import type { TodayData } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
 import { groupActivitiesKey } from '@/data/activities'
 import { useBackendContext } from '@/data/backend-context-value'
+import { retryOnline } from '@/data/query-client'
 
 /** `['today', groupId]`: Today's rows and summary for a group (plan writes invalidate it). */
 export function todayKey(groupId: string) {
@@ -105,7 +106,7 @@ export function useToday(groupId: string) {
   return useQuery({
     queryKey: todayKey(groupId),
     queryFn: () => repository.today(groupId),
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -121,7 +122,7 @@ export function usePlanPreview(groupId: string, target: number | null, endDate: 
     queryKey: planPreviewKey(groupId, target, endDate),
     queryFn: () => repository.preview(groupId, target, endDate),
     placeholderData: keepPreviousData,
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -173,7 +174,7 @@ export function useTask(groupId: string, commitmentId: string) {
     queryKey: taskKey(groupId, commitmentId),
     queryFn: () => repository.getTask(commitmentId),
     // A task that is gone stays gone: retry only other failures, once.
-    retry: (count, error) => count < 1 && backendErrorCode(error) !== 'not_found',
+    retry: retryOnline(1, (error) => backendErrorCode(error) === 'not_found'),
     retryDelay: 500,
   })
 }
@@ -243,7 +244,7 @@ export function useMyPlan(groupId: string) {
   return useQuery({
     queryKey: planKey(groupId),
     queryFn: () => repository.myPlan(groupId),
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -257,7 +258,7 @@ export function useCommitment(groupId: string, commitmentId: string) {
   return useQuery({
     queryKey: commitmentKey(groupId, commitmentId),
     queryFn: () => repository.getCommitment(commitmentId),
-    retry: (count, error) => count < 1 && backendErrorCode(error) !== 'not_found',
+    retry: retryOnline(1, (error) => backendErrorCode(error) === 'not_found'),
     retryDelay: 500,
   })
 }

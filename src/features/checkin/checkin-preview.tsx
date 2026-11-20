@@ -1,9 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { X } from '@phosphor-icons/react'
 import { CAMERA_COPY, type CameraTarget } from '@/domain/camera'
-import { CAPTION_MAX, captionCount, CHECKIN_COPY, isRetryablePostError } from '@/domain/checkin'
-import { errorCopy, type BackendErrorCode } from '@/domain/error-codes'
-import { usePostCheckin, type CheckinPhoto, type PostedCheckin } from '@/data/checkin'
+import { CAPTION_MAX, captionCount, CHECKIN_COPY } from '@/domain/checkin'
+import { usePostCheckin, type CheckinPhoto } from '@/data/checkin'
+import type { FirstAttempt } from '@/data/checkin-outbox'
 import { Button } from '@/ui/button'
 import { InlineRetry } from '@/ui/inline-retry'
 import { Polaroid } from '@/ui/polaroid'
@@ -11,19 +11,13 @@ import { TextField } from '@/ui/text-field'
 import { CameraControl, TargetChip } from '@/features/camera/camera-overlay'
 import { CanvasPhoto } from '@/features/checkin/canvas-photo'
 
-/** A failed post's line: Retry-able failures share one line; final codes say why. */
-function failureCopy(code: BackendErrorCode): string {
-  if (code === 'network' || code === 'unknown') return CHECKIN_COPY.postFailed
-  return errorCopy(code)
-}
-
 /**
  * The preview (Story 3.2): the photo as the Polaroid it will become, an optional Caption (visible
  * label, at most 80 characters, live "17/80" counter, previewed on the polaroid), Retake (ghost,
  * back to the live viewfinder) and Post (coral). Post reads "Posting…" and ignores repeat taps; the
- * id and caption freeze at the first Post (the caption turns read-only), so Retry resends exactly the
- * same check-in. Retry-able failures (offline, no response, photo not uploaded) show "Couldn't post
- * your photo. Tap Retry." above Post; final codes show their copy with no Retry.
+ * id and caption freeze at the first Post (the caption turns read-only). Post hands the photo to the
+ * outbox (Story 3.3), which sends it, retries it and reports a rejection on Today; only a failure to
+ * encode or store it keeps the preview, with "Couldn't post your photo. Tap Retry." above Post.
  *
  * Close camera, Esc and system back ask "Discard this photo?" (Keep / Discard) through `confirming`,
  * owned by the flow.
@@ -36,7 +30,7 @@ export function CheckinPreview({
   onRequestClose,
   onKeep,
   onDiscard,
-  onPosted,
+  onDone,
   onBusyChange,
 }: {
   photo: CheckinPhoto
@@ -47,16 +41,12 @@ export function CheckinPreview({
   onRequestClose: () => void
   onKeep: () => void
   onDiscard: () => void
-  onPosted: (posted: PostedCheckin) => void
+  /** The photo is in the outbox: how its first send went (see `usePostCheckin`). */
+  onDone: (outcome: FirstAttempt) => void
   onBusyChange: (busy: boolean) => void
 }) {
   const [caption, setCaption] = useState('')
-  const flow = usePostCheckin({
-    groupId: target.groupId,
-    commitmentId: target.commitmentId,
-    photo,
-    onPosted,
-  })
+  const flow = usePostCheckin({ target, photo, onDone })
   const headingRef = useRef<HTMLHeadingElement>(null)
   const keepRef = useRef<HTMLButtonElement>(null)
   const headingId = useId()
@@ -70,11 +60,6 @@ export function CheckinPreview({
     if (confirming) keepRef.current?.focus()
     else headingRef.current?.focus()
   }, [confirming])
-
-  const failure = flow.failure
-  const retryable = failure !== null && isRetryablePostError(failure)
-  // A final code fails the same way for this photo every time: no Post, only Retake and Close.
-  const final = failure !== null && !retryable
 
   return (
     <div
@@ -130,10 +115,8 @@ export function CheckinPreview({
             hint={captionCount(caption)}
             onChange={(event) => setCaption(event.target.value)}
           />
-          {failure !== null ? (
-            <InlineRetry onRetry={retryable ? flow.retry : undefined}>
-              {failureCopy(failure)}
-            </InlineRetry>
+          {flow.failed ? (
+            <InlineRetry onRetry={flow.retry}>{CHECKIN_COPY.postFailed}</InlineRetry>
           ) : null}
           <div className="flex gap-3">
             <Button
@@ -146,17 +129,15 @@ export function CheckinPreview({
             >
               {CHECKIN_COPY.retake}
             </Button>
-            {final ? null : (
-              <Button
-                variant="primary"
-                className="flex-1"
-                busy={flow.busy}
-                busyLabel={CHECKIN_COPY.posting}
-                onClick={() => flow.post(caption)}
-              >
-                {CHECKIN_COPY.post}
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              className="flex-1"
+              busy={flow.busy}
+              busyLabel={CHECKIN_COPY.posting}
+              onClick={() => flow.post(caption)}
+            >
+              {CHECKIN_COPY.post}
+            </Button>
           </div>
         </div>
       </section>

@@ -100,17 +100,19 @@ describe('Me > My groups', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Gym Rats' })).toBeInTheDocument()
   })
 
-  it('Me after a failed groups load: an Inline retry that refetches', async () => {
+  it('Me after a failed groups load: "Can\'t reach Proofy right now." + Try again', async () => {
     const user = userEvent.setup()
     const backend = createFakeBackend(undefined, { groups: [GYM, RESET] })
     vi.mocked(backend.listMyGroups).mockRejectedValue(new BackendError('network'))
     renderRoutes(['/me?g=gym'], backend)
-    const retry = await screen.findByRole('alert', {}, { timeout: 3000 })
-    expect(retry).toHaveTextContent("Couldn't load your groups. Check your signal and tap Retry.")
+    expect(
+      await screen.findByText("Can't reach Proofy right now.", {}, { timeout: 3000 }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Check your signal and try again.')).toBeInTheDocument()
 
     vi.mocked(backend.listMyGroups).mockResolvedValue({ groups: [GYM, RESET], ended: [] })
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await user.click(screen.getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('region', { name: 'My groups' })).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText("Can't reach Proofy right now.")).not.toBeInTheDocument()
   })
 })

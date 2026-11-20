@@ -2,20 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CHECKIN_PHOTO_QUALITY,
-  CHECKIN_PHOTO_SIZES,
   normalizeCaption,
   type CheckinPhotoSize,
   type CheckinTarget,
-  type PostCheckinInput,
-  type PostCheckinResult,
 } from '@/domain/checkin'
-import { backendErrorCode, type BackendErrorCode } from '@/domain/error-codes'
+import type { MyGroupsSnapshot } from '@/domain/groups'
 import type { BackendPort } from '@/ports/backend-port'
 import type { ImageEncodePort } from '@/ports/image-encode-port'
 import { useBackendContext } from '@/data/backend-context-value'
+import { toOutboxPhoto, useCheckinOutbox, type FirstAttempt } from '@/data/checkin-outbox'
 import { isOffline } from '@/data/connectivity'
+import { MY_GROUPS_KEY } from '@/data/groups'
 import { useImageEncoder } from '@/data/image-encoder-context'
-import { todayKey } from '@/data/plan'
+import type { OutboxPhoto } from '@/data/outbox-db'
+import { retryOnline } from '@/data/query-client'
 
 /** `['checkinTargets', groupId]`: the camera picker's rows for a group (a post refetches them). */
 export function checkinTargetsKey(groupId: string) {
@@ -24,17 +24,15 @@ export function checkinTargetsKey(groupId: string) {
 
 export interface CheckinRepository {
   targets(groupId: string): Promise<CheckinTarget[]>
-  upload(groupId: string, checkinId: string, size: CheckinPhotoSize, photo: Blob): Promise<void>
-  post(input: PostCheckinInput): Promise<PostCheckinResult>
 }
 
-/** Check-in reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
+/**
+ * Check-in reads over `BackendPort` (AD-2: feature hook → repository → adapter). Uploads and posts
+ * go only through the outbox's sender (src/data/checkin-outbox.ts).
+ */
 export function createCheckinRepository(backend: BackendPort): CheckinRepository {
   return {
     targets: (groupId) => backend.getCheckinTargets(groupId),
-    upload: (groupId, checkinId, size, photo) =>
-      backend.uploadCheckinPhoto(groupId, checkinId, size, photo),
-    post: (input) => backend.postCheckin(input),
   }
 }
 
@@ -55,7 +53,7 @@ export function useCheckinTargets(groupId: string | null) {
     enabled: groupId !== null,
     staleTime: 0,
     refetchOnMount: 'always',
-    retry: 1,
+    retry: retryOnline(1),
     retryDelay: 500,
   })
 }
@@ -66,76 +64,73 @@ export interface CheckinPhoto {
   capturedAt: Date
 }
 
-/** A post the server accepted, with the 1080 rendition for the post moment's polaroid. */
-export interface PostedCheckin {
-  input: PostCheckinInput
-  result: PostCheckinResult
-  fullPhoto: Blob
+/** What a check-in is for: the group, the commitment or task, and its title. */
+export interface PostTarget {
+  groupId: string
+  commitmentId: string
+  title: string
 }
 
-interface Renditions {
-  1080: Blob
-  360: Blob
-}
+/** "Posting…" waits at most this long for the first send before the camera closes. */
+export const POSTING_LIMIT_MS = 15_000
 
 /** Encodes both renditions once per photo (1080 then 360, long edge, about 0.8 quality). */
-async function encodeRenditions(encoder: ImageEncodePort, canvas: HTMLCanvasElement) {
+async function encodeRenditions(
+  encoder: ImageEncodePort,
+  canvas: HTMLCanvasElement,
+): Promise<Record<CheckinPhotoSize, OutboxPhoto>> {
   const full = await encoder.encodeWebp(canvas, 1080, CHECKIN_PHOTO_QUALITY)
   const small = await encoder.encodeWebp(canvas, 360, CHECKIN_PHOTO_QUALITY)
-  const renditions: Renditions = { 1080: full, 360: small }
-  return renditions
+  return { 1080: await toOutboxPhoto(full), 360: await toOutboxPhoto(small) }
 }
 
 export interface PostCheckinFlow {
-  /** "Posting…": taps are ignored. Stays true after a successful post (the camera is closing). */
+  /** "Posting…": taps are ignored. Stays true once the post is handed to the outbox. */
   busy: boolean
-  /** Why the last attempt failed (`network` also when offline); null while none has. */
-  failure: BackendErrorCode | null
+  /** Encoding or writing the entry failed: nothing was queued, so only Retry here can send it. */
+  failed: boolean
   /** Post was tapped: the id and caption are fixed from now on (Retry resends them). */
   frozen: boolean
-  /** Posts with `caption`, or, once frozen, resends the frozen payload. */
+  /** Posts with `caption`, or, once frozen, retries the frozen payload. */
   post: (caption: string) => void
-  /** Resends the frozen payload (re-uploading what did not land). No-op before the first Post. */
+  /** Retries the frozen payload. No-op before the first Post. */
   retry: () => void
 }
 
 export interface PostCheckinOptions {
-  groupId: string
-  commitmentId: string
+  target: PostTarget
   photo: CheckinPhoto
-  /** Called once the server accepted the post, even if the caller unmounted meanwhile. */
-  onPosted: (posted: PostedCheckin) => void
+  /**
+   * The post is in the outbox and the camera can close: offline at once (`waiting`), online once the
+   * sender's first attempt settles (`sent`, `waiting` while it keeps retrying, or `rejected`). Called
+   * even if the caller unmounted meanwhile.
+   */
+  onDone: (outcome: FirstAttempt) => void
 }
 
 /**
- * The direct check-in post (Story 3.2; Story 3.3 replaces it with the outbox). The first Post fixes
- * the payload: a client UUID, the capture time and the trimmed caption. Each attempt then encodes
- * the two WebP renditions (once per photo, kept for Retry), uploads the ones not yet uploaded, and
- * calls `post_checkin`. A lost response is safe: Retry sends the same id and payload, which the
- * server answers with the stored result. `photo_missing` re-uploads both renditions on Retry.
- * On success Today and the picker refetch.
+ * Post through the outbox (Story 3.3, replacing Story 3.2's direct send). The first Post fixes the
+ * payload: a client UUID, the capture time and the trimmed caption. Post then encodes both WebP
+ * renditions (once per photo) and writes the outbox entry; from there the sender uploads and calls
+ * `post_checkin`, and retries on its own. Only an encode or device-store failure keeps the preview
+ * (`failed`), since nothing was queued.
  */
-export function usePostCheckin({
-  groupId,
-  commitmentId,
-  photo,
-  onPosted,
-}: PostCheckinOptions): PostCheckinFlow {
-  const repository = useCheckinRepository('usePostCheckin')
+export function usePostCheckin({ target, photo, onDone }: PostCheckinOptions): PostCheckinFlow {
+  const outbox = useCheckinOutbox('usePostCheckin')
   const encoder = useImageEncoder('usePostCheckin')
   const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState<BackendErrorCode | null>(null)
+  const [failed, setFailed] = useState(false)
   const [frozen, setFrozen] = useState(false)
   const busyRef = useRef(false)
-  const payload = useRef<PostCheckinInput | null>(null)
-  const renditions = useRef<Renditions | null>(null)
-  const uploaded = useRef(new Set<CheckinPhotoSize>())
+  const payload = useRef<{ id: string; capturedAt: string; caption: string | null } | null>(null)
+  const photos = useRef<Record<CheckinPhotoSize, OutboxPhoto> | null>(null)
+  const queued = useRef(false)
   const mounted = useRef(true)
-  const onPostedRef = useRef(onPosted)
+  const onDoneRef = useRef(onDone)
 
   useEffect(() => {
-    onPostedRef.current = onPosted
+    onDoneRef.current = onDone
   })
 
   useEffect(() => {
@@ -145,42 +140,58 @@ export function usePostCheckin({
     }
   }, [])
 
+  const { groupId, commitmentId, title } = target
+
   const send = useCallback(async () => {
     const input = payload.current
     if (!input || busyRef.current) return
     busyRef.current = true
     setBusy(true)
-    setFailure(null)
-    let posted = false
+    setFailed(false)
+    let handedOff = false
     try {
-      if (isOffline()) {
-        setFailure('network')
-        return
+      if (!queued.current) {
+        photos.current ??= await encodeRenditions(encoder, photo.canvas)
+        const groupName =
+          queryClient
+            .getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)
+            ?.groups.find((group) => group.id === groupId)?.name ?? ''
+        await outbox.enqueue({
+          id: input.id,
+          groupId,
+          groupName,
+          commitmentId,
+          title,
+          capturedAt: input.capturedAt,
+          caption: input.caption,
+          photos: photos.current,
+        })
+        queued.current = true
       }
-      renditions.current ??= await encodeRenditions(encoder, photo.canvas)
-      const blobs = renditions.current
-      for (const size of CHECKIN_PHOTO_SIZES) {
-        if (uploaded.current.has(size)) continue
-        await repository.upload(input.groupId, input.id, size, blobs[size])
-        uploaded.current.add(size)
-      }
-      const result = await repository.post(input)
-      posted = true
-      void queryClient.invalidateQueries({ queryKey: todayKey(input.groupId) })
-      void queryClient.invalidateQueries({ queryKey: checkinTargetsKey(input.groupId) })
-      onPostedRef.current({ input, result, fullPhoto: blobs[1080] })
-    } catch (error) {
-      const code = backendErrorCode(error)
-      // The server found no photo: upload both again on Retry.
-      if (code === 'photo_missing') uploaded.current.clear()
-      if (mounted.current) setFailure(code)
+      handedOff = true
+      // A slow connection never holds the camera: after 15 s it closes to the waiting Banner
+      // while the send carries on in the background.
+      let limit: ReturnType<typeof setTimeout> | undefined
+      const outcome = isOffline()
+        ? 'waiting'
+        : await Promise.race([
+            outbox.firstAttempt(input.id),
+            new Promise<FirstAttempt>((resolve) => {
+              limit = setTimeout(() => resolve('waiting'), POSTING_LIMIT_MS)
+            }),
+          ])
+      clearTimeout(limit)
+      onDoneRef.current(outcome)
+    } catch {
+      handedOff = false
+      if (mounted.current) setFailed(true)
     } finally {
-      if (!posted) {
+      if (!handedOff) {
         busyRef.current = false
         if (mounted.current) setBusy(false)
       }
     }
-  }, [encoder, photo.canvas, queryClient, repository])
+  }, [commitmentId, encoder, groupId, outbox, photo.canvas, queryClient, title])
 
   const post = useCallback(
     (caption: string) => {
@@ -188,8 +199,6 @@ export function usePostCheckin({
       if (!payload.current) {
         payload.current = {
           id: crypto.randomUUID(),
-          groupId,
-          commitmentId,
           capturedAt: photo.capturedAt.toISOString(),
           caption: normalizeCaption(caption),
         }
@@ -197,12 +206,12 @@ export function usePostCheckin({
       }
       void send()
     },
-    [commitmentId, groupId, photo.capturedAt, send],
+    [photo.capturedAt, send],
   )
 
   const retry = useCallback(() => {
     void send()
   }, [send])
 
-  return { busy, failure, frozen, post, retry }
+  return { busy, failed, frozen, post, retry }
 }

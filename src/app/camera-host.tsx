@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { CameraTarget } from '@/domain/camera'
 import { createCameraSession, type CameraCapture } from '@/data/camera-session'
-import type { PostedCheckin } from '@/data/checkin'
-import { localPhotoUrl, setPostMoment } from '@/data/post-moment'
+import type { FirstAttempt } from '@/data/checkin-outbox'
 import { setCameraOpen } from '@/ui/update-guard'
 import { CameraOverlay } from '@/features/camera/camera-overlay'
 import {
@@ -34,8 +32,10 @@ interface Shot {
  * warms up as early as possible. While open, the "Update ready" toast waits (`setCameraOpen`).
  *
  * The check-in handler (Story 3.2): a shot opens the check-in flow as a panel over the viewfinder
- * (picker for snap-first in the focused group, else the preview). Back steps through the flow. A
- * post records the post moment, closes the camera and goes to Today.
+ * (picker for snap-first in the focused group, else the preview). Back steps through the flow. Post
+ * hands the photo to the outbox (Story 3.3); once its first send settles (offline: at once) the
+ * camera closes and Today shows the post moment (sent; the sender records it) or the outbox Banner
+ * (waiting or rejected), which takes focus.
  */
 export function CameraHost({ children }: { children: ReactNode }) {
   const port = useCameraPort()
@@ -101,40 +101,28 @@ export function CameraHost({ children }: { children: ReactNode }) {
 
   const retake = useCallback(() => setShot(null), [])
 
-  function onPosted({ input, result, fullPhoto }: PostedCheckin, target: CameraTarget) {
-    setPostMoment({
-      checkinId: result.checkinId,
-      groupId: input.groupId,
-      commitmentId: input.commitmentId,
-      title: target.title,
-      doneCount: result.doneCount,
-      target: result.target,
-      counted: result.counted,
-      isLate: result.isLate,
-      photoUrl: localPhotoUrl(fullPhoto),
-      caption: input.caption,
-      postedAt: Date.now(),
-      played: false,
-      announced: false,
-    })
+  function onDone(outcome: FirstAttempt) {
     posted.current = true
     close()
     goToTab(TODAY_PATH)
-    // After the route commits and the moment renders: focus the polaroid (else the page heading).
-    requestAnimationFrame(() => requestAnimationFrame(focusMoment))
+    // After the route commits and Today renders: focus the polaroid (sent) or the outbox Banner
+    // (waiting, rejected), else the page heading.
+    const selector =
+      outcome === 'sent' ? '[data-component="post-moment"]' : '[data-component="outbox-banners"]'
+    requestAnimationFrame(() => requestAnimationFrame(() => focusAfterPost(selector)))
   }
 
-  function focusMoment() {
-    const moment = document.querySelector<HTMLElement>('[data-component="post-moment"]')
-    const target = moment ?? document.querySelector<HTMLElement>('main h1')
+  function focusAfterPost(selector: string) {
+    const landing = document.querySelector<HTMLElement>(selector)
+    const target = landing ?? document.querySelector<HTMLElement>('main h1')
     if (!target) return
     if (!target.hasAttribute('tabindex')) target.tabIndex = -1
     target.focus()
   }
 
   /**
-   * The trigger on a plain close. After a post focus goes to the post moment instead (`focusMoment`,
-   * once Today has rendered): the trigger may be on another tab or about to turn into the Done check.
+   * The trigger on a plain close. After a post focus goes to the post moment or the outbox Banner
+   * instead (`focusAfterPost`, once Today has rendered): the trigger may be on another tab or about to turn into the Done check.
    */
   function returnFocus(): HTMLElement | null {
     if (posted.current) return null
@@ -167,7 +155,7 @@ export function CameraHost({ children }: { children: ReactNode }) {
                 onStepChange={setStep}
                 onRetake={retake}
                 onDiscard={close}
-                onPosted={onPosted}
+                onDone={onDone}
               />
             ) : null
           }

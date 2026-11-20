@@ -1,8 +1,11 @@
 import '@testing-library/jest-dom/vitest'
-// A real IndexedDB for the persisted query cache (idb persister).
+// A real IndexedDB for the persisted query cache and the check-in outbox (idb).
 import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
 import { afterEach, vi } from 'vitest'
 import { resetDeviceMemory } from '@/data/device-storage'
+import { resetOutboxDb } from '@/data/outbox-db'
+import { resetQueryCacheDb } from '@/data/query-persistence'
 import { clearPostMoment } from '@/data/post-moment'
 
 // Some runners expose a broken global `localStorage` (Node's experimental stub, active without a
@@ -77,7 +80,11 @@ if (hasWindow) {
 }
 
 // Reset shared global state so tests are order-independent.
-afterEach(() => {
+afterEach(async () => {
+  // A fresh, empty IndexedDB per test (the outbox and the saved query cache).
+  await resetOutboxDb()
+  await resetQueryCacheDb()
+  globalThis.indexedDB = new IDBFactory()
   localStorage.clear()
   sessionStorage.clear()
   resetDeviceMemory()

@@ -50,6 +50,8 @@ jobs:
       - run: npm run build
       - name: Service worker was produced
         run: test -f dist/sw.js
+      - name: Service worker precaches the WASM WebP encoders
+        run: grep -q 'webp_enc.*\.wasm' dist/sw.js
 
   db-test:
     name: Database · pgTAP · generated types

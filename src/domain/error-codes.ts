@@ -27,6 +27,8 @@ export const ERROR_COPY = {
   photo_missing: "The photo didn't finish uploading. Tap Retry.",
   checkin_conflict: 'That photo was already posted.',
   invalid_caption: 'Keep the caption to 80 characters.',
+  // Raised from Epic 5 (freezes); the outbox already treats it as final (Story 3.3).
+  session_frozen: 'That session is already frozen.',
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY
@@ -45,11 +47,17 @@ export type BackendErrorCode = RpcErrorCode | 'network' | 'unknown'
 /** The only error type `BackendPort` data and RPC methods throw. */
 export class BackendError extends Error {
   readonly code: BackendErrorCode
+  /**
+   * The RPC exception's DETAIL, when it carries one (PostgREST `details`), e.g. `week_locked`'s JSON
+   * `{lock_at, time_zone}`. Null when there is none.
+   */
+  readonly detail: string | null
 
-  constructor(code: BackendErrorCode, message: string = code) {
+  constructor(code: BackendErrorCode, message: string = code, detail: string | null = null) {
     super(message)
     this.name = 'BackendError'
     this.code = code
+    this.detail = detail
   }
 }
 

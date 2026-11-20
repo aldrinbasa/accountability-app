@@ -169,7 +169,8 @@ describe('Settings', () => {
     const { router } = renderRoutes(['/me/settings'], backend, { onSignedOut })
 
     await user.click(await screen.findByRole('button', { name: 'Sign out' }))
-    expect(backend.signOut).toHaveBeenCalledTimes(1)
+    // The tap may first read the outbox from the device (Story 3.3) before signing out.
+    await vi.waitFor(() => expect(backend.signOut).toHaveBeenCalledTimes(1))
     await vi.waitFor(() => expect(router.state.location.pathname).toBe('/signin'))
     expect(onSignedOut).toHaveBeenCalledTimes(1)
     // Signing out never queues the settings screen as the place to come back to.

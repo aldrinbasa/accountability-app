@@ -48,7 +48,6 @@ export const GROUP_COPY = {
   loadFailedLine: "Can't reach Proofy right now.",
   loadFailedBody: 'Check your signal and try again.',
   tryAgain: 'Try again',
-  myGroupsFailed: "Couldn't load your groups. Check your signal and tap Retry.",
 } as const
 
 export const ROLE_LABEL: Record<GroupRole, string> = {

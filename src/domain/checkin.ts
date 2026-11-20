@@ -1,5 +1,4 @@
 import type { ScheduleType } from '@/domain/activities'
-import type { BackendErrorCode } from '@/domain/error-codes'
 import { shortDayName } from '@/domain/today'
 
 /**
@@ -171,16 +170,41 @@ export function postedAnnouncement(title: string, doneCount: number, target: num
   return `Posted. ${title} ${doneCount} of ${target}.`
 }
 
-/**
- * Whether Retry can help a failed post: no response (`network`), an unexpected failure (`unknown`)
- * or an upload that did not land (`photo_missing`, re-uploaded). Every other code is final for this
- * photo and shows its copy without Retry.
- */
-export function isRetryablePostError(code: BackendErrorCode): boolean {
-  return code === 'network' || code === 'unknown' || code === 'photo_missing'
-}
-
 /** The polaroid photo's alt text: "Your Gym check-in, caption: leg day." */
 export function checkinAlt(title: string, caption: string | null): string {
   return caption ? `Your ${title} check-in, caption: ${caption}` : `Your ${title} check-in`
+}
+
+/** A late check-in's label: "sent 5 h later", and how a screen reader says it. */
+export interface LateLabel {
+  text: string
+  spoken: string
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`
+}
+
+/**
+ * The "sent … later" label of a late check-in (Story 3.3, shown by the Feed in Story 3.4): the time
+ * from capture to receipt, both from the server, rounded down: `sent {n} min later` under 1 hour,
+ * `sent {n} h later` under 24 hours, `sent {n} day(s) later` from 24 hours. `spoken` spells the unit
+ * out ("sent 5 hours later"). A receipt before the capture reads as 0 min.
+ */
+export function formatLateLabel(capturedAt: string, receivedAt: string): LateLabel {
+  const ms = Date.parse(receivedAt) - Date.parse(capturedAt)
+  const minutes = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 60_000)) : 0
+  if (minutes < 60) {
+    return {
+      text: `sent ${minutes} min later`,
+      spoken: `sent ${plural(minutes, 'minute', 'minutes')} later`,
+    }
+  }
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) {
+    return { text: `sent ${hours} h later`, spoken: `sent ${plural(hours, 'hour', 'hours')} later` }
+  }
+  const days = Math.floor(hours / 24)
+  const dayText = `sent ${plural(days, 'day', 'days')} later`
+  return { text: dayText, spoken: dayText }
 }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { CameraTarget } from '@/domain/camera'
 import { targetTitle, type CheckinTarget } from '@/domain/checkin'
-import type { CheckinPhoto, PostedCheckin } from '@/data/checkin'
+import type { CheckinPhoto } from '@/data/checkin'
+import type { FirstAttempt } from '@/data/checkin-outbox'
 import { CheckinPreview } from '@/features/checkin/checkin-preview'
 import { TargetPicker } from '@/features/checkin/target-picker'
 
@@ -23,8 +24,8 @@ export interface CheckinFlowProps {
   onRetake: () => void
   /** "Discard this photo?" → Discard: close the camera. */
   onDiscard: () => void
-  /** The server accepted the post. */
-  onPosted: (posted: PostedCheckin, target: CameraTarget) => void
+  /** The photo is in the outbox and its first send settled (offline: at once). */
+  onDone: (outcome: FirstAttempt) => void
 }
 
 function toCameraTarget(target: CheckinTarget, groupId: string): CameraTarget {
@@ -51,7 +52,7 @@ export function CheckinFlow({
   onStepChange,
   onRetake,
   onDiscard,
-  onPosted,
+  onDone,
 }: CheckinFlowProps) {
   const [picked, setPicked] = useState<CameraTarget | null>(prePicked)
   const [confirming, setConfirming] = useState(false)
@@ -101,7 +102,7 @@ export function CheckinFlow({
       onRequestClose={back}
       onKeep={() => setConfirming(false)}
       onDiscard={onDiscard}
-      onPosted={(posted) => onPosted(posted, picked)}
+      onDone={onDone}
       onBusyChange={onBusyChange}
     />
   )

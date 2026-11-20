@@ -295,69 +295,119 @@ describe('posting', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
-  it('offline: Inline retry keeps photo and caption; Retry resends the same id and caption', async () => {
+  it('offline: the entry is queued, the camera closes at once, Today shows it waiting', async () => {
     const fake = backend()
     const encoder = createFakeEncoder()
+    const { user, router } = await renderToday(fake, encoder)
+    const dialog = await preview(user)
+    await user.type(within(dialog).getByRole('textbox', { name: 'Caption' }), 'gym')
+    setOnline(false)
+    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(router.state.location.pathname).toBe('/today')
+    expect(fake.uploadCheckinPhoto).not.toHaveBeenCalled()
+    expect(fake.postCheckin).not.toHaveBeenCalled()
+
+    // The waiting Banner, focused; no stick-down motion until the photo is sent.
+    const banner = await screen.findByText(
+      /^1 photo waiting to send · Gym · Gym Rats · taken \d\d:\d\d\. Sends when you're back online\.$/,
+    )
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        document.querySelector('[data-component="outbox-banners"]'),
+      ),
+    )
+    expect(document.querySelector('[data-component="post-moment"]')).toBeNull()
+
+    // Back online: sent from the entry, then the moment plays and the Banner goes.
+    vi.mocked(fake.getTodayItems).mockResolvedValue([{ ...GYM, counted: 2, countedToday: true }])
+    setOnline(true)
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() => expect(fake.postCheckin).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(fake.postCheckin).mock.calls[0]?.[0]).toMatchObject({
+      groupId: TEST_GROUP.id,
+      commitmentId: 'c-gym',
+      caption: 'gym',
+    })
+    expect(fake.uploadCheckinPhoto).toHaveBeenCalledTimes(2)
+    expect(encoder.encodeWebp).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(banner).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(document.querySelector('[data-component="post-moment"]')).not.toBeNull(),
+    )
+  })
+
+  it('online, a failed send: the camera closes, the photo waits; Retry sends it', async () => {
+    const fake = backend()
+    vi.mocked(fake.postCheckin).mockRejectedValueOnce(new BackendError('network'))
+    const { user } = await renderToday(fake)
+    const dialog = await preview(user)
+    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const banner = await screen.findByText(/^1 photo waiting to send · Gym/)
+    const retry = within(banner.closest('[data-component="banner"]') as HTMLElement).getByRole(
+      'button',
+      { name: 'Retry' },
+    )
+    await user.click(retry)
+    await waitFor(() => expect(fake.postCheckin).toHaveBeenCalledTimes(2))
+    const calls = vi.mocked(fake.postCheckin).mock.calls.map((call) => call[0])
+    expect(calls[1]).toEqual(calls[0])
+    // Both renditions landed the first time: not uploaded again.
+    expect(fake.uploadCheckinPhoto).toHaveBeenCalledTimes(2)
+    await waitFor(() => expect(banner).not.toBeInTheDocument())
+  })
+
+  it('a terminal code: the camera closes and Today explains it; Got it discards the photo', async () => {
+    const fake = backend()
+    vi.mocked(fake.postCheckin).mockRejectedValueOnce(
+      new BackendError(
+        'week_locked',
+        'week_locked',
+        '{"lock_at" : "2026-11-25T16:00:00+00:00", "time_zone" : "Asia/Manila"}',
+      ),
+    )
+    const { user } = await renderToday(fake)
+    const dialog = await preview(user)
+    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    // Thu 00:00 Manila reads "Wed 23:59"; the member is in Manila too (no city named).
+    const banner = await screen.findByText(
+      "Too late for last week. It locked Wed 23:59, so this photo can't count.",
+    )
+    expect(screen.queryByText(/waiting to send/)).not.toBeInTheDocument()
+    await user.click(
+      within(banner.closest('[data-component="banner"]') as HTMLElement).getByRole('button', {
+        name: 'Got it',
+      }),
+    )
+    await waitFor(() => expect(banner).not.toBeInTheDocument())
+    expect(fake.postCheckin).toHaveBeenCalledTimes(1)
+  })
+
+  it('an encode failure keeps the preview with Inline retry; Retry queues and posts', async () => {
+    const fake = backend()
+    const encoder = createFakeEncoder()
+    encoder.encodeWebp.mockRejectedValueOnce(new Error('no encoder'))
     const { user } = await renderToday(fake, encoder)
     const dialog = await preview(user)
     const caption = within(dialog).getByRole('textbox', { name: 'Caption' })
     await user.type(caption, 'gym')
-    setOnline(false)
     await user.click(within(dialog).getByRole('button', { name: 'Post' }))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       "Couldn't post your photo. Tap Retry.",
     )
-    expect(fake.uploadCheckinPhoto).not.toHaveBeenCalled()
     // Frozen at the first Post: read-only, not disabled.
     expect(caption).toHaveAttribute('readonly')
     expect(caption).not.toBeDisabled()
+    expect(fake.postCheckin).not.toHaveBeenCalled()
 
-    // Back online, but the first post's response gets lost.
-    setOnline(true)
-    vi.mocked(fake.postCheckin).mockRejectedValueOnce(new BackendError('network'))
-    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent("Couldn't post your photo.")
     await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-
-    const calls = vi.mocked(fake.postCheckin).mock.calls.map((call) => call[0])
-    expect(calls).toHaveLength(2)
-    expect(calls[1]).toEqual(calls[0])
-    expect(calls[0]?.caption).toBe('gym')
-    // Encoded once, each rendition uploaded once (already uploaded ones are not sent again).
-    expect(encoder.encodeWebp).toHaveBeenCalledTimes(2)
-    expect(fake.uploadCheckinPhoto).toHaveBeenCalledTimes(2)
-  })
-
-  it('photo_missing: Retry uploads both renditions again', async () => {
-    const fake = backend()
-    vi.mocked(fake.postCheckin).mockRejectedValueOnce(new BackendError('photo_missing'))
-    const { user } = await renderToday(fake)
-    const dialog = await preview(user)
-    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
-      "The photo didn't finish uploading. Tap Retry.",
-    )
-    await user.click(within(dialog).getByRole('button', { name: 'Retry' }))
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(fake.uploadCheckinPhoto).toHaveBeenCalledTimes(4)
-  })
-
-  it('a final code shows its copy with no Retry and no Post; Retake still works', async () => {
-    const fake = backend()
-    vi.mocked(fake.postCheckin).mockRejectedValueOnce(new BackendError('week_locked'))
-    const { user } = await renderToday(fake)
-    const dialog = await preview(user)
-    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
-    const alert = await within(dialog).findByRole('alert')
-    expect(alert).toHaveTextContent("That week has locked, so this photo can't count.")
-    expect(within(alert).queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument()
-    // Resending the frozen payload would fail the same way: Post is gone, Close camera stays.
-    expect(within(dialog).queryByRole('button', { name: 'Post' })).not.toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: 'Close camera' })).toBeInTheDocument()
     expect(fake.postCheckin).toHaveBeenCalledTimes(1)
-    await user.click(within(dialog).getByRole('button', { name: 'Retake' }))
-    expect(await within(dialog).findByRole('button', { name: 'Take photo' })).toBeInTheDocument()
+    expect(vi.mocked(fake.postCheckin).mock.calls[0]?.[0].caption).toBe('gym')
   })
 })
 
