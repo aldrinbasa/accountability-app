@@ -1,6 +1,7 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { Board, GroupWeek } from '@/domain/board'
+import type { MemberProfile, Title } from '@/domain/badges'
 import type { WinnerWeek } from '@/domain/winner'
 import type {
   CheckinPhotoSize,
@@ -225,6 +226,16 @@ export interface BackendPort {
    * week (or no locked week yet). Rejects with `not_member`.
    */
   getWinnerWeek(groupId: string, weekStart: string | null): Promise<WinnerWeek | null>
+  /**
+   * `get_member_profile`: a member in the group (Story 4.6): name, avatar, all-time points, title,
+   * the 15 badges with their status, streaks and plan. Null for someone never in the group; a member
+   * who left comes back with `isCurrentMember` false. Rejects with `not_member`.
+   */
+  getMemberProfile(groupId: string, userId: string): Promise<MemberProfile | null>
+  /** The `titles` ladder, lowest first. */
+  listTitles(): Promise<Title[]>
+  /** A member's latest check-ins in the group's feed, newest first, at most `limit`. */
+  listMemberCheckins(groupId: string, userId: string, limit: number): Promise<FeedCheckin[]>
 
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on

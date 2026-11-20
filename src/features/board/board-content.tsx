@@ -87,10 +87,12 @@ function Standings({
       board.rows.find((row) => row.userId === userId) ?? (board.locked ? board.rows[0] : undefined)
     return (
       <>
-        {solo && solo.weeklyPoints !== null ? <SoloStand row={solo} week={week} /> : null}
+        {solo && solo.weeklyPoints !== null ? (
+          <SoloStand row={solo} week={week} viewerId={userId} />
+        ) : null}
         {solo && solo.weeklyPoints === null ? (
           <ul className="flex flex-col gap-2">
-            <LeaderboardRow row={solo} week={week} />
+            <LeaderboardRow row={solo} week={week} viewerId={userId} />
           </ul>
         ) : null}
         {groupWaiting ? <WaitingInvite group={group} /> : null}
@@ -105,11 +107,12 @@ function Standings({
         blocks={layout.podium}
         week={week}
         label={week === 'this' ? BOARD_COPY.thisWeekPodium : BOARD_COPY.lastWeekPodium}
+        viewerId={userId}
       />
       {others.length > 0 ? (
         <ul className="flex flex-col gap-2" data-component="leaderboard">
           {others.map((row) => (
-            <LeaderboardRow key={row.userId} row={row} week={week} />
+            <LeaderboardRow key={row.userId} row={row} week={week} viewerId={userId} />
           ))}
         </ul>
       ) : null}

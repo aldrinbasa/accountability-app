@@ -1760,6 +1760,8 @@ describe('winner (Story 4.5)', () => {
     scored: true,
     ranked: true,
     winner_user_ids: ['u1', 'u2'],
+    badge_name: 'Weekly Winner',
+    badge_line: 'Top of the board. Enjoy it while it lasts.',
   }
 
   it('get_winner_week maps the week and its podium, winners first', async () => {
@@ -1828,6 +1830,8 @@ describe('winner (Story 4.5)', () => {
           isWinner: false,
         },
       ],
+      badgeName: 'Weekly Winner',
+      badgeLine: 'Top of the board. Enjoy it while it lasts.',
     })
     expect(db.rpc).toHaveBeenLastCalledWith('get_winner_week', {
       p_group_id: 'g1',
@@ -2060,6 +2064,137 @@ describe('feed mapping', () => {
   })
 })
 
+describe('member profile (Story 4.6)', () => {
+  it('get_member_profile maps the profile, its badges, streaks and plan; malformed entries dropped', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          display_name: 'Ada',
+          avatar_path: null,
+          is_current_member: true,
+          all_time_points: 1284,
+          title_key: 'regular',
+          time_zone: 'Asia/Manila',
+          badges: [
+            {
+              key: 'first_proof',
+              name: 'First Proof',
+              how_earned: 'Your first check-in',
+              line: 'Pics or it did not happen.',
+              icon: 'camera',
+              status: 'earned',
+              awarded_at: '2026-11-12T00:00:01+00:00',
+              pending_lock_at: null,
+            },
+            {
+              key: 'clean_sheet',
+              name: 'Clean Sheet',
+              how_earned: 'A perfect week',
+              line: 'Every session.',
+              icon: 'check-circle',
+              status: 'pending',
+              awarded_at: null,
+              pending_lock_at: '2026-11-25T16:00:00+00:00',
+            },
+            { key: 'broken' },
+            {
+              key: 'dynasty',
+              name: 'Dynasty',
+              how_earned: 'Weekly winner 3 times',
+              line: 'Three crowns.',
+              icon: 'crown',
+              status: 'weird',
+            },
+          ],
+          streaks: [
+            { commitment_id: 'c1', activity_name: 'Gym', current_streak: 0, back_to_zero: true },
+            { activity_name: 'no id' },
+          ],
+          plan: [{ activity_name: 'Gym', schedule_type: 'times_per_week', days: null, target: 3 }],
+          task_count: 1,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getMemberProfile('g1', 'u1')).toEqual({
+      displayName: 'Ada',
+      avatarPath: null,
+      isCurrentMember: true,
+      allTimePoints: 1284,
+      titleKey: 'regular',
+      timeZone: 'Asia/Manila',
+      badges: [
+        {
+          key: 'first_proof',
+          name: 'First Proof',
+          howEarned: 'Your first check-in',
+          line: 'Pics or it did not happen.',
+          icon: 'camera',
+          status: 'earned',
+          awardedAt: '2026-11-12T00:00:01+00:00',
+          pendingLockAt: null,
+        },
+        {
+          key: 'clean_sheet',
+          name: 'Clean Sheet',
+          howEarned: 'A perfect week',
+          line: 'Every session.',
+          icon: 'check-circle',
+          status: 'pending',
+          awardedAt: null,
+          pendingLockAt: '2026-11-25T16:00:00+00:00',
+        },
+        {
+          key: 'dynasty',
+          name: 'Dynasty',
+          howEarned: 'Weekly winner 3 times',
+          line: 'Three crowns.',
+          icon: 'crown',
+          status: 'locked',
+          awardedAt: null,
+          pendingLockAt: null,
+        },
+      ],
+      streaks: [{ commitmentId: 'c1', activityName: 'Gym', currentStreak: 0, backToZero: true }],
+      plan: [{ activityName: 'Gym', scheduleType: 'times_per_week', days: null, target: 3 }],
+      taskCount: 1,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_member_profile', {
+      p_group_id: 'g1',
+      p_user_id: 'u1',
+    })
+  })
+
+  it('get_member_profile with no row (never in the group) is null; not_member rejects', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await adapter.getMemberProfile('g1', 'nobody')).toBeNull()
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'not_member', details: '', hint: '' },
+      status: 400,
+    })
+    await expect(adapter.getMemberProfile('g1', 'u1')).rejects.toMatchObject({ code: 'not_member' })
+  })
+
+  it('listTitles reads the ladder lowest first', async () => {
+    db.query.order.mockResolvedValueOnce({
+      data: [
+        { key: 'couch_potato', name: 'Couch Potato', min_points: 0 },
+        { key: 'warming_up', name: 'Warming Up', min_points: 300 },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.listTitles()).toEqual([
+      { key: 'couch_potato', name: 'Couch Potato', minPoints: 0 },
+      { key: 'warming_up', name: 'Warming Up', minPoints: 300 },
+    ])
+    expect(db.from).toHaveBeenCalledWith('titles')
+    expect(db.query.order).toHaveBeenLastCalledWith('min_points', { ascending: true })
+  })
+})
+
 describe('feed reads', () => {
   const NEWER = feedRow({ item_id: 'c-new', sort_at: '2026-11-20T08:00:00+00:00' })
   const OLDER = feedRow({ item_id: 'c-old', sort_at: '2026-11-20T07:00:00+00:00' })
@@ -2093,6 +2228,17 @@ describe('feed reads', () => {
     expect(db.query.order).toHaveBeenNthCalledWith(2, 'item_id', { ascending: false })
     expect(db.query.limit).toHaveBeenCalledWith(20)
     expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+  })
+
+  it("reads a member's latest check-ins (Story 4.6)", async () => {
+    answer([NEWER, OLDER])
+    const items = await adapter.listMemberCheckins('g-1', 'user-1', 12)
+    expect(db.from).toHaveBeenCalledWith('feed_items')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g-1')
+    expect(db.query.eq).toHaveBeenCalledWith('item_kind', 'checkin')
+    expect(db.query.eq).toHaveBeenCalledWith('actor_id', 'user-1')
+    expect(db.query.limit).toHaveBeenCalledWith(12)
+    expect(items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
   })
 
   it('reads older than a cursor', async () => {

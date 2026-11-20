@@ -12,6 +12,7 @@ import {
 import { todayKey } from '@/data/plan'
 import { localPhotoUrl, setPostMoment } from '@/data/post-moment'
 import { streaksKey } from '@/data/streaks'
+import { memberProfileGroupKey } from '@/data/member-profile'
 import { setUploadRunning } from '@/ui/update-guard'
 
 /**
@@ -20,7 +21,7 @@ import { setUploadRunning } from '@/ui/update-guard'
  * window regains focus or becomes visible, and on `online`; its own backoff timer and new entries
  * wake it too. While it uploads or posts, the "Update ready" toast waits (`setUploadRunning`). Each
  * accepted send plays the post moment (also a late, background send) and refetches Today, the
- * picker, the Feed, the board and the streaks of its group.
+ * picker, the Feed, the board, the streaks and the profiles of its group.
  */
 export function OutboxHost({ userId, children }: { userId: string; children: ReactNode }) {
   const queryClient = useQueryClient()
@@ -62,6 +63,8 @@ export function OutboxHost({ userId, children }: { userId: string; children: Rea
     void queryClient.invalidateQueries({ queryKey: groupWeekKey(entry.groupId) })
     // Streaks (Story 4.2): the refetch shows the kept session's +1.
     void queryClient.invalidateQueries({ queryKey: streaksKey(entry.groupId) })
+    // Profiles (Story 4.6): a met criterion shows its pending seal.
+    void queryClient.invalidateQueries({ queryKey: memberProfileGroupKey(entry.groupId) })
   }
 
   const outbox = useCheckinOutboxForUser(userId, { onSent, onRunningChange: setUploadRunning })

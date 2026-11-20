@@ -29,6 +29,9 @@ export interface WinnerWeek {
   winnerUserIds: string[]
   /** Winners first (by name), then the other top-three ranks. */
   podium: WinnerPodiumMember[]
+  /** The Weekly Winner badge's name and line, from the `badges` catalog. */
+  badgeName: string
+  badgeLine: string
 }
 
 export const WINNER_COPY = {
@@ -36,8 +39,6 @@ export const WINNER_COPY = {
   headingMany: "Last week's winners",
   nice: 'Nice',
   fine: 'Fine.',
-  badgeName: 'Weekly Winner',
-  badgeLine: 'Top of the board. Enjoy it while it lasts.',
   podium: "Last week's podium",
   each: 'each',
   kicker: 'Weekly winner',
@@ -96,7 +97,7 @@ export function winnerLine(week: WinnerWeek, viewerId: string): string {
   const winners = winnersOf(week)
   const only = winners.length === 1 ? winners[0] : undefined
   if (only && only.userId !== viewerId) return beatLine(only.displayName)
-  return WINNER_COPY.badgeLine
+  return week.badgeLine
 }
 
 /** What the show-once rule needs to know. */

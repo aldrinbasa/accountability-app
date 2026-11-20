@@ -5,7 +5,14 @@ import { AppShell } from '@/app/shell/app-shell'
 import { TodayScreen } from '@/app/screens/today'
 import { Sheet } from '@/ui/sheet'
 import { useState } from 'react'
-import { createFakeBackend, renderRoutes, TEST_GROUP, withBackend } from '@/test/fake-backend'
+import {
+  boardRow,
+  createFakeBackend,
+  renderRoutes,
+  TEST_GROUP,
+  testBoard,
+  withBackend,
+} from '@/test/fake-backend'
 import { feedCheckin } from '@/test/feed-items'
 import { waitForGroupInUrl } from '@/test/router'
 
@@ -116,6 +123,113 @@ describe('bottom nav', () => {
     await user.click(await screen.findByRole('link', { name: 'My plan' }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
 
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+  })
+
+  function renderWithBoard() {
+    const board = testBoard({
+      rows: [
+        boardRow({ userId: 'user-marco', displayName: 'Marco', weeklyPoints: 90, rank: 1 }),
+        boardRow({ userId: 'user-1', displayName: 'Jo', weeklyPoints: 80, rank: 2 }),
+      ],
+    })
+    return renderRoutes(
+      ['/today'],
+      createFakeBackend(undefined, { board: { [TEST_GROUP.id]: board } }),
+    ).router
+  }
+
+  async function openProfileFromBoard(
+    user: ReturnType<typeof userEvent.setup>,
+    router: ReturnType<typeof renderWithBoard>,
+  ) {
+    await user.click(tab('Board'))
+    await user.click(await screen.findByRole('link', { name: /^Marco, rank 1/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/board/m/user-marco'))
+  }
+
+  it('Today from a member profile pushed from the Board goes back past the Board (Story 4.6)', async () => {
+    const user = userEvent.setup()
+    const router = renderWithBoard()
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+    await openProfileFromBoard(user, router)
+
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(router.state.historyAction).toBe('POP')
+    await user.click(tab('Board'))
+    expect(router.state.historyAction).toBe('PUSH')
+  })
+
+  it('the Board tab on a member profile goes back to the Board; after a tab switch too (Story 4.6)', async () => {
+    const user = userEvent.setup()
+    const router = renderWithBoard()
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+    await openProfileFromBoard(user, router)
+    await user.click(tab('Board'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/board'))
+    expect(router.state.historyAction).toBe('POP')
+
+    await user.click(await screen.findByRole('link', { name: /^Marco, rank 1/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/board/m/user-marco'))
+    await user.click(tab('Feed'))
+    expect(router.state.location.pathname).toBe('/feed')
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(router.state.historyAction).toBe('POP')
+  })
+
+  it('a profile opened from a Board that replaced My plan: Me goes back to Me, Today to Today (Story 4.6)', async () => {
+    const user = userEvent.setup()
+    const router = renderWithBoard()
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+    await user.click(tab('Me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    await openProfileFromBoard(user, router)
+
+    await user.click(tab('Me'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(router.state.historyAction).toBe('POP')
+  })
+
+  it('a tab picked on a member profile replaces the Board entry, so Me and its pushed screens unwind to Today (Story 4.6)', async () => {
+    const user = userEvent.setup()
+    const router = renderWithBoard()
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+    await openProfileFromBoard(user, router)
+
+    await user.click(tab('Me'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    await user.click(tab('Me'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    expect(router.state.historyAction).toBe('POP')
+    await user.click(tab('Today'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
+    expect(router.state.historyAction).toBe('POP')
+  })
+
+  it("the viewer's own row on a Board that replaced My plan goes back to the Me entry (Story 4.6)", async () => {
+    const user = userEvent.setup()
+    const router = renderWithBoard()
+    await screen.findByRole('heading', { level: 1 })
+    await waitForGroupInUrl(router)
+    await user.click(tab('Me'))
+    await user.click(await screen.findByRole('link', { name: 'My plan' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me/plan'))
+    await user.click(tab('Board'))
+    await user.click(await screen.findByRole('link', { name: /^Jo, rank 2/ }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/me'))
+    expect(router.state.historyAction).toBe('POP')
     await user.click(tab('Today'))
     await waitFor(() => expect(router.state.location.pathname).toBe('/today'))
   })

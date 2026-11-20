@@ -5,6 +5,7 @@ import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-rou
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { Board, BoardRow, GroupWeek } from '@/domain/board'
+import type { MemberProfile, ProfileBadge, Title } from '@/domain/badges'
 import type { Streak } from '@/domain/streaks'
 import type {
   CheckinPhotoSize,
@@ -179,6 +180,70 @@ export function testBoard(board: Partial<Board> = {}): Board {
   }
 }
 
+/** The 15 catalog badges (key, name, icon) in display order, as the migration seeds them. */
+const CATALOG: readonly [string, string, string][] = [
+  ['first_proof', 'First Proof', 'camera'],
+  ['hat_trick', 'Hat Trick', 'fire'],
+  ['on_a_roll', 'On a Roll', 'fire-simple'],
+  ['unbreakable', 'Unbreakable', 'shield-check'],
+  ['clean_sheet', 'Clean Sheet', 'check-circle'],
+  ['back_to_back', 'Back-to-Back', 'checks'],
+  ['monthly_machine', 'Monthly Machine', 'calendar-check'],
+  ['comeback', 'Comeback', 'arrow-fat-up'],
+  ['weekly_winner', 'Weekly Winner', 'trophy'],
+  ['dynasty', 'Dynasty', 'crown'],
+  ['team_player', 'Team Player', 'users-three'],
+  ['fair_judge', 'Fair Judge', 'gavel'],
+  ['early_bird', 'Early Bird', 'sun-horizon'],
+  ['night_owl', 'Night Owl', 'moon-stars'],
+  ['task_slayer', 'Task Slayer', 'list-checks'],
+]
+
+/**
+ * The 15 badges, all locked, with test copy ("How {name} is earned", "{name} line"); `overrides`
+ * per key set status, dates or copy.
+ */
+export function testBadges(overrides: Record<string, Partial<ProfileBadge>> = {}): ProfileBadge[] {
+  return CATALOG.map(([key, name, icon]) => ({
+    key,
+    name,
+    howEarned: `How ${name} is earned`,
+    line: `${name} line`,
+    icon,
+    status: 'locked',
+    awardedAt: null,
+    pendingLockAt: null,
+    ...overrides[key],
+  }))
+}
+
+/** A current member's profile: no points (Couch Potato), all badges locked, no streaks or plan. */
+export function testMemberProfile(profile: Partial<MemberProfile> = {}): MemberProfile {
+  return {
+    displayName: TEST_PROFILE.displayName,
+    avatarPath: null,
+    isCurrentMember: true,
+    allTimePoints: 0,
+    titleKey: 'couch_potato',
+    timeZone: TEST_GROUP.timeZone,
+    badges: testBadges(),
+    streaks: [],
+    plan: [],
+    taskCount: 0,
+    ...profile,
+  }
+}
+
+/** The title ladder the migration seeds. */
+export const TEST_TITLES: Title[] = [
+  { key: 'couch_potato', name: 'Couch Potato', minPoints: 0 },
+  { key: 'warming_up', name: 'Warming Up', minPoints: 300 },
+  { key: 'regular', name: 'Regular', minPoints: 1000 },
+  { key: 'grinder', name: 'Grinder', minPoints: 2500 },
+  { key: 'machine', name: 'Machine', minPoints: 5000 },
+  { key: 'legend', name: 'Legend', minPoints: 10000 },
+]
+
 /**
  * The fake's pro-rated last week: ISO weekday of the end date (Monday = 1) as the days of that week.
  * Test-only stand-in for the server's rule.
@@ -281,6 +346,11 @@ export function createFakeBackend(
      */
     winnerWeeks?: Record<string, WinnerWeek>
     /**
+     * `get_member_profile` per `{groupId}:{userId}` (default: the signed-in member of a group they
+     * are in gets `testMemberProfile()`; anyone else null).
+     */
+    memberProfiles?: Record<string, MemberProfile | null>
+    /**
      * The server clock for `setTimeZone` (ISO instant). Default `2026-11-18T12:00:00Z`, the day of
      * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
      */
@@ -328,6 +398,7 @@ export function createFakeBackend(
   const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
   const streaks: Record<string, Streak[]> = { ...options.streaks }
   const winnerWeeks: Record<string, WinnerWeek> = { ...options.winnerWeeks }
+  const memberProfiles: Record<string, MemberProfile | null> = { ...options.memberProfiles }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -696,6 +767,26 @@ export function createFakeBackend(
         .sort(([a], [b]) => (a < b ? 1 : -1))[0]
       return latest ? latest[1] : null
     }),
+    getMemberProfile: vi.fn(async (groupId: string, userId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      const key = `${groupId}:${userId}`
+      if (key in memberProfiles) return memberProfiles[key] ?? null
+      return userId === user?.id
+        ? testMemberProfile({ displayName: profile?.displayName ?? '' })
+        : null
+    }),
+    listTitles: vi.fn(async () => [...TEST_TITLES]),
+    // The member's check-ins in the fake feed, newest first.
+    listMemberCheckins: vi.fn(async (groupId: string, userId: string, limit: number) =>
+      groups.some((group) => group.id === groupId)
+        ? (feed[groupId] ?? [])
+            .filter(
+              (item): item is FeedCheckin => item.type === 'checkin' && item.authorId === userId,
+            )
+            .sort((a, b) => -compareFeed(cursorOf(a), cursorOf(b)))
+            .slice(0, limit)
+        : [],
+    ),
     // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
     listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {
       const all = groups.some((group) => group.id === groupId)

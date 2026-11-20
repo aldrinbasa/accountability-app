@@ -22,6 +22,7 @@ import { claimSheet, releaseSheet, type SheetHandle } from '@/ui/sheet-history'
 import { MemberAvatar } from '@/features/me/member-avatar'
 import { PodiumStand } from '@/features/board/podium'
 import { PODIUM_PLACE } from '@/features/board/podium-place'
+import { badgeIcon, WEEKLY_WINNER_ICON } from '@/features/profile/badge-icons'
 
 /** One podium place on the card: crown on 1st, the avatars side by side, names, then the block. */
 function WinnerPlace({ block }: { block: WinnerPodiumBlock }) {
@@ -154,7 +155,7 @@ export function WinnerCard({ week, viewerId, onClose }: WinnerCardProps) {
                   </span>
                 </p>
               </div>
-              <BadgeSeal icon={Crown} name={WINNER_COPY.badgeName} size={120} />
+              <BadgeSeal icon={badgeIcon(WEEKLY_WINNER_ICON)} name={week.badgeName} size={120} />
               <p className="type-hand-lg">{winnerLine(week, viewerId)}</p>
               <Button variant="secondary" onClick={onClose}>
                 {winnerButtonLabel(week, viewerId)}

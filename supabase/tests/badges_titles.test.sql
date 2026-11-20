@@ -11,7 +11,7 @@
 -- read the clock get their search_path pointed at test_overrides.
 begin;
 set local timezone = 'UTC';
-select plan(53);
+select plan(54);
 
 select tests.create_supabase_user('boss');
 select tests.create_supabase_user('alice');
@@ -429,12 +429,18 @@ select private.ensure_group_week(g.id, w.week)
 from (values (current_setting('test.g1')::uuid), (current_setting('test.g3')::uuid)) g(id)
 cross join (values ('2026-11-09'::date), ('2026-11-16'::date), ('2026-11-23'::date)) w(week);
 
+-- alice already won two earlier weeks: her third win at P earns Dynasty at the same lock.
+insert into public.badge_awards (group_id, membership_id, user_id, badge_key, week_start, awarded_at)
+select current_setting('test.g1')::uuid, pg_temp.mid('alice', 'g1'), tests.get_supabase_uid('alice'),
+       'weekly_winner', w, w + 10
+from (values ('2026-10-26'::date), ('2026-11-02')) v(w);
+
 -- Before P locks (Wed 18 Nov): alice's P badges are pending, with P's lock.
 select tests.authenticate_as('alice');
 select is(
   pg_temp.statuses('g1', 'alice', array['first_proof', 'clean_sheet', 'hat_trick', 'weekly_winner', 'task_slayer']),
-  'first_proof:pending,hat_trick:pending,clean_sheet:pending,weekly_winner:locked,task_slayer:locked',
-  'before the lock: met badges are pending, Weekly Winner and unmet ones locked'
+  'first_proof:pending,hat_trick:pending,clean_sheet:pending,weekly_winner:earned,task_slayer:locked',
+  'before the lock: met badges are pending, unmet ones locked, earlier wins earned'
 );
 select is(
   (select b ->> 'pending_lock_at'
@@ -444,14 +450,27 @@ select is(
   '2026-11-19 00:00:00+00'::timestamptz,
   'a pending badge carries the lock of the earliest unlocked week that meets it'
 );
+-- bob changes his plan from next week: this week's plan still reads the version in effect now.
 reset role;
-select is(pg_temp.earned('alice', 'g1'), '', 'no award before the lock');
+insert into public.commitment_versions (commitment_id, group_id, effective_week_start, days, target)
+values (current_setting('test.b')::uuid, current_setting('test.g1')::uuid, '2026-11-23', null, 3);
+select tests.authenticate_as('alice');
+select is(
+  (select gp.plan::text || '|' || gp.task_count
+   from public.get_member_profile(current_setting('test.g1')::uuid, tests.get_supabase_uid('bob')) gp),
+  '[{"days": null, "target": 1, "activity_name": "Gym", "schedule_type": "times_per_week"}]|0',
+  'the profile''s plan: the current week''s commitments with their version, and the task count'
+);
+reset role;
+select is(pg_temp.earned('alice', 'g1'), 'weekly_winner@2026-10-26,weekly_winner@2026-11-02',
+  'no criteria award before the lock');
 
 select tests.freeze_time('2026-11-19 00:00:01+00');
 select is(private.lock_due_weeks(), null::text, 'P locks without an error');
 select is(pg_temp.earned('alice', 'g1'),
-  'clean_sheet@2026-11-09,first_proof@2026-11-09,hat_trick@2026-11-09,weekly_winner@2026-11-09',
-  'alice at P: First Proof, Hat Trick, Clean Sheet and the Weekly Winner badge');
+  'clean_sheet@2026-11-09,dynasty@2026-11-09,first_proof@2026-11-09,hat_trick@2026-11-09,'
+  || 'weekly_winner@2026-10-26,weekly_winner@2026-11-02,weekly_winner@2026-11-09',
+  'alice at P: First Proof, Hat Trick, Clean Sheet, a third Weekly Winner and Dynasty at the same lock');
 select is(pg_temp.earned('bob', 'g1'),
   'back_to_back@2026-11-09,clean_sheet@2026-11-09,first_proof@2026-11-09,hat_trick@2026-11-09,weekly_winner@2026-11-09',
   'bob at P (3 target-met weeks, the week before perfect too): Back-to-Back as well, co-winner on 100');
@@ -460,7 +479,8 @@ select is(pg_temp.earned('frank', 'g3'), 'clean_sheet@2026-11-09,first_proof@202
   'a solo week awards plan badges, never Weekly Winner');
 select is(
   (select pg_catalog.count(*)::integer from public.badge_awards a
-   where a.group_id = current_setting('test.g1')::uuid and a.awarded_at <> '2026-11-19 00:00:01+00'),
+   where a.group_id = current_setting('test.g1')::uuid and a.week_start = '2026-11-09'
+     and a.awarded_at <> '2026-11-19 00:00:01+00'),
   0, 'awards are stamped with the lock time'
 );
 
@@ -477,9 +497,10 @@ select pg_temp.daily(current_setting('test.a')::uuid, '2026-11-22', 7);
 select tests.freeze_time('2026-11-26 00:00:01+00');
 select is(private.lock_due_weeks(), null::text, 'W locks without an error');
 select is(pg_temp.earned('alice', 'g1'),
-  'back_to_back@2026-11-16,clean_sheet@2026-11-09,first_proof@2026-11-09,hat_trick@2026-11-09,'
-  || 'on_a_roll@2026-11-16,weekly_winner@2026-11-09,weekly_winner@2026-11-16',
-  'alice at W: Back-to-Back and On a Roll (14) are new; Clean Sheet is not earned twice; a second Weekly Winner');
+  'back_to_back@2026-11-16,clean_sheet@2026-11-09,dynasty@2026-11-09,first_proof@2026-11-09,'
+  || 'hat_trick@2026-11-09,on_a_roll@2026-11-16,weekly_winner@2026-10-26,weekly_winner@2026-11-02,'
+  || 'weekly_winner@2026-11-09,weekly_winner@2026-11-16',
+  'alice at W: Back-to-Back and On a Roll (14) are new; Clean Sheet is not earned twice; a fourth Weekly Winner');
 select is(pg_temp.earned('bob', 'g1'),
   'back_to_back@2026-11-09,clean_sheet@2026-11-09,first_proof@2026-11-09,hat_trick@2026-11-09,weekly_winner@2026-11-09',
   'bob missed W (streak back to 0): Hat Trick stays (never revoked), nothing new');
@@ -492,7 +513,7 @@ select is(private.lock_week(current_setting('test.g1')::uuid, '2026-11-16'), fal
   'a re-run on W is a no-op');
 select is(
   (select pg_catalog.count(*)::integer from public.badge_awards where group_id = current_setting('test.g1')::uuid),
-  12, 're-runs add no award'
+  15, 're-runs add no award'
 );
 
 -- ===== An unscored week (nobody current at its lock): no award =====

@@ -13,6 +13,13 @@ import {
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
 import type { Board, BoardRow, GroupWeek, PlanItem } from '@/domain/board'
+import type {
+  BadgeStatus,
+  MemberProfile,
+  ProfileBadge,
+  ProfileStreak,
+  Title,
+} from '@/domain/badges'
 import type { Streak } from '@/domain/streaks'
 import {
   checkinPhotoPath,
@@ -584,6 +591,72 @@ export function toWinnerWeek(rows: readonly WinnerRpcRow[]): WinnerWeek | null {
             },
           ],
     ),
+    badgeName: first.badge_name ?? '',
+    badgeLine: first.badge_line ?? '',
+  }
+}
+
+type MemberProfileRow = Database['public']['Functions']['get_member_profile']['Returns'][number]
+
+function isBadgeStatus(value: unknown): value is BadgeStatus {
+  return value === 'earned' || value === 'pending' || value === 'locked'
+}
+
+/** `get_member_profile`'s `badges` jsonb in catalog order; malformed entries are dropped. */
+export function toProfileBadges(value: unknown): ProfileBadge[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): ProfileBadge[] => {
+    if (!isRecord(item) || typeof item.key !== 'string' || typeof item.name !== 'string') return []
+    return [
+      {
+        key: item.key,
+        name: item.name,
+        howEarned: typeof item.how_earned === 'string' ? item.how_earned : '',
+        line: typeof item.line === 'string' ? item.line : '',
+        icon: typeof item.icon === 'string' ? item.icon : '',
+        status: isBadgeStatus(item.status) ? item.status : 'locked',
+        awardedAt: typeof item.awarded_at === 'string' ? item.awarded_at : null,
+        pendingLockAt: typeof item.pending_lock_at === 'string' ? item.pending_lock_at : null,
+      },
+    ]
+  })
+}
+
+/** `get_member_profile`'s `streaks` jsonb; malformed entries are dropped. */
+export function toProfileStreaks(value: unknown): ProfileStreak[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): ProfileStreak[] =>
+    isRecord(item) && typeof item.commitment_id === 'string'
+      ? [
+          {
+            commitmentId: item.commitment_id,
+            activityName: typeof item.activity_name === 'string' ? item.activity_name : '',
+            currentStreak: typeof item.current_streak === 'number' ? item.current_streak : 0,
+            backToZero: item.back_to_zero === true,
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * The `get_member_profile` row as a profile, or null without a row (someone never in the group).
+ * The generated type misses the nullable columns.
+ */
+export function toMemberProfile(rows: readonly MemberProfileRow[]): MemberProfile | null {
+  const row = rows[0]
+  if (!row) return null
+  return {
+    displayName: row.display_name ?? '',
+    avatarPath: row.avatar_path ?? null,
+    isCurrentMember: row.is_current_member ?? false,
+    allTimePoints: row.all_time_points ?? 0,
+    titleKey: row.title_key ?? null,
+    timeZone: row.time_zone ?? null,
+    badges: toProfileBadges(row.badges),
+    streaks: toProfileStreaks(row.streaks),
+    plan: toPlanItems(row.plan),
+    taskCount: row.task_count ?? 0,
   }
 }
 
@@ -1263,6 +1336,45 @@ export const supabaseBackendAdapter: BackendPort = {
     })
     if (error) throw toBackendError(error, status)
     return toWinnerWeek(data ?? [])
+  },
+
+  async getMemberProfile(groupId, userId) {
+    const { data, error, status } = await supabase.rpc('get_member_profile', {
+      p_group_id: groupId,
+      p_user_id: userId,
+    })
+    if (error) throw toBackendError(error, status)
+    return toMemberProfile(data ?? [])
+  },
+
+  async listTitles() {
+    const { data, error, status } = await supabase
+      .from('titles')
+      .select('key, name, min_points')
+      .order('min_points', { ascending: true })
+    if (error) throw toBackendError(error, status)
+    return (data ?? []).map((row): Title => ({
+      key: row.key,
+      name: row.name,
+      minPoints: row.min_points,
+    }))
+  },
+
+  async listMemberCheckins(groupId, userId, limit) {
+    const { data, error, status } = await supabase
+      .from('feed_items')
+      .select(FEED_COLUMNS)
+      .eq('group_id', groupId)
+      .eq('item_kind', 'checkin')
+      .eq('actor_id', userId)
+      .order('sort_at', { ascending: false })
+      .order('item_id', { ascending: false })
+      .limit(limit)
+    if (error) throw toBackendError(error, status)
+    return (data ?? []).flatMap((row): FeedCheckin[] => {
+      const item = toFeedItem(row)
+      return item?.type === 'checkin' ? [item] : []
+    })
   },
 
   async getStreaks(groupId) {

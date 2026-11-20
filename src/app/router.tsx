@@ -8,6 +8,7 @@ import { BoardScreen } from '@/app/screens/board'
 import { MeScreen } from '@/app/screens/me'
 import { SettingsScreen } from '@/app/screens/settings'
 import { WinnerScreen } from '@/app/screens/winner'
+import { MemberProfileScreen } from '@/app/screens/member-profile'
 import { CodeScreen } from '@/features/auth/code-screen'
 import { SignInScreen } from '@/features/auth/sign-in-screen'
 import { JoinScreen } from '@/features/group/join-screen'
@@ -52,6 +53,8 @@ export const routes: RouteObject[] = [
           // A check-in deep link: the Feed anchored on that polaroid (Story 3.4).
           { path: 'feed/c/:checkinId', element: <FeedScreen /> },
           { path: 'board', element: <BoardScreen /> },
+          // A member's profile in the group (Story 4.6), pushed from the Board.
+          { path: 'board/m/:userId', element: <MemberProfileScreen /> },
           // The Winner card deep link (Story 4.5), over the Feed.
           { path: 'winner/:weekStart', element: <WinnerScreen /> },
           { path: 'me', element: <MeScreen /> },

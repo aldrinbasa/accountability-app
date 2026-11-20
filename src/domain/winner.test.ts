@@ -35,6 +35,8 @@ function week(podium: WinnerPodiumMember[], overrides: Partial<WinnerWeek> = {})
     ranked: true,
     winnerUserIds: podium.filter((m) => m.isWinner).map((m) => m.userId),
     podium,
+    badgeName: 'Weekly Winner',
+    badgeLine: 'Top of the board. Enjoy it while it lasts.',
     ...overrides,
   }
 }

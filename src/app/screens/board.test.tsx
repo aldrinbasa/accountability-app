@@ -95,10 +95,15 @@ describe('Board (Story 4.3)', () => {
     expect(places[1]).toHaveTextContent(
       'Jo, rank 2, 81 weekly points, Gym 3x · Study MWF · 1 task, best current streak 6.',
     )
-    // Dev and Lena share the 3rd block, by name, each read with their misses.
-    expect(places[2]).toHaveTextContent(
-      'Dev, rank 3, 74 weekly points, 2 misses this week. Lena, rank 3, 74 weekly points, 1 miss this week.',
-    )
+    // Dev and Lena share the 3rd block, by name, each read with their misses, each a profile link.
+    expect(
+      within(places[2]!)
+        .getAllByRole('link')
+        .map((link) => [link.getAttribute('href')?.split('?')[0], link.textContent?.split('.')[0]]),
+    ).toEqual([
+      ['/board/m/user-dev', 'Dev, rank 3, 74 weekly points, 2 misses this week'],
+      ['/board/m/user-lena', 'Lena, rank 3, 74 weekly points, 1 miss this week'],
+    ])
     expect(within(places[2]!).getAllByText('74')).toHaveLength(1)
     // The flame: small Streak counter with the best streak, hidden at 0.
     expect(within(places[1]!).getByRole('img', { hidden: true, name: 'Best current streak 6' }))
@@ -325,9 +330,14 @@ describe('Board week lock (Story 4.4)', () => {
       await screen.findByRole('list', { name: "Last week's podium" }),
     ).getAllByRole('listitem')
     expect(places.map((place) => place.getAttribute('data-place'))).toEqual(['1', '3'])
-    expect(places[0]).toHaveTextContent(
-      /^Jo, rank 1, weekly winner, 90 weekly points.* Marco, rank 1, weekly winner, 90 weekly points/,
-    )
+    expect(
+      within(places[0]!)
+        .getAllByRole('link')
+        .map((link) => link.textContent),
+    ).toEqual([
+      expect.stringMatching(/^Jo, rank 1, weekly winner, 90 weekly points/),
+      expect.stringMatching(/^Marco, rank 1, weekly winner, 90 weekly points/),
+    ])
     expect(places[1]).toHaveTextContent(/^Dev, rank 3, 74 weekly points/)
   })
 
