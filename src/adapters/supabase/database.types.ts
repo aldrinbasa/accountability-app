@@ -247,16 +247,42 @@ isOneToOne: false
       referencedColumns: ["key"]
     }
                   ]
-                },"group_week_results": {
+                },"group_goals": {
                   Row: {
-                    "created_at": string,"goal_average": number | null,"goal_hit": boolean | null,"goal_period": string | null,"goal_target": number | null,"group_id": string,"id": string,"ranked": boolean,"scored": boolean,"updated_at": string,"week_start": string,"winner_user_ids": (string)[]
+                    "created_at": string,"created_by": string,"effective_week_start": string,"group_id": string,"id": string,"period": string,"target_pct": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"goal_average"?: number | null,"goal_hit"?: boolean | null,"goal_period"?: string | null,"goal_target"?: number | null,"group_id": string,"id"?: string,"ranked"?: boolean,"scored": boolean,"updated_at"?: string,"week_start": string,"winner_user_ids"?: (string)[]
+                    "created_at"?: string,"created_by": string,"effective_week_start": string,"group_id": string,"id"?: string,"period": string,"target_pct": number,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"goal_average"?: number | null,"goal_hit"?: boolean | null,"goal_period"?: string | null,"goal_target"?: number | null,"group_id"?: string,"id"?: string,"ranked"?: boolean,"scored"?: boolean,"updated_at"?: string,"week_start"?: string,"winner_user_ids"?: (string)[]
+                    "created_at"?: string,"created_by"?: string,"effective_week_start"?: string,"group_id"?: string,"id"?: string,"period"?: string,"target_pct"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "group_goals_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_goals_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"group_week_results": {
+                  Row: {
+                    "created_at": string,"goal_average": number | null,"goal_hit": boolean | null,"goal_period": string | null,"goal_result_average": number | null,"goal_target": number | null,"group_id": string,"id": string,"ranked": boolean,"scored": boolean,"updated_at": string,"week_start": string,"winner_user_ids": (string)[]
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"goal_average"?: number | null,"goal_hit"?: boolean | null,"goal_period"?: string | null,"goal_result_average"?: number | null,"goal_target"?: number | null,"group_id": string,"id"?: string,"ranked"?: boolean,"scored": boolean,"updated_at"?: string,"week_start": string,"winner_user_ids"?: (string)[]
+                  }
+                  Update: {
+                    "created_at"?: string,"goal_average"?: number | null,"goal_hit"?: boolean | null,"goal_period"?: string | null,"goal_result_average"?: number | null,"goal_target"?: number | null,"group_id"?: string,"id"?: string,"ranked"?: boolean,"scored"?: boolean,"updated_at"?: string,"week_start"?: string,"winner_user_ids"?: (string)[]
                   }
                   Relationships: [
                     {
@@ -643,6 +669,11 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"get_group_goal":
+{ Args: { "p_group_id": string }; Returns: {
+              "contributions": Json,"last_result": Json,"live_average": number,"member_count": number,"month_average": number,"month_weeks": Json,"period": string,"target_pct": number,"week_start": string
+            }[]
+                           },
 "get_group_week":
 { Args: { "p_group_id": string }; Returns: {
               "lock_at": string,"week_start": string
@@ -727,6 +758,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"set_group_goal":
+{ Args: { "p_group_id": string,"p_period": string,"p_target_pct": number }; Returns: undefined
+                           },
 "set_time_zone":
 { Args: { "p_group_id"?: string,"p_time_zone": string }; Returns: {
               "pending_time_zone": string,"pending_week_start": string,"time_zone": string
