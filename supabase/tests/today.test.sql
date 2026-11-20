@@ -136,7 +136,8 @@ select is(
   (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
-          days, target, counted, deadline, starts_on, can_delete, ord)),
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
   'due_today:Yesterday, this_week:Meditate, this_week:Run, this_week:Yoga',
   'Tuesday: Meditate (2 needed, 3 days left before its Thursday end) is not at risk yet'
 );
@@ -161,7 +162,8 @@ select is(
   (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
-          days, target, counted, deadline, starts_on, can_delete, ord)),
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
   'due_today:Gym, due_today:Meditate, due_today:Grocery run, this_week:Run, this_week:Yoga, this_week:Zoo trip, this_week:Garage, starts_next_week:Read',
   'Wednesday: Gym, Meditate (2 needed, 2 days left before its end) and the task due today are due; tasks later this week by deadline (Zoo trip before Garage, though Garage sorts first by name); Read next week; yesterday''s task is gone'
 );
@@ -267,7 +269,8 @@ select is(
   (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
-          days, target, counted, deadline, starts_on, can_delete, ord)),
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
   'due_today:Gym, due_today:Meditate, due_today:Grocery run, this_week:Run, this_week:Yoga, this_week:Zoo trip, this_week:Garage, starts_next_week:Read',
   'at the same moment a London member still sees Wednesday'
 );
@@ -278,7 +281,8 @@ select is(
   (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
-          days, target, counted, deadline, starts_on, can_delete, ord)),
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
   'due_today:Meditate, this_week:Run, this_week:Yoga, this_week:Zoo trip, this_week:Garage, starts_next_week:Read',
   'Thursday: no Gym (not a Gym day), the passed task is gone, Meditate is due on its last day, Run (3 needed, 4 days left) stays this week'
 );
@@ -289,7 +293,8 @@ select is(
   (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
-          days, target, counted, deadline, starts_on, can_delete, ord)),
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
   'due_today:Gym, due_today:Run, due_today:Zoo trip, this_week:Yoga, this_week:Garage, starts_next_week:Read',
   'Friday: Run (target 3, 0 counted, 3 days left) moves to due today; Yoga (target 2) stays this week; Meditate''s last session has ended and is gone'
 );
@@ -306,7 +311,8 @@ select is(
   (select pg_catalog.string_agg(t.section || ':' || coalesce(t.name, t.activity_name), ', ' order by t.ord)
    from public.get_today_items(current_setting('test.g1')::uuid) with ordinality
      as t(commitment_id, kind, section, preset_key, custom_name, activity_name, name, schedule_type,
-          days, target, counted, deadline, starts_on, can_delete, ord)),
+          days, target, counted, deadline, starts_on, can_delete, done_count, counted_today,
+          target_met, ord)),
   'due_today:Run, due_today:Yoga, due_today:Garage, starts_next_week:Read',
   'Sunday: every open times-per-week row is at risk and the Sunday task is due today'
 );

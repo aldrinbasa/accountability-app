@@ -62,10 +62,10 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
-      - name: Start local Supabase (database + auth only)
+      - name: Start local Supabase (database, auth, storage)
         run: >-
           supabase start
-          -x realtime,storage-api,imgproxy,kong,mailpit,postgrest,studio,edge-runtime,logflare,vector,supavisor
+          -x realtime,imgproxy,kong,mailpit,postgrest,studio,edge-runtime,logflare,vector,supavisor
       # Runs before `supabase test db`, because the pgTAP setup file adds test-only schemas.
       # Only records whether the committed types are stale; pgTAP still runs either way.
       - name: Generate types and compare with the committed file
@@ -129,11 +129,12 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
-      # Keeps kong (API gateway), postgrest, auth (gotrue) and mailpit; the app needs nothing else yet.
-      - name: Start local Supabase (API, auth, database, Mailpit)
+      # Keeps kong (API gateway), postgrest, auth (gotrue), storage-api (check-in photos, Story 3.2) and
+      # mailpit; the app needs nothing else yet.
+      - name: Start local Supabase (API, auth, database, storage, Mailpit)
         run: >-
           supabase start
-          -x realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor
+          -x realtime,imgproxy,studio,edge-runtime,logflare,vector,supavisor
       # The local API URL and anon key are the CLI's fixed local values, not secrets.
       - name: Point the build at the local stack
         run: |
