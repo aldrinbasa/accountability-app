@@ -10,6 +10,11 @@ export interface InlineRetryProps {
   /** Leave out when retrying cannot help (e.g. too late to delete): then no Retry link shows. */
   onRetry?: () => void
   retryLabel?: string
+  /**
+   * On an object (a polaroid frame): `obj-error` outline, `obj-ink` text, the cause stacked over a
+   * `button-on-object` Retry, centered in the box it fills.
+   */
+  onObject?: boolean
   className?: string
 }
 
@@ -23,8 +28,30 @@ export function InlineRetry({
   children,
   onRetry,
   retryLabel = 'Retry',
+  onObject = false,
   className,
 }: InlineRetryProps) {
+  if (onObject) {
+    return (
+      <div
+        role="alert"
+        className={cn(
+          'on-object flex flex-col items-center justify-center gap-2 rounded-wob-sm border-2 border-dashed border-obj-error p-3 text-center type-body-sm text-obj-ink',
+          className,
+        )}
+        data-component="inline-retry"
+        data-on-object=""
+      >
+        <Icon icon={WarningCircle} size={32} tone="obj-error" className="text-obj-error" />
+        <p className="font-extrabold">{children}</p>
+        {onRetry ? (
+          <Button variant="on-object" onClick={onRetry}>
+            {retryLabel}
+          </Button>
+        ) : null}
+      </div>
+    )
+  }
   return (
     <div
       role="alert"

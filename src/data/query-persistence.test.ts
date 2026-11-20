@@ -96,6 +96,19 @@ describe('query client defaults', () => {
       .catch(() => {})
     expect(onRefreshFailed).toHaveBeenCalledTimes(1)
 
+    // A silent background re-mint (signed photo URLs, Story 3.4) never reports.
+    client.setQueryData(['photoUrl', 'g/c/360.webp'], 'https://x')
+    await client
+      .fetchQuery({
+        queryKey: ['photoUrl', 'g/c/360.webp'],
+        queryFn: fail,
+        retry: false,
+        staleTime: 0,
+        meta: { persist: false, silentRefresh: true },
+      })
+      .catch(() => {})
+    expect(onRefreshFailed).toHaveBeenCalledTimes(1)
+
     // Retry refetches that query.
     const refetch = vi.spyOn(client, 'refetchQueries')
     ;(onRefreshFailed.mock.calls[0]?.[0] as () => void)()

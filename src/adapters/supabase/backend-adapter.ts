@@ -21,6 +21,13 @@ import {
 } from '@/domain/checkin'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
+  isFeedEventKind,
+  type FeedCursor,
+  type FeedItem,
+  type FeedRows,
+  type FeedRowsRequest,
+} from '@/domain/feed'
+import {
   isEndReason,
   isInviteStatus,
   type EndedMembership,
@@ -42,7 +49,7 @@ import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
 import type { BackendPort } from '@/ports/backend-port'
-import { supabase } from '@/adapters/supabase/client'
+import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
@@ -487,6 +494,91 @@ export function toPostCheckinArgs(input: PostCheckinInput) {
   }
 }
 
+type FeedItemRow = Tables<'feed_items'>
+
+/** The view's columns, in its order. */
+const FEED_COLUMNS =
+  'group_id, item_kind, item_id, sort_at, actor_id, actor_name, actor_avatar_path, subject_id, subject_name, commitment_id, commitment_kind, activity_name, preset_key, task_name, captured_at, received_at, is_late, is_extra, caption, full_pruned_at, counted_position, target, payload'
+
+/**
+ * One `feed_items` row as a domain item, or null for a kind the app does not render yet (`miss`
+ * until Story 3.5) or a row missing what every item needs.
+ */
+export function toFeedItem(row: FeedItemRow): FeedItem | null {
+  const { item_id: id, group_id: groupId, sort_at: sortAt, item_kind: kind } = row
+  if (!id || !groupId || !sortAt || !kind) return null
+  if (kind === 'checkin') {
+    if (!row.actor_id || !row.commitment_id || !row.captured_at || !row.received_at) return null
+    return {
+      type: 'checkin',
+      id,
+      groupId,
+      sortAt,
+      authorId: row.actor_id,
+      authorName: row.actor_name ?? '',
+      authorAvatarPath: row.actor_avatar_path,
+      commitmentId: row.commitment_id,
+      commitmentKind: row.commitment_kind === 'task' ? 'task' : 'commitment',
+      activityName: row.activity_name ?? row.preset_key ?? '',
+      presetKey: row.preset_key,
+      taskName: row.task_name,
+      capturedAt: row.captured_at,
+      receivedAt: row.received_at,
+      isLate: row.is_late ?? false,
+      isExtra: row.is_extra ?? false,
+      caption: row.caption,
+      fullPrunedAt: row.full_pruned_at,
+      countedPosition: row.counted_position,
+      target: row.target,
+    }
+  }
+  if (!isFeedEventKind(kind)) return null
+  return {
+    type: 'event',
+    kind,
+    id,
+    groupId,
+    sortAt,
+    actorId: row.actor_id,
+    actorName: row.actor_name ?? '',
+    subjectId: row.subject_id,
+    subjectName: row.subject_name,
+  }
+}
+
+function rowCursor(row: FeedItemRow | undefined): FeedCursor | null {
+  return row?.sort_at && row.item_id ? { sortAt: row.sort_at, itemId: row.item_id } : null
+}
+
+/**
+ * Raw `feed_items` rows (newest first) as a page: the mapped items plus the raw count and cursors.
+ */
+export function toFeedRows(rows: readonly FeedItemRow[]): FeedRows {
+  const items: FeedItem[] = []
+  for (const row of rows) {
+    const item = toFeedItem(row)
+    if (item) items.push(item)
+  }
+  return {
+    items,
+    rowCount: rows.length,
+    newest: rowCursor(rows[0]),
+    oldest: rowCursor(rows[rows.length - 1]),
+  }
+}
+
+/**
+ * The PostgREST `or` filter for rows after a cursor in one direction: `lt` for older, `gt` for
+ * newer. The timestamp is quoted (it holds `:` and `+`); ids are UUIDs.
+ */
+export function keysetFilter(cursor: FeedCursor, direction: 'lt' | 'gt'): string {
+  const at = `"${cursor.sortAt}"`
+  return `sort_at.${direction}.${at},and(sort_at.eq.${at},item_id.${direction}.${cursor.itemId})`
+}
+
+/** Signed check-in photo URLs live 10 minutes (AD-9). */
+const PHOTO_URL_TTL_S = 600
+
 interface StorageErrorLike {
   message: string
   /** HTTP status; undefined when the request got no response (the fetch threw). */
@@ -916,5 +1008,52 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'post_checkin returned no row')
     return toPostCheckinResult(row)
+  },
+
+  async listFeed(groupId, request: FeedRowsRequest) {
+    let query = supabase.from('feed_items').select(FEED_COLUMNS).eq('group_id', groupId)
+    const newer = request.after !== undefined
+    if (request.before) query = query.or(keysetFilter(request.before, 'lt'))
+    if (request.after) query = query.or(keysetFilter(request.after, 'gt'))
+    const { data, error, status } = await query
+      .order('sort_at', { ascending: newer })
+      .order('item_id', { ascending: newer })
+      .limit(request.limit)
+    if (error) throw toBackendError(error, status)
+    const rows = data ?? []
+    return toFeedRows(newer ? [...rows].reverse() : rows)
+  },
+
+  async getFeedCheckin(groupId, checkinId) {
+    const { data, error, status } = await supabase
+      .from('feed_items')
+      .select(FEED_COLUMNS)
+      .eq('group_id', groupId)
+      .eq('item_kind', 'checkin')
+      .eq('item_id', checkinId)
+      .maybeSingle()
+    if (error) throw toBackendError(error, status)
+    return data ? toFeedItem(data) : null
+  },
+
+  async signCheckinPhotos(paths) {
+    if (paths.length === 0) return {}
+    const result = await supabase.storage
+      .from(CHECKINS_BUCKET)
+      .createSignedUrls([...paths], PHOTO_URL_TTL_S)
+      .catch((thrown: unknown) => {
+        throw toStorageBackendError(thrown)
+      })
+    if (result.error) throw toStorageBackendError(result.error)
+    const urls: Record<string, string | null> = {}
+    for (const path of paths) urls[path] = null
+    for (const entry of result.data) {
+      if (entry.path && !entry.error && entry.signedUrl) urls[entry.path] = entry.signedUrl
+    }
+    return urls
+  },
+
+  checkinPhotoCacheUrl(path) {
+    return `${supabaseUrl}/storage/v1/object/sign/${CHECKINS_BUCKET}/${path}`
   },
 }

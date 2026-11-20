@@ -11,6 +11,7 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
+import type { FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
@@ -214,6 +215,8 @@ export function createFakeBackend(
      * per test for failures.
      */
     postCheckin?: (input: PostCheckinInput) => PostCheckinResult
+    /** Feed items per group id, any order (the fake sorts newest first). Default none. */
+    feed?: Record<string, FeedItem[]>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -246,6 +249,7 @@ export function createFakeBackend(
       doneCount: 1,
       target: 1,
     }))
+  const feed = options.feed ?? {}
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -534,7 +538,52 @@ export function createFakeBackend(
       if (!groups.some((group) => group.id === input.groupId)) throw new BackendError('not_member')
       return postResult(input)
     }),
+    // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
+    listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {
+      const all = groups.some((group) => group.id === groupId)
+        ? [...(feed[groupId] ?? [])].sort((a, b) => -compareFeed(cursorOf(a), cursorOf(b)))
+        : []
+      let rows: FeedItem[]
+      if (request.before) {
+        const before = request.before
+        rows = all.filter((item) => compareFeed(cursorOf(item), before) < 0).slice(0, request.limit)
+      } else if (request.after) {
+        const after = request.after
+        rows = all.filter((item) => compareFeed(cursorOf(item), after) > 0).slice(-request.limit)
+      } else {
+        rows = all.slice(0, request.limit)
+      }
+      return {
+        items: rows,
+        rowCount: rows.length,
+        newest: rows[0] ? cursorOf(rows[0]) : null,
+        oldest: rows.length > 0 ? cursorOf(rows[rows.length - 1] as FeedItem) : null,
+      }
+    }),
+    getFeedCheckin: vi.fn(async (groupId: string, checkinId: string) => {
+      if (!groups.some((group) => group.id === groupId)) return null
+      return (
+        (feed[groupId] ?? []).find((item) => item.type === 'checkin' && item.id === checkinId) ??
+        null
+      )
+    }),
+    signCheckinPhotos: vi.fn(async (paths: readonly string[]) =>
+      Object.fromEntries(paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/sign/${path}?token=t`])),
+    ),
+    checkinPhotoCacheUrl: vi.fn((path: string) => `${FAKE_PHOTO_ORIGIN}/sign/${path}`),
   }
+}
+
+/** Where the fake's signed photo URLs point. */
+export const FAKE_PHOTO_ORIGIN = 'https://photos.test'
+
+function cursorOf(item: FeedItem): FeedCursor {
+  return { sortAt: item.sortAt, itemId: item.id }
+}
+
+function compareFeed(a: FeedCursor, b: FeedCursor): number {
+  if (a.sortAt !== b.sortAt) return a.sortAt < b.sortAt ? -1 : 1
+  return a.itemId < b.itemId ? -1 : a.itemId > b.itemId ? 1 : 0
 }
 
 /** A fresh query cache per render: no retries' worth of shared state between tests. */

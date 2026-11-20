@@ -1,12 +1,13 @@
 import { useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import { isSheetOpen } from '@/ui/sheet-history'
-import { cameFromToday, isTabPath, TODAY_PATH } from '@/app/shell/tabs'
+import { cameFromToday, tabOf, TODAY_PATH } from '@/app/shell/tabs'
 import { useTabNavigation } from '@/app/shell/use-tab-navigation'
 
 /**
- * Cold start on a non-Today tab: rebuild history as `[/today, /tab]` so system back (Android back,
- * browser back) lands on Today rather than leaving the app.
+ * Cold start on a non-Today tab (or a check-in deep link, shown as the Feed): rebuild history as
+ * `[/today, /tab]` so system back (Android back, browser back) lands on Today rather than leaving
+ * the app.
  */
 export function useColdStartHistory(): void {
   const navigate = useNavigate()
@@ -17,7 +18,8 @@ export function useColdStartHistory(): void {
     if (handled.current) return
     handled.current = true
     const { pathname, search, hash, state } = location
-    if (!isTabPath(pathname) || pathname === TODAY_PATH || cameFromToday(state)) return
+    const tab = tabOf(pathname)
+    if (tab === null || tab === TODAY_PATH || cameFromToday(state)) return
     void (async () => {
       await navigate({ pathname: TODAY_PATH, search }, { replace: true })
       await navigate(
@@ -36,7 +38,7 @@ export function useEscapeToToday(): void {
   const goToTab = useTabNavigation()
 
   useEffect(() => {
-    if (pathname === TODAY_PATH || !isTabPath(pathname)) return
+    if (pathname === TODAY_PATH || tabOf(pathname) === null) return
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing) return
       // Esc while typing belongs to the field (clearing, closing a picker), not to navigation.

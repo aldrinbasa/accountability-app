@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Outlet, ScrollRestoration, useLocation } from 'react-router'
+import { Outlet, ScrollRestoration, useLocation, type Location } from 'react-router'
 import { CloudSlash } from '@phosphor-icons/react'
 import { offlineBannerText } from '@/domain/offline'
 import { useAuthSession } from '@/data/auth-session'
@@ -12,6 +12,7 @@ import { useStaleGroupLink, useSyncFocusedGroup } from '@/features/group/use-foc
 import { CameraHost } from '@/app/camera-host'
 import { OutboxHost } from '@/app/outbox-host'
 import { AppBottomNav } from '@/app/shell/app-bottom-nav'
+import { tabOf, type TabPath } from '@/app/shell/tabs'
 import { useFinishTodayReturn } from '@/app/shell/use-tab-navigation'
 import {
   useColdStartHistory,
@@ -19,8 +20,16 @@ import {
   useFocusHeadingOnRouteChange,
 } from '@/app/shell/use-shell-history'
 
-/** Screens whose top bar carries the group switcher. */
-const SWITCHER_PATHS = new Set(['/today', '/feed', '/board'])
+/** Tabs whose top bar carries the group switcher (a check-in deep link counts as the Feed). */
+const SWITCHER_TABS = new Set<TabPath>(['/today', '/feed', '/board'])
+
+/**
+ * Scroll positions are kept per history entry, except the Feed's: one per group (`feed?g=…`), so
+ * coming back to the tab (tab switches replace entries) restores where the member was.
+ */
+function scrollKey(location: Location): string {
+  return location.pathname === '/feed' ? `feed${location.search}` : location.key
+}
 
 /**
  * "Offline · showing what you had at 07:40." under the top bar on every shell screen while the device
@@ -54,7 +63,9 @@ export function AppShell() {
   // Trailing slashes still match a route (`/today/`), so compare without them.
   const screenPath = pathname.replace(/\/+$/, '') || '/'
   const session = useAuthSession()
-  const stale = useStaleGroupLink(SWITCHER_PATHS.has(screenPath))
+  const shellTab = tabOf(screenPath)
+  const withSwitcher = shellTab !== null && SWITCHER_TABS.has(shellTab)
+  const stale = useStaleGroupLink(withSwitcher)
   useFinishTodayReturn()
   useSyncFocusedGroup(stale !== null)
   useColdStartHistory()
@@ -76,7 +87,7 @@ export function AppShell() {
         <div className="mx-auto flex min-h-dvh w-full max-w-content-max flex-col pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]">
           {/* Top bar: pads the top safe area. The bell joins the switcher in Epic 6. */}
           <header className="paper sticky top-0 z-(--z-top-bar) pt-[env(safe-area-inset-top)]">
-            {SWITCHER_PATHS.has(screenPath) && !stale ? (
+            {withSwitcher && !stale ? (
               <div className="flex px-gutter pt-2 empty:hidden">
                 <GroupSwitcher />
               </div>
@@ -93,7 +104,7 @@ export function AppShell() {
             )}
           </main>
           <AppBottomNav />
-          <ScrollRestoration />
+          <ScrollRestoration getKey={scrollKey} />
         </div>
       </CameraHost>
     </OutboxHost>

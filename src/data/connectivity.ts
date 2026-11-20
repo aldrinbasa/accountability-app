@@ -42,6 +42,8 @@ export function useLastFetchedAt(): number | null {
       for (const query of cache.getAll()) {
         const { data, dataUpdatedAt } = query.state
         if (data === undefined || dataUpdatedAt <= 0 || isOptimistic(query)) continue
+        // Not saved for offline (signed photo URLs): not part of "what you had".
+        if (query.meta?.persist === false) continue
         if (newest === null || dataUpdatedAt > newest) newest = dataUpdatedAt
       }
       return newest

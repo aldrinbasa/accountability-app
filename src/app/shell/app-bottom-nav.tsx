@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react'
 import { useLocation } from 'react-router'
 import { BottomNav, BottomNavItem, CameraButton } from '@/ui/bottom-nav'
-import { LEADING_TABS, TRAILING_TABS, type Tab } from '@/app/shell/tabs'
+import { LEADING_TABS, tabOf, TRAILING_TABS, type Tab } from '@/app/shell/tabs'
 import { useTabNavigation } from '@/app/shell/use-tab-navigation'
 import { useCameraLauncher } from '@/features/camera/camera-launcher'
 
@@ -26,7 +26,7 @@ export function AppBottomNav() {
         href={`${tab.path}${search}`}
         label={tab.label}
         icon={tab.icon}
-        active={pathname === tab.path}
+        active={tabOf(pathname) === tab.path}
         onNavigate={onNavigate}
       />
     )

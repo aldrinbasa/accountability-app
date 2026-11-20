@@ -70,13 +70,16 @@ export function CameraControl({
   icon,
   label,
   onClick,
+  buttonRef,
 }: {
   icon: PhosphorIcon
   label: string
   onClick: () => void
+  buttonRef?: Ref<HTMLButtonElement>
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       aria-label={label}
       onClick={onClick}

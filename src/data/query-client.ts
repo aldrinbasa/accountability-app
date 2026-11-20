@@ -29,12 +29,15 @@ export interface AppQueryClientOptions {
  * blank screen offline (they fail fast instead, no retries while offline), a 14-day `gcTime` to
  * match the persisted cache, silent refetch on reconnect. A failed refresh of a query that still
  * has data, while online, reports through `onRefreshFailed` (network or unexpected errors only: a
- * server answer such as `not_member` is the screen's to handle).
+ * server answer such as `not_member` is the screen's to handle). Queries tagged `meta.silentRefresh`
+ * (Story 3.4's signed photo URLs) never report.
  */
 export function createAppQueryClient(options: AppQueryClientOptions = {}): QueryClient {
   const queryCache = new QueryCache({
     onError: (error, query) => {
       if (query.state.data === undefined || isOffline()) return
+      // Background re-mints (signed photo URLs) fail quietly; the photo box shows its own state.
+      if (query.meta?.silentRefresh === true) return
       const code = backendErrorCode(error)
       if (code !== 'network' && code !== 'unknown') return
       options.onRefreshFailed?.(() => {

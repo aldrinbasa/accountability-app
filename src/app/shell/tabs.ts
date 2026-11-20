@@ -27,6 +27,18 @@ export function isTabPath(pathname: string): pathname is TabPath {
   return TAB_PATHS.has(pathname)
 }
 
+/** `/feed/c/{checkinId}`: a check-in deep link, shown as the Feed tab. */
+const FEED_DEEP_LINK = /^\/feed\/c\/[^/]+\/?$/
+
+/**
+ * The tab a path shows as: the tab itself, or the Feed for a check-in deep link (switcher, active
+ * Feed tab, cold-start history). Null for pushed screens and everything else.
+ */
+export function tabOf(pathname: string): TabPath | null {
+  if (isTabPath(pathname)) return pathname
+  return FEED_DEEP_LINK.test(pathname) ? '/feed' : null
+}
+
 /** Router location state carried by tab entries that sit on top of a /today entry. */
 export interface TabLocationState {
   fromToday?: boolean

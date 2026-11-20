@@ -7,6 +7,7 @@ import { resetDeviceMemory } from '@/data/device-storage'
 import { resetOutboxDb } from '@/data/outbox-db'
 import { resetQueryCacheDb } from '@/data/query-persistence'
 import { clearPostMoment } from '@/data/post-moment'
+import { FakeIntersectionObserver } from '@/test/intersection-observer'
 
 // Some runners expose a broken global `localStorage` (Node's experimental stub, active without a
 // backing file). Install a deterministic in-memory Storage so app persistence works in tests.
@@ -70,6 +71,13 @@ if (hasWindow) {
     configurable: true,
     writable: true,
     value: () => Promise.resolve(),
+  })
+  // jsdom has no IntersectionObserver; the Feed's next-page sentinel uses it. Tests drive it through
+  // `intersectAll()`.
+  Object.defineProperty(window, 'IntersectionObserver', {
+    writable: true,
+    configurable: true,
+    value: FakeIntersectionObserver,
   })
   // jsdom has no pointer capture; sonner calls it when a toast is pressed (swipe tracking).
   for (const name of ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const) {

@@ -1,7 +1,13 @@
 import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js'
 import type { AuthErrorCode } from '@/domain/auth'
 import type { BackendErrorCode } from '@/domain/error-codes'
-import { givenNameOf, supabaseBackendAdapter as adapter } from '@/adapters/supabase/backend-adapter'
+import {
+  givenNameOf,
+  keysetFilter,
+  supabaseBackendAdapter as adapter,
+  toFeedRows,
+} from '@/adapters/supabase/backend-adapter'
+import type { Tables } from '@/adapters/supabase/database.types'
 
 const auth = vi.hoisted(() => ({
   signInWithOtp: vi.fn(),
@@ -16,9 +22,12 @@ const db = vi.hoisted(() => {
     eq: vi.fn(),
     is: vi.fn(),
     order: vi.fn(),
+    or: vi.fn(),
+    limit: vi.fn(),
     maybeSingle: vi.fn(),
   }
   query.select.mockReturnValue(query)
+  query.or.mockReturnValue(query)
   query.eq.mockReturnValue(query)
   query.is.mockReturnValue(query)
   return { query, from: vi.fn(() => query), rpc: vi.fn() }
@@ -26,12 +35,13 @@ const db = vi.hoisted(() => {
 
 // supabase.storage.from(bucket).upload(path, body, options).
 const storage = vi.hoisted(() => {
-  const bucket = { upload: vi.fn() }
+  const bucket = { upload: vi.fn(), createSignedUrls: vi.fn() }
   return { bucket, from: vi.fn(() => bucket) }
 })
 
 vi.mock('@/adapters/supabase/client', () => ({
   supabase: { auth, from: db.from, rpc: db.rpc, storage: { from: storage.from } },
+  supabaseUrl: 'https://proj.supabase.co',
 }))
 
 const USER = { id: 'user-1', email: 'jo@example.com' }
@@ -1504,5 +1514,172 @@ describe('check-ins', () => {
       code: 'not_member',
       detail: null,
     })
+  })
+})
+
+function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_items'> {
+  return {
+    group_id: 'g-1',
+    item_kind: 'checkin',
+    item_id: 'c-1',
+    sort_at: '2026-11-20T07:12:30.123456+00:00',
+    actor_id: 'u-1',
+    actor_name: 'Marco',
+    actor_avatar_path: null,
+    subject_id: null,
+    subject_name: null,
+    commitment_id: 'cm-1',
+    commitment_kind: 'commitment',
+    activity_name: 'Gym',
+    preset_key: 'gym',
+    task_name: null,
+    captured_at: '2026-11-20T07:12:00+00:00',
+    received_at: '2026-11-20T07:12:30.123456+00:00',
+    is_late: false,
+    is_extra: false,
+    caption: 'leg day',
+    full_pruned_at: null,
+    counted_position: 2,
+    target: 3,
+    payload: null,
+    ...overrides,
+  }
+}
+
+describe('feed mapping', () => {
+  it('maps check-ins and stickies, drops kinds the app does not render, keeps the raw cursors', () => {
+    const rows = [
+      feedRow(),
+      feedRow({
+        item_kind: 'admin_handover',
+        item_id: 'e-1',
+        sort_at: '2026-11-20T07:00:00+00:00',
+        actor_name: 'Jo',
+        subject_id: 'u-2',
+        subject_name: 'Marco',
+        commitment_id: null,
+      }),
+      feedRow({ item_kind: 'miss', item_id: 'e-2', sort_at: '2026-11-19T23:00:00+00:00' }),
+    ]
+    const page = toFeedRows(rows)
+    expect(page.rowCount).toBe(3)
+    expect(page.newest).toEqual({ sortAt: '2026-11-20T07:12:30.123456+00:00', itemId: 'c-1' })
+    expect(page.oldest).toEqual({ sortAt: '2026-11-19T23:00:00+00:00', itemId: 'e-2' })
+    expect(page.items.map((item) => item.id)).toEqual(['c-1', 'e-1'])
+    expect(page.items[0]).toMatchObject({
+      type: 'checkin',
+      authorName: 'Marco',
+      activityName: 'Gym',
+      countedPosition: 2,
+      target: 3,
+      isExtra: false,
+      caption: 'leg day',
+    })
+    expect(page.items[1]).toMatchObject({
+      type: 'event',
+      kind: 'admin_handover',
+      actorName: 'Jo',
+      subjectName: 'Marco',
+    })
+  })
+
+  it('quotes the timestamp in the keyset filter', () => {
+    expect(keysetFilter({ sortAt: '2026-11-20T07:12:30.123456+00:00', itemId: 'c-1' }, 'lt')).toBe(
+      'sort_at.lt."2026-11-20T07:12:30.123456+00:00",and(sort_at.eq."2026-11-20T07:12:30.123456+00:00",item_id.lt.c-1)',
+    )
+  })
+
+  it('signs every path in one call and maps refused paths to null', async () => {
+    storage.bucket.createSignedUrls.mockResolvedValue({
+      data: [
+        {
+          path: 'g/c1/360.webp',
+          signedUrl: 'https://x/sign/checkins/g/c1/360.webp?token=a',
+          error: null,
+        },
+        { path: 'g/c2/360.webp', signedUrl: '', error: 'Either the object does not exist' },
+      ],
+      error: null,
+    })
+    const urls = await adapter.signCheckinPhotos(['g/c1/360.webp', 'g/c2/360.webp'])
+    expect(storage.bucket.createSignedUrls).toHaveBeenCalledWith(
+      ['g/c1/360.webp', 'g/c2/360.webp'],
+      600,
+    )
+    expect(urls).toEqual({
+      'g/c1/360.webp': 'https://x/sign/checkins/g/c1/360.webp?token=a',
+      'g/c2/360.webp': null,
+    })
+  })
+
+  it('builds the token-less cache URL of a photo', () => {
+    expect(adapter.checkinPhotoCacheUrl('g/c1/1080.webp')).toBe(
+      'https://proj.supabase.co/storage/v1/object/sign/checkins/g/c1/1080.webp',
+    )
+  })
+})
+
+describe('feed reads', () => {
+  const NEWER = feedRow({ item_id: 'c-new', sort_at: '2026-11-20T08:00:00+00:00' })
+  const OLDER = feedRow({ item_id: 'c-old', sort_at: '2026-11-20T07:00:00+00:00' })
+  const CURSOR = { sortAt: '2026-11-20T07:30:00.5+00:00', itemId: 'c-mid' }
+
+  beforeEach(() => {
+    for (const fn of [
+      db.from,
+      db.query.select,
+      db.query.eq,
+      db.query.or,
+      db.query.order,
+      db.query.limit,
+    ]) {
+      fn.mockClear()
+    }
+  })
+
+  function answer(rows: Tables<'feed_items'>[]) {
+    db.query.order.mockReturnValueOnce(db.query).mockReturnValueOnce(db.query)
+    db.query.limit.mockResolvedValueOnce({ data: rows, error: null, status: 200 })
+  }
+
+  it('reads the newest page of a group, newest first', async () => {
+    answer([NEWER, OLDER])
+    const page = await adapter.listFeed('g-1', { limit: 20 })
+    expect(db.from).toHaveBeenCalledWith('feed_items')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g-1')
+    expect(db.query.or).not.toHaveBeenCalled()
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'sort_at', { ascending: false })
+    expect(db.query.order).toHaveBeenNthCalledWith(2, 'item_id', { ascending: false })
+    expect(db.query.limit).toHaveBeenCalledWith(20)
+    expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+  })
+
+  it('reads older than a cursor', async () => {
+    answer([OLDER])
+    await adapter.listFeed('g-1', { before: CURSOR, limit: 20 })
+    expect(db.query.or).toHaveBeenCalledWith(keysetFilter(CURSOR, 'lt'))
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'sort_at', { ascending: false })
+  })
+
+  it('reads newer than a cursor oldest first, and hands them back newest first', async () => {
+    answer([OLDER, NEWER])
+    const page = await adapter.listFeed('g-1', { after: CURSOR, limit: 10 })
+    expect(db.query.or).toHaveBeenCalledWith(keysetFilter(CURSOR, 'gt'))
+    expect(db.query.order).toHaveBeenNthCalledWith(1, 'sort_at', { ascending: true })
+    expect(db.query.order).toHaveBeenNthCalledWith(2, 'item_id', { ascending: true })
+    expect(db.query.limit).toHaveBeenCalledWith(10)
+    expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+    expect(page.newest?.itemId).toBe('c-new')
+  })
+
+  it('reads one check-in of the group, or null', async () => {
+    db.query.maybeSingle.mockResolvedValueOnce({ data: NEWER, error: null, status: 200 })
+    expect(await adapter.getFeedCheckin('g-1', 'c-new')).toMatchObject({ id: 'c-new' })
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g-1')
+    expect(db.query.eq).toHaveBeenCalledWith('item_kind', 'checkin')
+    expect(db.query.eq).toHaveBeenCalledWith('item_id', 'c-new')
+
+    db.query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 })
+    expect(await adapter.getFeedCheckin('g-1', 'c-gone')).toBeNull()
   })
 })
