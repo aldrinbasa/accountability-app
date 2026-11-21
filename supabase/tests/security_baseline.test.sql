@@ -6,7 +6,8 @@
 -- prorated_target, week_start_of); the Epic 2 retro adds member_current_week (called by
 -- commitment_is_active and plan_preview); Story 3.6 adds avatar_path_owner (the avatars Storage
 -- policies); Story 5.1 adds checkin_removed, checkin_lock_at and checkin_challenge_until (called by session_status,
--- counted_checkins and the feed_items view). Nothing else in private is executable by a client role.
+-- counted_checkins and the feed_items view); Story 5.2 adds challenge_others_at_open and challenge_voter_eligible
+-- (the feed_items challenge rows). Nothing else in private is executable by a client role.
 begin;
 select plan(20);
 
@@ -20,7 +21,7 @@ select is(
    where p.pronamespace = 'private'::regnamespace
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
   array['avatar_path_owner', 'can_read_checkin_photo', 'can_upload_checkin_photo',
-        'checkin_challenge_until', 'checkin_lock_at', 'checkin_removed', 'commitment_is_active', 'counted_checkins', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
+        'challenge_others_at_open', 'challenge_voter_eligible', 'checkin_challenge_until', 'checkin_lock_at', 'checkin_removed', 'commitment_is_active', 'counted_checkins', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
         'member_time_zone', 'membership_is_current', 'prorated_target', 'session_status',
         'shares_group', 'week_start_of']::text[],
   'authenticated can execute only the RLS, view, Storage policy and plan_preview helpers in private'
