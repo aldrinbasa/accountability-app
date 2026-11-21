@@ -106,6 +106,11 @@ test('the weekly winner gets a card once, a Feed sticky, and a deep link', async
   await expect(benCard.getByRole('button', { name: 'Fine.' })).toBeVisible()
   await ben.keyboard.press('Escape')
   await expect(benCard).toBeHidden()
+  // Closing drops the card's history entry with a deferred history.back() (sheet-history). Wait for
+  // it to land: a goto started while that back is still in flight is aborted (net::ERR_ABORTED).
+  await expect
+    .poll(() => ben.evaluate(() => (window.history.state as { sheet?: boolean } | null)?.sheet))
+    .not.toBe(true)
 
   // The deep link shows it again, even though it was seen; closing it opens the Feed.
   await ben.goto(`/winner/${week}?g=${groupId}`)
