@@ -443,6 +443,38 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"overturns": {
+                  Row: {
+                    "admin_id": string,"challenge_id": string,"created_at": string,"group_id": string,"id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "admin_id": string,"challenge_id": string,"created_at"?: string,"group_id": string,"id"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "admin_id"?: string,"challenge_id"?: string,"created_at"?: string,"group_id"?: string,"id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "overturns_admin_id_fkey"
+      columns: ["admin_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "overturns_challenge_id_fkey"
+      columns: ["challenge_id"]
+isOneToOne: true
+      referencedRelation: "challenges"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "overturns_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"preset_activities": {
                   Row: {
                     "category": string,"key": string,"name": string,"sort": number
@@ -808,6 +840,11 @@ isOneToOne: false
                            },
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
+                           },
+"overturn_ruling":
+{ Args: { "p_challenge_id": string }; Returns: {
+              "created_at": string,"overturn_id": string
+            }[]
                            },
 "plan_preview":
 { Args: { "p_end_date"?: string,"p_group_id": string,"p_target"?: number }; Returns: {
