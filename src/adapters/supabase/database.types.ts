@@ -253,6 +253,44 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"freeze_requests": {
+                  Row: {
+                    "cancel_reason": string | null,"closed_at": string | null,"closes_at": string,"commitment_id": string,"created_at": string,"early_close_at": string | null,"group_id": string,"id": string,"opened_at": string,"reason": string,"requester_id": string,"session_id": string,"status": string,"updated_at": string,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cancel_reason"?: string | null,"closed_at"?: string | null,"closes_at": string,"commitment_id": string,"created_at"?: string,"early_close_at"?: string | null,"group_id": string,"id"?: string,"opened_at": string,"reason": string,"requester_id": string,"session_id": string,"status"?: string,"updated_at"?: string,"week_start": string
+                  }
+                  Update: {
+                    "cancel_reason"?: string | null,"closed_at"?: string | null,"closes_at"?: string,"commitment_id"?: string,"created_at"?: string,"early_close_at"?: string | null,"group_id"?: string,"id"?: string,"opened_at"?: string,"reason"?: string,"requester_id"?: string,"session_id"?: string,"status"?: string,"updated_at"?: string,"week_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "freeze_requests_commitment_id_fkey"
+      columns: ["commitment_id"]
+isOneToOne: false
+      referencedRelation: "commitments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "freeze_requests_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "freeze_requests_requester_id_fkey"
+      columns: ["requester_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "freeze_requests_session_id_fkey"
+      columns: ["session_id"]
+isOneToOne: false
+      referencedRelation: "sessions"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"group_activities": {
                   Row: {
                     "created_at": string,"created_by": string,"custom_name": string | null,"group_id": string,"id": string,"preset_key": string | null,"schedule_type": string | null,"updated_at": string
@@ -841,6 +879,16 @@ isOneToOne: false
 "leave_group":
 { Args: { "p_group_id": string }; Returns: undefined
                            },
+"my_freeze_options":
+{ Args: { "p_group_id": string }; Returns: {
+              "commitment_id": string,"ends_at": string,"frozen": number,"missed": boolean,"option_kind": string,"session_id": string,"starts_at": string,"target": number,"target_after": number,"time_zone": string,"week_start": string,"which": string,"window_ends_at": string
+            }[]
+                           },
+"my_freeze_requests":
+{ Args: { "p_group_id": string }; Returns: {
+              "closes_at": string,"commitment_id": string,"id": string,"option_kind": string,"reason": string,"session_id": string,"starts_at": string,"status": string,"target_after": number,"week_start": string
+            }[]
+                           },
 "overturn_ruling":
 { Args: { "p_challenge_id": string }; Returns: {
               "created_at": string,"overturn_id": string
@@ -861,6 +909,11 @@ isOneToOne: false
                            },
 "rename_task":
 { Args: { "p_commitment_id": string,"p_name": string }; Returns: undefined
+                           },
+"request_freeze":
+{ Args: { "p_commitment_id": string,"p_reason": string,"p_session_id"?: string,"p_week_start"?: string }; Returns: {
+              "closes_at": string,"freeze_request_id": string,"session_id": string,"status": string
+            }[]
                            },
 "save_profile":
 { Args: { "p_display_name": string,"p_time_zone": string }; Returns: {
