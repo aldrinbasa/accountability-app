@@ -527,7 +527,7 @@ describe('snap-first picker', () => {
     await user.click(screen.getByRole('button', { name: 'Check in' }))
     const dialog = await shoot(user)
     expect(await within(dialog).findByText('Nothing to check in for here yet.')).toBeInTheDocument()
-    expect(within(dialog).getByText('Add a commitment or a task first.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Add a habit or a task first.')).toBeInTheDocument()
     const panel = dialog.querySelector('[data-component="picker-sheet"]') as HTMLElement
     expect(
       within(panel)

@@ -214,6 +214,7 @@ export function testBadges(overrides: Record<string, Partial<ProfileBadge>> = {}
     status: 'locked',
     awardedAt: null,
     pendingLockAt: null,
+    awardCount: 0,
     ...overrides[key],
   }))
 }
@@ -297,6 +298,7 @@ export function testGroupGoal(goal: Partial<GroupGoal> = {}): GroupGoal {
     liveAverage: null,
     monthWeeks: [],
     monthAverage: null,
+    monthValueNow: null,
     contributions: TEST_MEMBERS.map((m) => ({
       userId: m.userId,
       name: m.displayName,

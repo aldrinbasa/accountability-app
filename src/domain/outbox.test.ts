@@ -149,7 +149,7 @@ describe('rejection banner', () => {
   it('other codes: "Couldn\'t post your {title} photo: {reason}."', () => {
     const line = (code: Parameters<typeof toRejection>[0]) =>
       rejectionBannerText('Gym', toRejection(code, null), 'UTC')
-    expect(line('commitment_ended')).toBe("Couldn't post your Gym photo: commitment ended.")
+    expect(line('commitment_ended')).toBe("Couldn't post your Gym photo: habit ended.")
     expect(line('not_member')).toBe("Couldn't post your Gym photo: removed from the group.")
     expect(line('session_frozen')).toBe("Couldn't post your Gym photo: session already frozen.")
     expect(line('bad_capture_time')).toBe(

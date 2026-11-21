@@ -16,8 +16,8 @@ const TEASES =
   /(The couch wins this round\.|The couch sends its regards\.|The couch is getting comfortable\.|The couch says thanks for visiting\.|Next time, the couch loses\.)$/
 
 async function addTaskDueToday(page: Page, name: string): Promise<void> {
-  await page.getByRole('button', { name: 'Add a commitment or task' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
+  await page.getByRole('button', { name: 'Add a habit or task' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Add a habit or task' })
   await sheet.getByRole('radio', { name: 'Task' }).click()
   await sheet.getByRole('radio', { name: 'Groceries' }).click()
   await sheet.getByRole('textbox', { name: 'Name' }).fill(name)

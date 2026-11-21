@@ -2085,6 +2085,18 @@ describe('member profile (Story 4.6)', () => {
               status: 'earned',
               awarded_at: '2026-11-12T00:00:01+00:00',
               pending_lock_at: null,
+              award_count: 1,
+            },
+            {
+              key: 'team_player',
+              name: 'Team Player',
+              how_earned: 'Each time the group hits its goal (everyone gets it)',
+              line: 'Nobody let the group down.',
+              icon: 'users-three',
+              status: 'earned',
+              awarded_at: '2026-11-19T00:00:01+00:00',
+              pending_lock_at: null,
+              award_count: 3,
             },
             {
               key: 'clean_sheet',
@@ -2095,6 +2107,7 @@ describe('member profile (Story 4.6)', () => {
               status: 'pending',
               awarded_at: null,
               pending_lock_at: '2026-11-25T16:00:00+00:00',
+              award_count: 0,
             },
             { key: 'broken' },
             {
@@ -2104,6 +2117,7 @@ describe('member profile (Story 4.6)', () => {
               line: 'Three crowns.',
               icon: 'crown',
               status: 'weird',
+              award_count: 1.5,
             },
           ],
           streaks: [
@@ -2134,6 +2148,18 @@ describe('member profile (Story 4.6)', () => {
           status: 'earned',
           awardedAt: '2026-11-12T00:00:01+00:00',
           pendingLockAt: null,
+          awardCount: 1,
+        },
+        {
+          key: 'team_player',
+          name: 'Team Player',
+          howEarned: 'Each time the group hits its goal (everyone gets it)',
+          line: 'Nobody let the group down.',
+          icon: 'users-three',
+          status: 'earned',
+          awardedAt: '2026-11-19T00:00:01+00:00',
+          pendingLockAt: null,
+          awardCount: 3,
         },
         {
           key: 'clean_sheet',
@@ -2144,6 +2170,7 @@ describe('member profile (Story 4.6)', () => {
           status: 'pending',
           awardedAt: null,
           pendingLockAt: '2026-11-25T16:00:00+00:00',
+          awardCount: 0,
         },
         {
           key: 'dynasty',
@@ -2154,6 +2181,8 @@ describe('member profile (Story 4.6)', () => {
           status: 'locked',
           awardedAt: null,
           pendingLockAt: null,
+          // Not a whole number: dropped to 0.
+          awardCount: 0,
         },
       ],
       streaks: [{ commitmentId: 'c1', activityName: 'Gym', currentStreak: 0, backToZero: true }],
@@ -2207,6 +2236,7 @@ describe('group goal (Story 4.7)', () => {
           live_average: 72.5,
           month_weeks: [{ week_start: '2026-11-02', goal_average: 70 }, { week_start: 'x' }],
           month_average: 70,
+          month_value_now: 71.3,
           contributions: [
             { user_id: 'u-1', name: 'Jo', weekly_points: 81 },
             { user_id: 'u-2', name: 'Priya', weekly_points: null },
@@ -2232,6 +2262,7 @@ describe('group goal (Story 4.7)', () => {
       liveAverage: 72.5,
       monthWeeks: [{ weekStart: '2026-11-02', average: 70 }],
       monthAverage: 70,
+      monthValueNow: 71.3,
       contributions: [
         { userId: 'u-1', name: 'Jo', weeklyPoints: 81 },
         { userId: 'u-2', name: 'Priya', weeklyPoints: null },
@@ -2260,6 +2291,7 @@ describe('group goal (Story 4.7)', () => {
           month_average: null,
           contributions: [],
           last_result: null,
+          month_value_now: null,
         },
       ],
       error: null,
@@ -2270,6 +2302,7 @@ describe('group goal (Story 4.7)', () => {
       target: null,
       period: null,
       liveAverage: null,
+      monthValueNow: null,
       lastResult: null,
     })
   })

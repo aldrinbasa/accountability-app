@@ -8,7 +8,7 @@ import {
   type Board,
   type BoardWeek,
 } from '@/domain/board'
-import { GROUP_COPY, type MyGroup } from '@/domain/groups'
+import { GROUP_COPY, isWaiting, type MyGroup } from '@/domain/groups'
 import { useAuthSession } from '@/data/auth-session'
 import { useBoard, useGroupWeek } from '@/data/board'
 import { useMemberTimeZone } from '@/data/profile'
@@ -195,8 +195,8 @@ export function BoardContent({ group }: { group: MyGroup }) {
           groupWaiting={groupWaiting}
         />
         {/* Story 4.7: the goal shows the current week's state, so only under This week, and never
-            in a group of one. */}
-        {week === 'this' && !groupWaiting ? <GoalPanel key={group.id} group={group} /> : null}
+            in a group of one (read from the groups list, like the panel and the settings row). */}
+        {week === 'this' && !isWaiting(group) ? <GoalPanel key={group.id} group={group} /> : null}
       </>
     )
   }

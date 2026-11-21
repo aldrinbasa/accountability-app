@@ -22,9 +22,9 @@ export interface PlanSheetHostProps {
 /**
  * Hosts the Plan sheet for one group and hands out `openPlanSheet` (`usePlanSheet`). Mounted once on
  * Today and once on My plan. "+ Add" opens it to add; a row's Overflow or Edit opens it to edit a
- * task or a commitment. One sheet at a time: "Delete task" or "End commitment" in edit mode replaces
+ * task or a habit. One sheet at a time: "Delete task" or "End habit" in edit mode replaces
  * the Plan sheet with its confirm Sheet, and closing the confirm goes back to the screen (not to the
- * edit sheet). A commitment that turns out gone or ended closes the sheet with the toast "That's
+ * edit sheet). A habit that turns out gone or ended closes the sheet with the toast "That's
  * already wrapped up." Focus returns to whatever opened the Plan sheet (for a row, its Overflow
  * button), or to "+ Add" (else the screen's h1) when that is gone.
  */

@@ -134,7 +134,7 @@ export function scaledSize(
 export const CHECKIN_COPY = {
   pickerTitle: "What's this check-in for?",
   nothingLine: 'Nothing to check in for here yet.',
-  nothingBody: 'Add a commitment or a task first.',
+  nothingBody: 'Add a habit or a task first.',
   close: 'Close',
   caption: 'Caption',
   retake: 'Retake',

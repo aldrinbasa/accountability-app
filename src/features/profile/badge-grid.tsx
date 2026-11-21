@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import {
+  awardCountMark,
   badgeLabel,
   earnedText,
   pendingText,
@@ -44,7 +45,9 @@ function BadgeSheet({
           <p className="type-body">{badge.howEarned}</p>
           {badge.status !== 'locked' ? <p className="type-hand-md">{badge.line}</p> : null}
           {badge.status === 'earned' && badge.awardedAt ? (
-            <p className="type-meta text-muted">{earnedText(badge.awardedAt, viewerZone)}</p>
+            <p className="type-meta text-muted">
+              {earnedText(badge.awardedAt, viewerZone, badge.awardCount)}
+            </p>
           ) : null}
           {badge.status === 'pending' && badge.pendingLockAt ? (
             <p className="type-meta text-ink">
@@ -60,7 +63,9 @@ function BadgeSheet({
 /**
  * The 15-seal badge grid (Story 4.6): earned seals on their rotating paper, pending seals with the
  * "Unlocks at week lock" chip, locked seals dashed. Each seal is a 44px-or-larger button named
- * "{Badge}, earned 12 Nov" / "{Badge}, pending" / "{Badge}, locked" that opens the badge Sheet.
+ * "{Badge}, earned 12 Nov" / "{Badge}, pending" / "{Badge}, locked" that opens the badge Sheet; a
+ * repeat badge earned 2+ times carries a "×3" mark and is named "{Badge}, earned 3 times, last 12
+ * Nov".
  */
 export function BadgeGrid({ badges, viewerZone, groupZone }: BadgeGridProps) {
   const headingId = useId()
@@ -89,6 +94,7 @@ export function BadgeGrid({ badges, viewerZone, groupZone }: BadgeGridProps) {
                 status={badge.status}
                 fill={sealFill(index)}
                 pendingChip={PROFILE_COPY.pendingChip}
+                count={awardCountMark(badge)}
               />
             </button>
           </li>

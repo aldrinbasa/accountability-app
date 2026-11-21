@@ -59,7 +59,7 @@ describe('group switcher', () => {
     expect(screen.getByText('Just you in here so far.')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Scoring, votes and the leaderboard start the moment a second friend joins. Accountability needs an audience.',
+        'Your habits already score. Bring friends in to make it a game: a leaderboard, votes and a weekly winner.',
       ),
     ).toBeInTheDocument()
   })

@@ -115,7 +115,7 @@ describe('Today: everyone else left', () => {
     expect(screen.getByText('Just you in here so far.')).toBeInTheDocument()
     await vi.waitFor(() =>
       expect(toast.showToast).toHaveBeenCalledWith(
-        'Everyone else left Gym Rats. Scoring pauses until someone joins.',
+        'Everyone else left Gym Rats. Your habits still score; the leaderboard waits for a friend.',
         { id: 'everyone-left-group-1' },
       ),
     )

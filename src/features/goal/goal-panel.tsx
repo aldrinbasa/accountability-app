@@ -14,7 +14,7 @@ import {
   type GoalMonthWeek,
   type GroupGoal,
 } from '@/domain/goal'
-import type { MyGroup } from '@/domain/groups'
+import { isWaiting, type MyGroup } from '@/domain/groups'
 import { useGroupGoal } from '@/data/goal'
 import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
@@ -155,10 +155,11 @@ function LastResult({ goal }: { goal: GroupGoal }) {
 /**
  * The Goal panel under the This week standings (Story 4.7, DESIGN.md `goal-panel`): with no goal,
  * "Set a group goal" for the admin or "No group goal yet." for members; with one, "Group goal · 85%
- * this week", the current value in numeral-md (a monthly goal: the average of the month's locked
- * weeks, the live week before the first lock), the track, the month's tick bars, the latest result
- * and Everyone's part; the admin's Edit opens the goal Sheet. Its accessible name is the summary
- * ("Group goal 85% this week. Now 72%."). The caller hides it in a group of one.
+ * this week", the current value in numeral-md (a monthly goal: the server's `monthValueNow`, what
+ * the month's last lock would decide now), the track, the month's tick bars, the latest result
+ * (worded by its own period) and Everyone's part; the admin's Edit opens the goal Sheet. Its
+ * accessible name is the summary ("Group goal 85% this week. Now 72%."). Hidden in a group of one
+ * (`isWaiting(group)`).
  */
 export function GoalPanel({ group }: { group: MyGroup }) {
   const query = useGroupGoal(group.id)
@@ -167,6 +168,8 @@ export function GoalPanel({ group }: { group: MyGroup }) {
   const isAdmin = group.role === 'admin'
   const goal = query.data
 
+  // A group of one reads from the groups list (one source with the Board and the settings row).
+  if (isWaiting(group)) return null
   if (!goal) {
     if (query.isError) {
       return (
@@ -181,8 +184,6 @@ export function GoalPanel({ group }: { group: MyGroup }) {
       </Skeleton>
     )
   }
-  if (goal.memberCount < 2) return null
-
   const { target, period } = goal
   const current = target !== null && period !== null ? { target, period } : null
   const now = goalNow(goal)

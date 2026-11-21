@@ -64,7 +64,7 @@ export interface CommitmentEditViewProps {
   commitmentId: string
   onDirtyChange: (dirty: boolean) => void
   onSaved: () => void
-  /** "End commitment": the host swaps this sheet for the End confirm. */
+  /** "End habit": the host swaps this sheet for the End confirm. */
   onEnd: (commitment: EndTarget) => void
   /** The commitment is gone, ended or ending (the server says it can't be edited). */
   onUnavailable?: () => void
@@ -73,10 +73,10 @@ export interface CommitmentEditViewProps {
 /**
  * The Plan sheet in commitment edit mode (Story 2.6), from `get_commitment`: the activity
  * read-only, the schedule type as its one locked segment with "Schedule type can't change while
- * this commitment is active. End it and add a new one.", the days or times per week and the end
+ * this habit is active. End it and add a new one.", the days or times per week and the end
  * date editable, and the start note "Changes start Mon 23 Nov." with the server's date. Save calls
  * `update_commitment` and shows "Gym changes to 4 times per week from Mon 23 Nov."; the destructive
- * "End commitment" link at the bottom opens the End confirm. A commitment the server says can't be
+ * "End habit" link at the bottom opens the End confirm. A commitment the server says can't be
  * edited calls `onUnavailable` and shows "That's already wrapped up."
  */
 export function CommitmentEditView({

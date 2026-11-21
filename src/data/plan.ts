@@ -26,6 +26,8 @@ import type { BackendPort } from '@/ports/backend-port'
 import { groupActivitiesKey } from '@/data/activities'
 import { boardGroupKey } from '@/data/board'
 import { groupGoalKey } from '@/data/goal'
+import { memberProfileGroupKey } from '@/data/member-profile'
+import { streaksKey } from '@/data/streaks'
 import { useBackendContext } from '@/data/backend-context-value'
 import { retryOnline } from '@/data/query-client'
 
@@ -130,8 +132,9 @@ export function usePlanPreview(groupId: string, target: number | null, endDate: 
 }
 
 /**
- * `add_commitment`. On success invalidates `['today', groupId]`, `['plan', groupId]` and
- * `['groupActivities', groupId]` (the activity may now be locked to a type). A
+ * `add_commitment`. On success invalidates what every plan write changes (`invalidatePlan`: Today,
+ * the plan, board, goal, member profile, streaks) and `['groupActivities', groupId]` (the activity
+ * may now be locked to a type). A
  * `schedule_type_locked` answer refetches `['groupActivities', groupId]` so the sheet shows the lock.
  * Plan writes need the network: nothing is queued offline.
  */
@@ -141,11 +144,7 @@ export function useAddCommitment(groupId: string) {
   return useMutation({
     mutationFn: (input: AddCommitmentInput) => repository.addCommitment(input),
     // Not awaited: the sheet closes at once and the refetches catch up behind it.
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: todayKey(groupId) })
-      void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
-      void queryClient.invalidateQueries({ queryKey: groupActivitiesKey(groupId) })
-    },
+    onSuccess: () => invalidateCommitment(queryClient, groupId),
     onError: (error) => {
       if (backendErrorCode(error) === 'schedule_type_locked') {
         void queryClient.invalidateQueries({ queryKey: groupActivitiesKey(groupId) })
@@ -161,14 +160,18 @@ function isStaleTaskError(error: unknown): boolean {
 }
 
 /**
- * Invalidates what every task write changes: Today's items, the member's plan and the board (a task
- * counts this week, so it moves the weekly points, Story 4.1) and the group goal's average (4.7).
+ * Invalidates what every habit or task write changes: Today's items, the member's plan, the board (a
+ * task counts this week, so it moves the weekly points, Story 4.1), the group goal's average (4.7),
+ * the member profiles (Me's plan, task count and pending seals, 4.6) and the streaks (ending a
+ * habit, 4.2).
  */
 function invalidatePlan(queryClient: QueryClient, groupId: string) {
   void queryClient.invalidateQueries({ queryKey: todayKey(groupId) })
   void queryClient.invalidateQueries({ queryKey: planKey(groupId) })
   void queryClient.invalidateQueries({ queryKey: boardGroupKey(groupId) })
   void queryClient.invalidateQueries({ queryKey: groupGoalKey(groupId) })
+  void queryClient.invalidateQueries({ queryKey: memberProfileGroupKey(groupId) })
+  void queryClient.invalidateQueries({ queryKey: streaksKey(groupId) })
 }
 
 /**

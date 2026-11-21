@@ -78,15 +78,15 @@ export interface PlanSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   groupId: string
-  /** Add (Commitment pre-selected) or edit one item. Default: add. */
+  /** Add (Habit pre-selected) or edit one item. Default: add. */
   request?: PlanSheetRequest
   /** Where focus goes on close (default: what had focus when the sheet opened). */
   returnFocusTo?: () => HTMLElement | null
   /** Edit mode's "Delete task": the caller swaps this sheet for the delete confirm. */
   onDeleteTask?: (task: DeleteTarget) => void
-  /** Commitment edit mode's "End commitment": the caller swaps this sheet for the End confirm. */
+  /** Habit edit mode's "End habit": the caller swaps this sheet for the End confirm. */
   onEndCommitment?: (commitment: EndTarget) => void
-  /** Commitment edit mode found the commitment gone, ended or ending. */
+  /** Habit edit mode found the habit gone, ended or ending. */
   onCommitmentUnavailable?: () => void
 }
 
@@ -97,11 +97,11 @@ function sheetTitle(request: PlanSheetRequest): string {
 
 /**
  * The Plan sheet (Stories 2.2 and 2.4; DESIGN.md `plan-sheet`, mockups/key-add-plan.html). Title
- * "Add a commitment or task", or "Edit task" in task edit mode. In add mode an unlabeled
- * Commitment / Task switch sits on top, Commitment pre-selected; Commitment mode has Activity,
- * Schedule, Days or Times per week, End date (optional) and the start note from `plan_preview`;
- * Task mode has Activity, Name and Deadline. In edit mode ("Edit task" or "Edit commitment", Story
- * 2.6) the switch is hidden. Save is coral and pinned to the bottom. Unsaved input asks "Discard this?" on close; focus is trapped
+ * "Add a habit or task", or "Edit task" in task edit mode. In add mode an unlabeled Habit / Task
+ * switch sits on top, Habit pre-selected; Habit mode has Activity, Schedule, Days or Times per
+ * week, End date (optional) and the start note from `plan_preview`; Task mode has Activity, Name
+ * and Deadline. In edit mode ("Edit task" or "Edit habit", Story 2.6) the switch is hidden. Save is
+ * coral and pinned to the bottom. Unsaved input asks "Discard this?" on close; focus is trapped
  * and returns to the opener. Reminders arrive in Epic 6.
  */
 export function PlanSheet({
@@ -167,7 +167,7 @@ interface AddPlanViewProps {
 }
 
 /**
- * Add mode: the Commitment / Task switch, then the form of the chosen kind. Both forms stay mounted
+ * Add mode: the Habit / Task switch, then the form of the chosen kind. Both forms stay mounted
  * (the other one hidden), so input survives a switch back and forth; the sheet is dirty when either
  * form is.
  */

@@ -22,6 +22,8 @@ export interface ProfileBadge {
   awardedAt: string | null
   /** When pending: the lock of the earliest unlocked week that meets it, ISO 8601. */
   pendingLockAt: string | null
+  /** How many times it was awarded (0 when never; Weekly Winner and Team Player repeat). */
+  awardCount: number
 }
 
 /** A streak per active commitment on a profile. */
@@ -91,17 +93,29 @@ export function shortDay(iso: string, zone: string): string {
   }).format(new Date(iso))
 }
 
-/** The seal button's name: "First Proof, earned 12 Nov" / "First Proof, pending" / "…, locked". */
+/** The count mark on an earned seal ("×3"), or null below 2 (a one-time award shows none). */
+export function awardCountMark(badge: Pick<ProfileBadge, 'status' | 'awardCount'>): string | null {
+  return badge.status === 'earned' && badge.awardCount >= 2 ? `×${badge.awardCount}` : null
+}
+
+/**
+ * The seal button's name: "First Proof, earned 12 Nov" / "Team Player, earned 3 times, last 12 Nov"
+ * (a repeat badge earned 2+ times) / "First Proof, pending" / "…, locked".
+ */
 export function badgeLabel(badge: ProfileBadge, zone: string): string {
   if (badge.status === 'earned' && badge.awardedAt) {
-    return `${badge.name}, earned ${shortDay(badge.awardedAt, zone)}`
+    const day = shortDay(badge.awardedAt, zone)
+    return badge.awardCount >= 2
+      ? `${badge.name}, earned ${badge.awardCount} times, last ${day}`
+      : `${badge.name}, earned ${day}`
   }
   return `${badge.name}, ${badge.status === 'pending' ? 'pending' : 'locked'}`
 }
 
-/** "Earned 12 Nov" in the badge Sheet. */
-export function earnedText(awardedAt: string, zone: string): string {
-  return `Earned ${shortDay(awardedAt, zone)}`
+/** "Earned 12 Nov" in the badge Sheet; "Earned 3 times · last 12 Nov" for a count of 2 or more. */
+export function earnedText(awardedAt: string, zone: string, awardCount = 1): string {
+  const day = shortDay(awardedAt, zone)
+  return awardCount >= 2 ? `Earned ${awardCount} times · last ${day}` : `Earned ${day}`
 }
 
 /**

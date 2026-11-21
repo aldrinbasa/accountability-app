@@ -88,7 +88,7 @@ export const TODAY_COPY = {
   planHere: 'Your plan here',
   nothingDue: 'Nothing due today. The couch is suspicious.',
   noPlanLine: 'No plan here yet.',
-  noPlanBody: 'Add a commitment or a task to start scoring.',
+  noPlanBody: 'Add a habit or a task to start scoring.',
   fixedDays: 'Fixed days',
   task: 'Task',
   edit: 'Edit',

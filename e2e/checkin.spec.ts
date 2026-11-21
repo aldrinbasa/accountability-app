@@ -12,8 +12,8 @@ test('check in a task from its row, then see it in the snap-first picker', async
   await createFirstGroup(page, 'Proof Club')
 
   // A task due today.
-  await page.getByRole('button', { name: 'Add a commitment or task' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
+  await page.getByRole('button', { name: 'Add a habit or task' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Add a habit or task' })
   await sheet.getByRole('radio', { name: 'Task' }).click()
   await sheet.getByRole('radio', { name: 'Groceries' }).click()
   await sheet.getByRole('textbox', { name: 'Name' }).fill('Grocery run')

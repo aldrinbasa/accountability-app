@@ -19,9 +19,9 @@ import { showToast } from '@/ui/toast'
  * Today's one-time group notices (device-only, AD-12):
  * - "You're no longer in {Group}." once per removal that ended within the last 7 days and was not
  *   yet shown on this device (one per visit: the newest unseen one; the next shows on a later visit);
- * - "Everyone else left {Group}. Scoring pauses until someone joins." when the focused group's
- *   last-seen member count was 2 or more and it is now 1. The focused group's count is stored on
- *   every visit.
+ * - "Everyone else left {Group}. Your habits still score; the leaderboard waits for a friend." when
+ *   the focused group's last-seen member count was 2 or more and it is now 1. The focused group's
+ *   count is stored on every visit.
  * Each notice is marked seen before its toast is raised, so a re-run never repeats it.
  */
 export function useGroupNotices(focused: MyGroup | null): void {

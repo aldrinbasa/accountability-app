@@ -38,7 +38,7 @@ export const GROUP_COPY = {
   retry: 'Retry',
   waitingLine: 'Just you in here so far.',
   waitingBody:
-    'Scoring, votes and the leaderboard start the moment a second friend joins. Accountability needs an audience.',
+    'Your habits already score. Bring friends in to make it a game: a leaderboard, votes and a weekly winner.',
   waitingCount: 'waiting for a 2nd member',
   switcherSheetTitle: 'Your groups',
   createOrJoin: 'Create or join a group',
@@ -94,7 +94,10 @@ export function resolveFocusedGroup(
   return find(urlId) ?? find(storedId) ?? sortByJoined(groups)[0] ?? null
 }
 
-/** A 1-member group waits: no scoring, votes or leaderboard until a second member joins. */
+/**
+ * A 1-member group waits: its member still scores their own plan; rank, votes and the leaderboard
+ * wait for a second member.
+ */
 export function isWaiting(group: Pick<MyGroup, 'memberCount'>): boolean {
   return group.memberCount < 2
 }
@@ -343,9 +346,9 @@ export function removedNoticeText(groupName: string): string {
   return `You're no longer in ${groupName}.`
 }
 
-/** "Everyone else left Sunday Reset. Scoring pauses until someone joins." */
+/** "Everyone else left Sunday Reset. Your habits still score; the leaderboard waits for a friend." */
 export function everyoneLeftText(groupName: string): string {
-  return `Everyone else left ${groupName}. Scoring pauses until someone joins.`
+  return `Everyone else left ${groupName}. Your habits still score; the leaderboard waits for a friend.`
 }
 
 function compareText(a: string, b: string): number {

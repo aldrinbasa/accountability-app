@@ -210,7 +210,7 @@ describe('leave, remove and admin handover', () => {
     expect(notInGroupText('Sunday Reset')).toBe("You're not in Sunday Reset anymore.")
     expect(removedNoticeText('Sunday Reset')).toBe("You're no longer in Sunday Reset.")
     expect(everyoneLeftText('Sunday Reset')).toBe(
-      'Everyone else left Sunday Reset. Scoring pauses until someone joins.',
+      'Everyone else left Sunday Reset. Your habits still score; the leaderboard waits for a friend.',
     )
   })
 

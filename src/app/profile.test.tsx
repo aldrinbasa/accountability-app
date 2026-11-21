@@ -96,6 +96,30 @@ describe('Me profile (Story 4.6)', () => {
     expect(within(sheet).queryByText('Task Slayer line')).not.toBeInTheDocument()
   })
 
+  it('a repeat badge earned 2+ times: "×3" on the seal, the count in its name and Sheet; once keeps the plain date (Epic 4 retro)', async () => {
+    const user = userEvent.setup()
+    const profile = testMemberProfile({
+      badges: testBadges({
+        first_proof: { status: 'earned', awardedAt: '2026-11-12T00:00:01Z', awardCount: 1 },
+        weekly_winner: { status: 'earned', awardedAt: '2026-11-19T00:00:01Z', awardCount: 1 },
+        team_player: { status: 'earned', awardedAt: '2026-11-12T00:00:01Z', awardCount: 3 },
+      }),
+    })
+    renderRoutes(
+      [`/me?g=${G}`],
+      createFakeBackend(undefined, { memberProfiles: { [`${G}:${TEST_USER.id}`]: profile } }),
+    )
+    const teamPlayer = await screen.findByRole('button', {
+      name: 'Team Player, earned 3 times, last 12 Nov',
+    })
+    expect(teamPlayer.querySelector('[data-badge-count]')).toHaveTextContent('×3')
+    const winner = screen.getByRole('button', { name: 'Weekly Winner, earned 19 Nov' })
+    expect(winner.querySelector('[data-badge-count]')).toBeNull()
+    await user.click(teamPlayer)
+    const sheet = await screen.findByRole('dialog', { name: 'Team Player' })
+    expect(within(sheet).getByText('Earned 3 times · last 12 Nov')).toBeInTheDocument()
+  })
+
   it('the Title sticky opens the ladder with the current title marked by a check and text', async () => {
     const user = userEvent.setup()
     renderRoutes(

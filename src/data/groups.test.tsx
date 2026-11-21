@@ -2,7 +2,10 @@ import type { ReactNode } from 'react'
 import { renderHook, waitFor } from '@testing-library/react'
 import { BackendError } from '@/domain/error-codes'
 import type { EndedMembership, MyGroupsSnapshot } from '@/domain/groups'
+import { boardGroupKey, groupWeekKey } from '@/data/board'
+import { groupGoalKey } from '@/data/goal'
 import { getLastSeenCount } from '@/data/group-notices'
+import { memberProfileGroupKey } from '@/data/member-profile'
 import {
   inviteKey,
   invitePreviewKey,
@@ -252,5 +255,51 @@ describe('members, leave and remove data', () => {
     const { result } = renderHook(() => useSetGroupTimeZone(TEST_GROUP.id), { wrapper })
     await expect(result.current.mutateAsync('Europe/London')).rejects.toThrow()
     expect(queryClient.getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)?.groups).toEqual([TEST_GROUP])
+  })
+
+  it('join and remove refetch the board, group goal, member profiles and group week; leave drops all but the goal (Epic 4 retro F5)', async () => {
+    const { queryClient, wrapper } = setup()
+    const keysFor = (groupId: string) => [
+      boardGroupKey(groupId),
+      groupGoalKey(groupId),
+      memberProfileGroupKey(groupId),
+      groupWeekKey(groupId),
+    ]
+    const seed = (groupId: string) => {
+      for (const key of keysFor(groupId)) queryClient.setQueryData(key, {})
+    }
+    const expectInvalidated = (groupId: string) => {
+      for (const key of keysFor(groupId)) {
+        expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
+      }
+    }
+    const { result } = renderHook(
+      () => ({
+        join: useJoinGroup(),
+        remove: useRemoveMember('group-1'),
+        leave: useLeaveGroup('group-1'),
+      }),
+      { wrapper },
+    )
+
+    seed(TEST_INVITE_PREVIEW.groupId)
+    await result.current.join.mutateAsync('K7QX2M')
+    expectInvalidated(TEST_INVITE_PREVIEW.groupId)
+
+    seed('group-1')
+    await result.current.remove.mutateAsync('user-3')
+    expectInvalidated('group-1')
+
+    seed('group-1')
+    await result.current.leave.mutateAsync()
+    for (const key of [
+      boardGroupKey('group-1'),
+      memberProfileGroupKey('group-1'),
+      groupWeekKey('group-1'),
+    ]) {
+      expect(queryClient.getQueryData(key)).toBeUndefined()
+    }
+    // The settings Goal row still watches the goal while the leave finishes: kept, not refetched.
+    expect(queryClient.getQueryData(groupGoalKey('group-1'))).toEqual({})
   })
 })

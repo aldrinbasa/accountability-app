@@ -64,8 +64,8 @@ export const DEFAULT_SCHEDULE_TYPE: ScheduleType = 'fixed_days'
 
 /** Copy for the Plan sheet and Add button (Story 2.2 ACs). */
 export const PLAN_COPY = {
-  title: 'Add a commitment or task',
-  addLabel: 'Add a commitment or task',
+  title: 'Add a habit or task',
+  addLabel: 'Add a habit or task',
   addText: 'Add',
   activity: 'Activity',
   schedule: 'Schedule',
@@ -106,9 +106,9 @@ export function formatShortDate(value: string): string {
   return `${DAY_SHORT[date.getUTCDay()]} ${formatDayMonth(value)}`
 }
 
-/** "Starts next Monday, 16 Nov. New commitments never change this week." */
+/** "Starts next Monday, 16 Nov. New habits never change this week." */
 export function startNote(startsOn: string): string {
-  return `Starts next Monday, ${formatDayMonth(startsOn)}. New commitments never change this week.`
+  return `Starts next Monday, ${formatDayMonth(startsOn)}. New habits never change this week.`
 }
 
 /** "End date has to be on or after Sun 22 Nov." */
@@ -282,9 +282,9 @@ export function isCommitmentFormDirty(form: CommitmentForm): boolean {
 /** What the Plan sheet adds: a weekly commitment or a one-off task. */
 export type PlanKind = 'commitment' | 'task'
 
-/** The unlabeled Commitment / Task switch on top of the sheet (Commitment pre-selected). */
+/** The unlabeled Habit / Task switch on top of the sheet (Habit pre-selected; kind stays `commitment`). */
 export const PLAN_KIND_OPTIONS: readonly { value: PlanKind; label: string }[] = [
-  { value: 'commitment', label: 'Commitment' },
+  { value: 'commitment', label: 'Habit' },
   { value: 'task', label: 'Task' },
 ]
 
@@ -294,7 +294,7 @@ export const TASK_NAME_MAX = 40
 /** Copy for Task mode, task edit mode and the delete confirm (Story 2.4 ACs). */
 export const TASK_COPY = {
   /** The switch has no visible label; this is only its accessible name. */
-  kindLabel: 'Commitment or task',
+  kindLabel: 'Habit or task',
   /** The Plan sheet's title in task edit mode. */
   editTitle: 'Edit task',
   name: 'Name',

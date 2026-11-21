@@ -29,8 +29,8 @@ test('a run of kept sessions shows as a streak on Today and grows with a post', 
   const groupId = await createFirstGroup(page, 'Streak Crew')
 
   // Gym, fixed days, every day (starts next Monday).
-  await page.getByRole('button', { name: 'Add a commitment or task' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
+  await page.getByRole('button', { name: 'Add a habit or task' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Add a habit or task' })
   await sheet.getByRole('radio', { name: 'Gym', exact: true }).first().click()
   const days = sheet.getByRole('group', { name: 'Days' })
   for (const day of DAYS) await days.getByRole('button', { name: day, exact: true }).click()

@@ -12,8 +12,8 @@ test('the camera opens over Today, goes live, closes, and takes a photo', async 
   await createFirstGroup(page, 'Shutter Club')
 
   // A task this week, so Today has a row with Check in.
-  await page.getByRole('button', { name: 'Add a commitment or task' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
+  await page.getByRole('button', { name: 'Add a habit or task' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Add a habit or task' })
   await sheet.getByRole('radio', { name: 'Task' }).click()
   await sheet.getByRole('radio', { name: 'Groceries' }).click()
   await sheet.getByRole('textbox', { name: 'Name' }).fill('Grocery run')

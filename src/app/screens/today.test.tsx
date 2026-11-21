@@ -135,11 +135,11 @@ describe('Today states', () => {
     renderRoutes(['/today'])
     expect(await screen.findByRole('heading', { level: 1, name: 'Friday' })).toBeInTheDocument()
     expect(await screen.findByText('No plan here yet.')).toBeInTheDocument()
-    expect(screen.getByText('Add a commitment or a task to start scoring.')).toBeInTheDocument()
-    const add = screen.getByRole('button', { name: 'Add a commitment or task' })
+    expect(screen.getByText('Add a habit or a task to start scoring.')).toBeInTheDocument()
+    const add = screen.getByRole('button', { name: 'Add a habit or task' })
     expect(add).toHaveTextContent('Add')
     expect(add.closest('[data-component="empty-state"]')).not.toBeNull()
-    expect(screen.getAllByRole('button', { name: 'Add a commitment or task' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'Add a habit or task' })).toHaveLength(1)
     expect(screen.queryByText('Just you in here so far.')).not.toBeInTheDocument()
     // Nothing planned this week: no week line, no sections.
     expect(screen.queryByText(/of the grind/)).not.toBeInTheDocument()
@@ -153,8 +153,14 @@ describe('Today states', () => {
     )
     expect(await screen.findByRole('heading', { level: 1, name: 'Friday' })).toBeInTheDocument()
     expect(screen.getByText('Just you in here so far.')).toBeInTheDocument()
+    // A solo member already scores (Epic 4 retro F6): the body no longer says scoring waits.
+    expect(
+      screen.getByText(
+        'Your habits already score. Bring friends in to make it a game: a leaderboard, votes and a weekly winner.',
+      ),
+    ).toBeInTheDocument()
     // Plans work in a waiting group too (FR-4): the Add button sits under the waiting state.
-    const add = await screen.findByRole('button', { name: 'Add a commitment or task' })
+    const add = await screen.findByRole('button', { name: 'Add a habit or task' })
     expect(add.closest('[data-component="empty-state"]')).toBeNull()
     expect(screen.queryByText('No plan here yet.')).not.toBeInTheDocument()
   })
@@ -202,7 +208,7 @@ describe('Today with a plan', () => {
     const due = screen.getByRole('heading', { level: 2, name: 'Due today · 9 left this week' })
     const week = screen.getByRole('heading', { level: 2, name: 'This week' })
     const next = screen.getByRole('heading', { level: 2, name: 'Your plan here · starts Mon' })
-    const add = screen.getByRole('button', { name: 'Add a commitment or task' })
+    const add = screen.getByRole('button', { name: 'Add a habit or task' })
     const order = [due, week, next, add]
     for (let i = 1; i < order.length; i += 1) {
       expect(
@@ -268,7 +274,7 @@ describe('Today with a plan', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('No plan here yet.')).not.toBeInTheDocument()
     // Add stays available as the "+ Add" button, not as an Empty state action.
-    const add = screen.getByRole('button', { name: 'Add a commitment or task' })
+    const add = screen.getByRole('button', { name: 'Add a habit or task' })
     expect(add.closest('[data-component="empty-state"]')).toBeNull()
   })
 
@@ -315,7 +321,7 @@ describe('Today with a plan', () => {
     await user.click(more)
     const actions = await screen.findByRole('dialog', { name: 'Run' })
     await user.click(within(actions).getByRole('button', { name: 'Edit' }))
-    const edit = await screen.findByRole('dialog', { name: 'Edit commitment' })
+    const edit = await screen.findByRole('dialog', { name: 'Edit habit' })
     expect(await within(edit).findByText('Changes start Mon 23 Nov.')).toBeInTheDocument()
     expect(backend.getCommitment).toHaveBeenCalledWith('c-run')
     expect(backend.getTask).not.toHaveBeenCalled()
@@ -347,7 +353,7 @@ describe('Today with a plan', () => {
       expect(screen.queryByRole('heading', { level: 3, name: 'Garage' })).not.toBeInTheDocument(),
     )
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveFocus(),
+      expect(screen.getByRole('button', { name: 'Add a habit or task' })).toHaveFocus(),
     )
   })
 
@@ -364,7 +370,7 @@ describe('Today with a plan', () => {
       expect(screen.queryByRole('dialog', { name: 'Garage' })).not.toBeInTheDocument(),
     )
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveFocus(),
+      expect(screen.getByRole('button', { name: 'Add a habit or task' })).toHaveFocus(),
     )
   })
 

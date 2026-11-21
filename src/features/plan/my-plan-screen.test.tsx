@@ -173,8 +173,8 @@ describe('My plan', () => {
     })
     renderRoutes([PLAN_PATH], backend)
     await user.click(await screen.findByRole('button', { name: 'Edit Gym' }))
-    const edit = await screen.findByRole('dialog', { name: 'Edit commitment' })
-    await user.click(await within(edit).findByRole('button', { name: 'End commitment' }))
+    const edit = await screen.findByRole('dialog', { name: 'Edit habit' })
+    await user.click(await within(edit).findByRole('button', { name: 'End habit' }))
     const confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
     await user.click(within(confirm).getByRole('button', { name: 'End' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -197,8 +197,8 @@ describe('My plan', () => {
     })
     renderRoutes([PLAN_PATH], backend)
     await user.click(await screen.findByRole('button', { name: 'Edit Read' }))
-    const edit = await screen.findByRole('dialog', { name: 'Edit commitment' })
-    await user.click(await within(edit).findByRole('button', { name: 'End commitment' }))
+    const edit = await screen.findByRole('dialog', { name: 'Edit habit' })
+    await user.click(await within(edit).findByRole('button', { name: 'End habit' }))
     await user.click(
       within(await screen.findByRole('dialog', { name: 'End Read?' })).getByRole('button', {
         name: 'End',
@@ -219,7 +219,7 @@ describe('My plan', () => {
   it('the deep link opens the edit sheet over My plan; closing it returns to /me/plan', async () => {
     const user = userEvent.setup()
     const { router } = renderRoutes([`/me/plan/c-gym?g=${TEST_GROUP.id}`], withPlan())
-    const edit = await screen.findByRole('dialog', { name: 'Edit commitment' })
+    const edit = await screen.findByRole('dialog', { name: 'Edit habit' })
     expect(await within(edit).findByText('Changes start Mon 23 Nov.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 1, name: 'My plan', hidden: true })).toBeTruthy()
     await user.click(within(edit).getByRole('button', { name: 'Close' }))
@@ -262,7 +262,7 @@ describe('My plan', () => {
     const { router } = renderRoutes([`/me/plan/c-book?g=${TEST_GROUP.id}`], backend)
     await waitForGroupInUrl(router, other.id)
     expect(router.state.location.pathname).toBe('/me/plan/c-book')
-    expect(await screen.findByRole('dialog', { name: 'Edit commitment' })).toBeInTheDocument()
+    expect(await screen.findByRole('dialog', { name: 'Edit habit' })).toBeInTheDocument()
     await waitFor(() => expect(backend.getMyPlan).toHaveBeenCalledWith(other.id))
     expect(toast.showToast).not.toHaveBeenCalled()
   })

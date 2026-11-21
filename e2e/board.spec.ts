@@ -23,6 +23,12 @@ test('the Board shows a solo week, then the podium once a friend joins', async (
     page.getByRole('link', { name: '100 weekly points. Open the leaderboard' }),
   ).toBeVisible()
   await expect(page.locator('[data-component="rank-chip"]')).toHaveCount(0)
+  // The waiting body says her habits already score (Epic 4 retro F6).
+  await expect(
+    page.getByText(
+      'Your habits already score. Bring friends in to make it a game: a leaderboard, votes and a weekly winner.',
+    ),
+  ).toBeVisible()
 
   await tab(page, 'Board').click()
   await expect(

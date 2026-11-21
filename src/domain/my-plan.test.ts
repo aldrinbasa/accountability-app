@@ -141,7 +141,7 @@ describe('Commitment edit copy', () => {
       'It stops after this Sunday. Past check-ins stay in the Feed.',
     )
     expect(MY_PLAN_COPY.lockNote).toBe(
-      "Schedule type can't change while this commitment is active. End it and add a new one.",
+      "Schedule type can't change while this habit is active. End it and add a new one.",
     )
     expect(MY_PLAN_COPY.wrappedUp).toBe("That's already wrapped up.")
     expect(editLabel('Gym')).toBe('Edit Gym')

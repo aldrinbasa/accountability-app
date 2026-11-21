@@ -270,6 +270,11 @@ describe('Feed wall', () => {
     const own = feedCheckin({ authorId: TEST_USER.id, authorName: 'Jo' })
     renderFeed('/feed', [own], { groups: [{ ...TEST_GROUP, memberCount: 1 }] })
     expect(await screen.findByText('Just you in here so far.')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Your habits already score. Bring friends in to make it a game: a leaderboard, votes and a weekly winner.',
+      ),
+    ).toBeInTheDocument()
     await waitFor(() => expect(articles()).toHaveLength(1))
     expect(screen.queryByText('Nothing stuck here yet.')).not.toBeInTheDocument()
   })

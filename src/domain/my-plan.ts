@@ -119,14 +119,14 @@ export const MY_PLAN_COPY = {
   title: 'My plan',
   current: 'Current',
   past: 'Past',
-  editTitle: 'Edit commitment',
-  lockNote: "Schedule type can't change while this commitment is active. End it and add a new one.",
-  endCommitment: 'End commitment',
+  editTitle: 'Edit habit',
+  lockNote: "Schedule type can't change while this habit is active. End it and add a new one.",
+  endCommitment: 'End habit',
   endBody: 'It stops after this Sunday. Past check-ins stay in the Feed.',
   end: 'End',
   ending: 'Ending…',
   wrappedUp: ERROR_COPY.commitment_ended,
-  loadFailed: "Couldn't load this commitment. Tap Retry.",
+  loadFailed: "Couldn't load this habit. Tap Retry.",
   emptyLine: TODAY_COPY.noPlanLine,
 } as const
 

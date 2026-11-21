@@ -12,8 +12,8 @@ test('post offline, then it sends when the connection returns', async ({ page, c
   await createFirstGroup(page, 'Signal Club')
 
   // A task due today.
-  await page.getByRole('button', { name: 'Add a commitment or task' }).click()
-  const sheet = page.getByRole('dialog', { name: 'Add a commitment or task' })
+  await page.getByRole('button', { name: 'Add a habit or task' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Add a habit or task' })
   await sheet.getByRole('radio', { name: 'Task' }).click()
   await sheet.getByRole('radio', { name: 'Groceries' }).click()
   await sheet.getByRole('textbox', { name: 'Name' }).fill('Grocery run')

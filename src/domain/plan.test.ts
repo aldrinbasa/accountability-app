@@ -77,7 +77,7 @@ describe('plan formatters', () => {
 
   it('builds the story copy with the real dates and numbers', () => {
     expect(startNote('2026-11-16')).toBe(
-      'Starts next Monday, 16 Nov. New commitments never change this week.',
+      'Starts next Monday, 16 Nov. New habits never change this week.',
     )
     expect(endDateError('2026-11-22')).toBe('End date has to be on or after Sun 22 Nov.')
     expect(lockedNote('Gym', 'times_per_week')).toBe('Gym is times per week in this group.')

@@ -2,7 +2,10 @@ import type { ReactNode } from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { BackendError, backendErrorCode } from '@/domain/error-codes'
 import type { AddCommitmentInput, AddTaskInput, TaskDetails } from '@/domain/plan'
+import { boardGroupKey } from '@/data/board'
 import { groupGoalKey } from '@/data/goal'
+import { memberProfileGroupKey } from '@/data/member-profile'
+import { streaksKey } from '@/data/streaks'
 import { groupActivitiesKey } from '@/data/activities'
 import {
   commitmentKey,
@@ -65,12 +68,14 @@ describe('plan data', () => {
     expect(result.current.data).toEqual({ ...TEST_PLAN_PREVIEW, lastWeekTarget: 2 })
   })
 
-  it('useAddCommitment sends the input and invalidates today, plan and group activities', async () => {
+  it('useAddCommitment sends the input and invalidates today, plan, group activities, member profiles and streaks', async () => {
     const { backend, queryClient, wrapper } = setup()
     for (const key of [
       todayKey(TEST_GROUP.id),
       planKey(TEST_GROUP.id),
       groupActivitiesKey(TEST_GROUP.id),
+      memberProfileGroupKey(TEST_GROUP.id),
+      streaksKey(TEST_GROUP.id),
     ]) {
       queryClient.setQueryData(key, [])
     }
@@ -85,6 +90,9 @@ describe('plan data', () => {
       todayKey(TEST_GROUP.id),
       planKey(TEST_GROUP.id),
       groupActivitiesKey(TEST_GROUP.id),
+      // Me's plan (Epic 4 retro F5).
+      memberProfileGroupKey(TEST_GROUP.id),
+      streaksKey(TEST_GROUP.id),
     ]) {
       expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
     }
@@ -136,6 +144,9 @@ describe('task data (Story 2.4)', () => {
       planKey(TEST_GROUP.id),
       groupActivitiesKey(TEST_GROUP.id),
       groupGoalKey(TEST_GROUP.id),
+      boardGroupKey(TEST_GROUP.id),
+      memberProfileGroupKey(TEST_GROUP.id),
+      streaksKey(TEST_GROUP.id),
     ]) {
       queryClient.setQueryData(key, [])
     }
@@ -152,6 +163,10 @@ describe('task data (Story 2.4)', () => {
       groupActivitiesKey(TEST_GROUP.id),
       // A task counts this week: the group goal's average moves (Story 4.7).
       groupGoalKey(TEST_GROUP.id),
+      boardGroupKey(TEST_GROUP.id),
+      // Me's task count and pending seals, and the streaks (Epic 4 retro F5).
+      memberProfileGroupKey(TEST_GROUP.id),
+      streaksKey(TEST_GROUP.id),
     ]) {
       expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true)
     }
@@ -331,13 +346,15 @@ describe('task data (Story 2.4)', () => {
     ).toHaveLength(1)
   })
 
-  it('useUpdateCommitment and useEndCommitment invalidate today, plan and group activities', async () => {
+  it('useUpdateCommitment and useEndCommitment invalidate today, plan, group activities, member profiles and streaks', async () => {
     const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
     const { queryClient, wrapper } = setup(backend)
     const keys = [
       todayKey(TEST_GROUP.id),
       planKey(TEST_GROUP.id),
       groupActivitiesKey(TEST_GROUP.id),
+      memberProfileGroupKey(TEST_GROUP.id),
+      streaksKey(TEST_GROUP.id),
     ]
     for (const key of keys) queryClient.setQueryData(key, [])
     const update = renderHook(() => useUpdateCommitment(TEST_GROUP.id), { wrapper })

@@ -14,6 +14,9 @@ import type { Profile } from '@/domain/profile'
 import { chooseZone, type TimeZoneState } from '@/domain/time-zones'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
+import { boardGroupKey, groupWeekKey } from '@/data/board'
+import { groupGoalKey } from '@/data/goal'
+import { memberProfileGroupKey } from '@/data/member-profile'
 import { setLastSeenCount } from '@/data/group-notices'
 import { deviceTimeZone, MY_PROFILE_KEY } from '@/data/profile'
 import { retryOnline } from '@/data/query-client'
@@ -184,13 +187,35 @@ export function useJoinGroup() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (code: string) => repository.join(code),
-    onSuccess: async (_groupId, code) => {
+    onSuccess: async (groupId, code) => {
       await fetchMyGroups(queryClient, repository)
+      invalidateMembershipViews(queryClient, groupId)
       queryClient.setQueryData<InvitePreview>(invitePreviewKey(code), (preview) =>
         preview ? { ...preview, status: 'member' } : preview,
       )
     },
   })
+}
+
+/** The group's views whose content follows its size: board, group goal, member profiles, week. */
+function membershipViewKeys(groupId: string) {
+  return [
+    boardGroupKey(groupId),
+    groupGoalKey(groupId),
+    memberProfileGroupKey(groupId),
+    groupWeekKey(groupId),
+  ]
+}
+
+/**
+ * A join or remove moves the group's size: this device's board (waiting or ranked), group goal
+ * (panel or not), member profiles (pending seals) and group week refetch at once. Other members'
+ * phones catch up on their next refetch or focus.
+ */
+function invalidateMembershipViews(queryClient: QueryClient, groupId: string) {
+  for (const queryKey of membershipViewKeys(groupId)) {
+    void queryClient.invalidateQueries({ queryKey })
+  }
 }
 
 /**
@@ -257,6 +282,13 @@ export function useLeaveGroup(groupId: string, onLeft?: () => void) {
     onSuccess: async () => {
       onLeft?.()
       await fetchMyGroups(queryClient, repository)
+      // No longer a member: drop the group's views (a refetch would only answer not_member).
+      // The left group's board, member profiles and group week go (nothing on the settings route
+      // watches them). Its group goal stays until the screen unmounts: the settings Goal row still
+      // watches it, and removing a watched query refetches it into `not_member`.
+      queryClient.removeQueries({ queryKey: boardGroupKey(groupId) })
+      queryClient.removeQueries({ queryKey: memberProfileGroupKey(groupId) })
+      queryClient.removeQueries({ queryKey: groupWeekKey(groupId) })
       queryClient.removeQueries({ queryKey: membersKey(groupId) })
       queryClient.removeQueries({ queryKey: inviteKey(groupId) })
       // A preview marked `member` by an earlier join would bounce a rejoin to Today.
@@ -299,6 +331,7 @@ export function useRemoveMember(groupId: string) {
         .getQueryData<MyGroupsSnapshot>(MY_GROUPS_KEY)
         ?.groups.find((g) => g.id === groupId)
       if (group) setLastSeenCount(groupId, group.memberCount)
+      invalidateMembershipViews(queryClient, groupId)
     },
   })
 }

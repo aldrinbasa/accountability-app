@@ -625,6 +625,10 @@ export function toProfileBadges(value: unknown): ProfileBadge[] {
         status: isBadgeStatus(item.status) ? item.status : 'locked',
         awardedAt: typeof item.awarded_at === 'string' ? item.awarded_at : null,
         pendingLockAt: typeof item.pending_lock_at === 'string' ? item.pending_lock_at : null,
+        awardCount:
+          typeof item.award_count === 'number' && Number.isInteger(item.award_count)
+            ? Math.max(0, item.award_count)
+            : 0,
       },
     ]
   })
@@ -716,6 +720,7 @@ export function toGroupGoal(rows: readonly GroupGoalRow[]): GroupGoal {
         })
       : [],
     monthAverage: jsonNumber(row.month_average),
+    monthValueNow: jsonNumber(row.month_value_now),
     contributions: Array.isArray(contributions)
       ? contributions.flatMap((item): GoalContribution[] =>
           isRecord(item) && typeof item.user_id === 'string'

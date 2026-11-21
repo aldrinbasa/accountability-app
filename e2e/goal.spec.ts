@@ -18,7 +18,9 @@ function psql(dbUrl: string, ...commands: string[]): string {
  * from the Board's Goal panel: the toast, the panel with Everyone's part, and Team Player pending on
  * her Me. Ben sees the panel without Edit. psql moves the goal back a week, copies both tasks into
  * last week, checks Ada's in and locks last week under the tick's advisory lock: the goal is hit, so
- * the Feed shows the goal sticky, the panel shows "Goal hit…", and both earn Team Player.
+ * the Feed shows the winner sticky with the goal sticky right under it (Epic 4 retro F4), the panel
+ * shows "Goal hit…", and both earn Team Player. Team Player repeats (Epic 4 retro F7): psql adds an
+ * earlier award for Ada, and her seal then carries "×2" and the count in its name.
  */
 test('the admin sets a group goal; the lock decides it and everyone earns Team Player', async ({
   page,
@@ -115,8 +117,32 @@ test('the admin sets a group goal; the lock decides it and everyone earns Team P
       name: 'Goal hit · 50% this week. Nobody let the group down. This time.',
     }),
   ).toBeVisible()
+  // One lock, a fixed order: the winner sticky on top, the goal sticky right under it.
+  const lockStickies = page.locator(
+    'article[data-kind="weekly_winner"], article[data-kind="goal_result"]',
+  )
+  await expect(lockStickies).toHaveCount(2)
+  await expect(lockStickies.nth(0)).toHaveAttribute('data-kind', 'weekly_winner')
+  await expect(lockStickies.nth(1)).toHaveAttribute('data-kind', 'goal_result')
   await tab(page, 'Board').click()
   await expect(panel.getByText('Goal hit. Nobody let the group down. This time.')).toBeVisible()
+
+  // A second Team Player (an earlier hit, added by psql): the seal counts it.
+  psql(
+    dbUrl as string,
+    `insert into public.badge_awards
+       (group_id, membership_id, user_id, badge_key, week_start, awarded_at)
+     select m.group_id, m.id, m.user_id, 'team_player', '${week}'::date - 7,
+            now() - interval '7 days'
+     from public.memberships m
+     join public.profiles p on p.id = m.user_id
+     where m.group_id = '${groupId}' and m.ended_at is null and p.display_name = 'Ada';`,
+  )
+  await tab(page, 'Me').click()
+  await page.reload()
+  const repeatSeal = page.getByRole('button', { name: /^Team Player, earned 2 times, last / })
+  await expect(repeatSeal).toBeVisible()
+  await expect(repeatSeal.locator('[data-badge-count]')).toHaveText('×2')
 
   // Ben earned it too.
   await ben.reload()

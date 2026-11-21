@@ -90,7 +90,7 @@ export const OUTBOX_COPY = {
 
 /** The reasons in "Couldn't post your Gym photo: {reason}." (`week_locked` has its own line). */
 export const REJECTION_REASONS: Record<Exclude<OutboxRejectionCode, 'week_locked'>, string> = {
-  commitment_ended: 'commitment ended',
+  commitment_ended: 'habit ended',
   not_member: 'removed from the group',
   session_frozen: 'session already frozen',
   bad_capture_time: "your phone's clock was ahead",
@@ -126,7 +126,7 @@ export function waitingBannerText(
  * A rejected entry's Banner. `week_locked`: "Too late for last week. It locked Wed 23:59, so this
  * photo can't count." (the server's lock time in the group zone, the city named when it differs from
  * `memberZone`; without the details, "That week has locked"). Other codes: "Couldn't post your Gym
- * photo: commitment ended."
+ * photo: habit ended."
  */
 export function rejectionBannerText(
   title: string,

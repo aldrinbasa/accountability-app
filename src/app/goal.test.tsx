@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BackendError } from '@/domain/error-codes'
 import type { FeedGoal, GroupGoal } from '@/domain/goal'
 import {
+  boardRow,
   createFakeBackend,
   renderRoutes,
   TEST_GROUP,
@@ -44,6 +45,11 @@ const WEEKLY: GroupGoal = testGroupGoal({
     { userId: 'user-priya', name: 'Priya', weeklyPoints: null },
   ],
 })
+
+const RANKED_ROWS = [
+  boardRow({ userId: 'user-marco', displayName: 'Marco', weeklyPoints: 88, rank: 1 }),
+  boardRow({ userId: TEST_USER.id, displayName: 'Jo', weeklyPoints: 57, rank: 2 }),
+]
 
 function renderBoard(options: Parameters<typeof createFakeBackend>[1] = {}) {
   render(<Toaster />)
@@ -114,7 +120,7 @@ describe('Board: Goal panel (Story 4.7)', () => {
     expect(within(await panel()).getByText('Missed by 5%. Next week, then.')).toBeInTheDocument()
   })
 
-  it('monthly: the month so far as now, one tick bar per locked week', async () => {
+  it("monthly: now is the server's month value (locked weeks plus the live week), one tick bar per locked week", async () => {
     renderBoard({
       goals: {
         [TEST_GROUP.id]: {
@@ -125,14 +131,53 @@ describe('Board: Goal panel (Story 4.7)', () => {
             { weekStart: '2026-11-09', average: 81 },
           ],
           monthAverage: 75.5,
+          monthValueNow: 74.5,
         },
       },
     })
     const goal = await screen.findByRole('region', {
-      name: 'Group goal 85% this month. Now 75.5%.',
+      name: 'Group goal 85% this month. Now 74.5%.',
     })
+    expect(goal.querySelector('[data-goal-now]')).toHaveTextContent('74.5%')
     expect(within(goal).getByRole('img', { name: 'Week of 2 Nov, 70%' })).toBeInTheDocument()
     expect(within(goal).getByRole('img', { name: 'Week of 9 Nov, 81%' })).toBeInTheDocument()
+  })
+
+  it('a result is worded by its own period: a weekly miss under a monthly goal says "Next week", a monthly one "Next month"', async () => {
+    const monthly = { ...WEEKLY, period: 'monthly' as const, monthValueNow: 72.5 }
+    const missed = { weekStart: '2026-11-09', target: 85, average: 81, hit: false }
+    const first = renderBoard({
+      goals: { [TEST_GROUP.id]: { ...monthly, lastResult: { ...missed, period: 'weekly' } } },
+    })
+    const goal = await screen.findByRole('region', { name: /^Group goal 85% this month/ })
+    expect(within(goal).getByText('Missed by 4%. Next week, then.')).toBeInTheDocument()
+    first.unmount()
+
+    renderBoard({
+      goals: { [TEST_GROUP.id]: { ...WEEKLY, lastResult: { ...missed, period: 'monthly' } } },
+    })
+    expect(within(await panel()).getByText('Missed by 4%. Next month, then.')).toBeInTheDocument()
+  })
+
+  it('a group of one comes from the groups list: no panel even while the board and goal read still count 3', async () => {
+    const solo = { ...TEST_GROUP, memberCount: 1 }
+    renderBoard({
+      groups: [solo],
+      board: { [solo.id]: testBoard({ waiting: false, rows: RANKED_ROWS }) },
+      goals: { [solo.id]: WEEKLY },
+    })
+    expect(await screen.findByText('Marco')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /^Group goal/ })).not.toBeInTheDocument()
+  })
+
+  it('the groups list says 3 members while the board still says waiting: the panel shows', async () => {
+    renderBoard({
+      board: { [TEST_GROUP.id]: testBoard({ waiting: true, rows: [] }) },
+      goals: { [TEST_GROUP.id]: WEEKLY },
+    })
+    expect(
+      await screen.findByRole('region', { name: 'Group goal 85% this week. Now 72.5%.' }),
+    ).toBeInTheDocument()
   })
 
   it('a group of one: no Goal panel', async () => {

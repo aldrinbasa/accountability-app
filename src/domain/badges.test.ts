@@ -1,5 +1,6 @@
 import {
   allTimePointsText,
+  awardCountMark,
   badgeLabel,
   earnedText,
   formatPoints,
@@ -20,6 +21,7 @@ const BADGE: ProfileBadge = {
   status: 'locked',
   awardedAt: null,
   pendingLockAt: null,
+  awardCount: 0,
 }
 
 describe('badge status labels (Story 4.6)', () => {
@@ -48,6 +50,27 @@ describe('badge status labels (Story 4.6)', () => {
     expect(pendingText('2026-11-25T16:00:00Z', 'Asia/Manila', 'Europe/Paris')).toBe(
       'Unlocks when the week locks, Wed 23:59 Manila time.',
     )
+  })
+
+  it('a repeat badge earned 2+ times says its count; 1 keeps the plain earned line (Epic 4 retro)', () => {
+    const teamPlayer: ProfileBadge = {
+      ...BADGE,
+      key: 'team_player',
+      name: 'Team Player',
+      status: 'earned',
+      awardedAt: '2026-11-12T00:00:01Z',
+      awardCount: 3,
+    }
+    expect(badgeLabel(teamPlayer, 'UTC')).toBe('Team Player, earned 3 times, last 12 Nov')
+    expect(badgeLabel({ ...teamPlayer, awardCount: 1 }, 'UTC')).toBe('Team Player, earned 12 Nov')
+    expect(earnedText('2026-11-12T00:00:01Z', 'UTC', 3)).toBe('Earned 3 times · last 12 Nov')
+    expect(earnedText('2026-11-12T00:00:01Z', 'UTC', 2)).toBe('Earned 2 times · last 12 Nov')
+    expect(earnedText('2026-11-12T00:00:01Z', 'UTC', 1)).toBe('Earned 12 Nov')
+    expect(awardCountMark(teamPlayer)).toBe('×3')
+    expect(awardCountMark({ ...teamPlayer, awardCount: 2 })).toBe('×2')
+    expect(awardCountMark({ ...teamPlayer, awardCount: 1 })).toBeNull()
+    // Only an earned seal carries the mark.
+    expect(awardCountMark({ ...teamPlayer, status: 'pending' })).toBeNull()
   })
 
   it('seal fills rotate vote, sticky, sticky2 in catalog order', () => {

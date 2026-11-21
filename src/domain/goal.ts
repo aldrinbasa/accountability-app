@@ -50,8 +50,17 @@ export interface GroupGoal {
   monthWeeks: GoalMonthWeek[]
   /** Monthly: their average; null before the month's first lock. */
   monthAverage: number | null
+  /**
+   * Monthly: the value the lock would decide now (the month's locked weeks with an average plus the
+   * current week's live average when it would get one); null for a weekly goal, none, or no value.
+   */
+  monthValueNow: number | null
   contributions: GoalContribution[]
-  /** The most recent locked week's decided result, else null. */
+  /**
+   * The newest decided result while it still applies (the server's rule: a weekly result while its
+   * week is the newest locked week, a monthly one through the next lock month), else null. Worded by
+   * its own period, which can differ from the goal in effect.
+   */
   lastResult: GoalResult | null
 }
 
@@ -123,11 +132,12 @@ export function goalValueText(value: number): string {
 }
 
 /**
- * What the panel shows as "now": a monthly goal's average of the month's locked weeks, else (and
- * before the month's first lock) the current week's live average; null when nobody has a score.
+ * What the panel shows as "now": for a monthly goal the server's `monthValueNow` (what the month's
+ * last lock would decide if nothing changes: locked weeks plus the live week), else the current
+ * week's live average; null when there is no value yet.
  */
 export function goalNow(goal: GroupGoal): number | null {
-  if (goal.period === 'monthly' && goal.monthAverage !== null) return goal.monthAverage
+  if (goal.period === 'monthly') return goal.monthValueNow
   return goal.liveAverage
 }
 

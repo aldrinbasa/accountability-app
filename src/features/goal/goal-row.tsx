@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { CaretRight, Target } from '@phosphor-icons/react'
 import { GOAL_COPY, goalTargetText } from '@/domain/goal'
-import type { MyGroup } from '@/domain/groups'
+import { isWaiting, type MyGroup } from '@/domain/groups'
 import { useGroupGoal } from '@/data/goal'
 import { Icon } from '@/ui/icon'
 import { InlineRetry } from '@/ui/inline-retry'
@@ -29,7 +29,7 @@ export function GoalRow({ group }: { group: MyGroup }) {
       ? goalTargetText(current.target, current.period)
       : GOAL_COPY.settingsNone
     : null
-  const solo = group.memberCount < 2
+  const solo = isWaiting(group)
 
   const content = (
     <>

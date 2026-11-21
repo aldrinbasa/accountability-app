@@ -41,13 +41,11 @@ afterEach(() => setOnline(true))
 async function openSheet(backend = createFakeBackend()) {
   const user = userEvent.setup()
   const result = renderRoutes(['/today'], backend)
-  const add = await screen.findByRole('button', { name: 'Add a commitment or task' })
+  const add = await screen.findByRole('button', { name: 'Add a habit or task' })
   await user.click(add)
-  const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
+  const dialog = await screen.findByRole('dialog', { name: 'Add a habit or task' })
   // Presets and the start note have loaded.
-  await within(dialog).findByText(
-    'Starts next Monday, 23 Nov. New commitments never change this week.',
-  )
+  await within(dialog).findByText('Starts next Monday, 23 Nov. New habits never change this week.')
   await within(dialog).findByRole('radio', { name: 'Run' })
   return { ...result, user, add, dialog }
 }
@@ -56,13 +54,11 @@ function save(dialog: HTMLElement) {
   return within(dialog).getByRole('button', { name: 'Save' })
 }
 
-describe('Plan sheet (add a commitment)', () => {
-  it('"+ Add" opens the sheet with the commitment fields, the start note and Save', async () => {
+describe('Plan sheet (add a habit)', () => {
+  it('"+ Add" opens the sheet with the habit fields, the start note and Save', async () => {
     const { add, dialog } = await openSheet()
     expect(add).toHaveTextContent('Add')
-    expect(
-      within(dialog).getByRole('heading', { name: 'Add a commitment or task' }),
-    ).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: 'Add a habit or task' })).toBeInTheDocument()
     expect(within(dialog).getByRole('radiogroup', { name: 'Activity' })).toBeInTheDocument()
     const schedule = within(dialog).getByRole('radiogroup', { name: 'Schedule' })
     expect(within(schedule).getByRole('radio', { name: 'Fixed days' })).toBeChecked()
@@ -344,25 +340,25 @@ async function openTaskMode(backend = createFakeBackend()) {
 }
 
 describe('Plan sheet (add a task)', () => {
-  it('an unlabeled Commitment / Task switch sits on top, Commitment selected; arrow keys switch', async () => {
+  it('an unlabeled Habit / Task switch sits on top, Habit selected; arrow keys switch', async () => {
     const { user, dialog } = await openSheet()
-    const kind = within(dialog).getByRole('radiogroup', { name: 'Commitment or task' })
+    const kind = within(dialog).getByRole('radiogroup', { name: 'Habit or task' })
     expect(kind).not.toHaveAttribute('aria-labelledby')
-    expect(within(dialog).queryByText('Commitment or task')).not.toBeInTheDocument()
-    const commitment = within(kind).getByRole('radio', { name: 'Commitment' })
-    expect(commitment).toBeChecked()
+    expect(within(dialog).queryByText('Habit or task')).not.toBeInTheDocument()
+    const habit = within(kind).getByRole('radio', { name: 'Habit' })
+    expect(habit).toBeChecked()
     expect(within(kind).getByRole('radio', { name: 'Task' })).not.toBeChecked()
     // The switch comes before every field.
     expect(
       kind.compareDocumentPosition(within(dialog).getByRole('radiogroup', { name: 'Activity' })) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
-    commitment.focus()
+    habit.focus()
     await user.keyboard('{ArrowRight}')
     expect(within(kind).getByRole('radio', { name: 'Task' })).toBeChecked()
     expect(within(kind).getByRole('radio', { name: 'Task' })).toHaveFocus()
     await user.keyboard('{ArrowLeft}')
-    expect(commitment).toBeChecked()
+    expect(habit).toBeChecked()
   })
 
   it('Task mode: Activity, Name, Deadline from today to Sunday (default Sunday) and the note', async () => {
@@ -381,7 +377,7 @@ describe('Plan sheet (add a task)', () => {
     expect(within(deadline).getByText('Today')).toBeInTheDocument()
     expect(within(dialog).getByText('Counts this week, starting now.')).toBeInTheDocument()
     expect(within(dialog).queryByRole('radiogroup', { name: 'Schedule' })).not.toBeInTheDocument()
-    // The Commitment form stays mounted (input survives a switch) but hidden.
+    // The Habit form stays mounted (input survives a switch) but hidden.
     expect(within(dialog).getByLabelText('End date (optional)')).not.toBeVisible()
     expect(within(dialog).getByText(/Starts next Monday/)).not.toBeVisible()
   })
@@ -398,8 +394,8 @@ describe('Plan sheet (add a task)', () => {
     })
     const user = userEvent.setup()
     renderRoutes(['/today'], backend)
-    await user.click(await screen.findByRole('button', { name: 'Add a commitment or task' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add a commitment or task' })
+    await user.click(await screen.findByRole('button', { name: 'Add a habit or task' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add a habit or task' })
     await user.click(within(dialog).getByRole('radio', { name: 'Task' }))
     const deadline = await within(dialog).findByRole('radiogroup', { name: 'Deadline' })
     await within(deadline).findByRole('radio', { name: 'Today' })
@@ -495,15 +491,15 @@ describe('Plan sheet (add a task)', () => {
     await waitFor(() => expect(within(dialog).getByRole('radio', { name: 'Sunday' })).toHaveFocus())
   })
 
-  it('switching Task, Commitment, Task keeps the typed name; either form makes the sheet dirty', async () => {
+  it('switching Task, Habit, Task keeps the typed name; either form makes the sheet dirty', async () => {
     const { user, dialog } = await openTaskMode()
     await user.type(within(dialog).getByRole('textbox', { name: 'Name' }), 'Grocery run')
-    await user.click(within(dialog).getByRole('radio', { name: 'Commitment' }))
+    await user.click(within(dialog).getByRole('radio', { name: 'Habit' }))
     expect(within(dialog).queryByRole('textbox', { name: 'Name' })).not.toBeInTheDocument()
     expect(within(dialog).getByRole('radiogroup', { name: 'Schedule' })).toBeInTheDocument()
     await user.click(within(dialog).getByRole('radio', { name: 'Task' }))
     expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveValue('Grocery run')
-    await user.click(within(dialog).getByRole('radio', { name: 'Commitment' }))
+    await user.click(within(dialog).getByRole('radio', { name: 'Habit' }))
     await user.click(within(dialog).getByRole('button', { name: 'Close' }))
     expect(within(dialog).getByText('Discard this?')).toBeInTheDocument()
   })
@@ -594,7 +590,7 @@ describe('Plan sheet (task edit mode)', () => {
   it('hides the switch, shows activity and deadline read-only and the Name to edit', async () => {
     const { dialog } = await openEdit()
     expect(
-      within(dialog).queryByRole('radiogroup', { name: 'Commitment or task' }),
+      within(dialog).queryByRole('radiogroup', { name: 'Habit or task' }),
     ).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('radiogroup', { name: 'Activity' })).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('radiogroup', { name: 'Deadline' })).not.toBeInTheDocument()
@@ -737,7 +733,7 @@ describe('Plan sheet (task edit mode)', () => {
     // The deleted task's row (the opener) is about to go: focus lands on "+ Add".
     expect(opener).not.toHaveFocus()
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Add a commitment or task' })).toHaveFocus(),
+      expect(screen.getByRole('button', { name: 'Add a habit or task' })).toHaveFocus(),
     )
   })
 
@@ -838,7 +834,7 @@ async function openCommitmentEdit(
   )
   const opener = screen.getByRole('button', { name: 'Edit' })
   await user.click(opener)
-  const dialog = await screen.findByRole('dialog', { name: 'Edit commitment' })
+  const dialog = await screen.findByRole('dialog', { name: 'Edit habit' })
   await within(dialog).findByText('Changes start Mon 23 Nov.')
   return { user, dialog, backend, opener }
 }
@@ -856,11 +852,11 @@ const STUDY_FIXED: CommitmentDetails = {
 
 const WRAPPED_UP = "That's already wrapped up."
 
-describe('Plan sheet (commitment edit mode)', () => {
+describe('Plan sheet (habit edit mode)', () => {
   it('hides the switch, activity read-only, only the locked type with its note, the real start note', async () => {
     const { dialog } = await openCommitmentEdit()
     expect(
-      within(dialog).queryByRole('radiogroup', { name: 'Commitment or task' }),
+      within(dialog).queryByRole('radiogroup', { name: 'Habit or task' }),
     ).not.toBeInTheDocument()
     expect(within(dialog).queryByRole('radiogroup', { name: 'Activity' })).not.toBeInTheDocument()
     expect(within(dialog).getByText('Gym')).toBeInTheDocument()
@@ -868,13 +864,13 @@ describe('Plan sheet (commitment edit mode)', () => {
     expect(within(schedule).getAllByRole('radio')).toHaveLength(1)
     expect(within(schedule).getByRole('radio', { name: 'Times per week' })).toBeChecked()
     expect(schedule).toHaveAccessibleDescription(
-      "Schedule type can't change while this commitment is active. End it and add a new one.",
+      "Schedule type can't change while this habit is active. End it and add a new one.",
     )
     expect(within(dialog).getByRole('group', { name: 'Times per week' })).toHaveTextContent(
       '3 times per week',
     )
     expect(within(dialog).getByText('Changes start Mon 23 Nov.')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: 'End commitment' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'End habit' })).toBeInTheDocument()
   })
 
   it('Save sends update_commitment and shows "Gym changes to 4 times per week from Mon 23 Nov."', async () => {
@@ -898,23 +894,23 @@ describe('Plan sheet (commitment edit mode)', () => {
     await user.click(save(dialog))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await user.click(opener)
-    const again = await screen.findByRole('dialog', { name: 'Edit commitment' })
+    const again = await screen.findByRole('dialog', { name: 'Edit habit' })
     expect(await within(again).findByRole('group', { name: 'Times per week' })).toHaveTextContent(
       '4 times per week',
     )
   })
 
-  it('"End commitment" ignores taps while a save is in flight', async () => {
+  it('"End habit" ignores taps while a save is in flight', async () => {
     const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
     vi.mocked(backend.updateCommitment).mockReturnValueOnce(new Promise(() => {}))
     const { user, dialog } = await openCommitmentEdit(TEST_COMMITMENT, backend)
     await user.click(within(dialog).getByRole('button', { name: 'More' }))
     await user.click(save(dialog))
-    const end = within(dialog).getByRole('button', { name: 'End commitment' })
+    const end = within(dialog).getByRole('button', { name: 'End habit' })
     expect(end).toHaveAttribute('aria-disabled', 'true')
     await user.click(end)
     expect(screen.queryByRole('dialog', { name: 'End Gym?' })).not.toBeInTheDocument()
-    expect(screen.getByRole('dialog', { name: 'Edit commitment' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Edit habit' })).toBeInTheDocument()
   })
 
   it('fixed days: days and end date start from the latest version; the toast names the days', async () => {
@@ -1008,7 +1004,7 @@ describe('Plan sheet (commitment edit mode)', () => {
     expect(within(dialog).getByText('Discard this?')).toBeInTheDocument()
   })
 
-  it('an ending commitment, or a task id, closes the sheet with the wrapped-up toast', async () => {
+  it('an ending habit, or a task id, closes the sheet with the wrapped-up toast', async () => {
     const user = userEvent.setup()
     render(
       withBackend(
@@ -1032,9 +1028,9 @@ describe('Plan sheet (commitment edit mode)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 
-  it('"End commitment" swaps in the confirm; End ends it and returns to the screen', async () => {
+  it('"End habit" swaps in the confirm; End ends it and returns to the screen', async () => {
     const { user, dialog, backend, opener } = await openCommitmentEdit()
-    await user.click(within(dialog).getByRole('button', { name: 'End commitment' }))
+    await user.click(within(dialog).getByRole('button', { name: 'End habit' }))
     const confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
     expect(screen.getAllByRole('dialog')).toHaveLength(1)
     expect(
@@ -1051,15 +1047,15 @@ describe('Plan sheet (commitment edit mode)', () => {
   it('closing the End confirm cancels; offline and commitment_ended show Inline retry copy', async () => {
     const backend = createFakeBackend(undefined, { commitments: [TEST_COMMITMENT] })
     const { user, dialog } = await openCommitmentEdit(TEST_COMMITMENT, backend)
-    await user.click(within(dialog).getByRole('button', { name: 'End commitment' }))
+    await user.click(within(dialog).getByRole('button', { name: 'End habit' }))
     let confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
     await user.click(within(confirm).getByRole('button', { name: 'Close' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(backend.endCommitment).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Edit' }))
-    const again = await screen.findByRole('dialog', { name: 'Edit commitment' })
-    await user.click(await within(again).findByRole('button', { name: 'End commitment' }))
+    const again = await screen.findByRole('dialog', { name: 'Edit habit' })
+    await user.click(await within(again).findByRole('button', { name: 'End habit' }))
     confirm = await screen.findByRole('dialog', { name: 'End Gym?' })
     setOnline(false)
     await user.click(within(confirm).getByRole('button', { name: 'End' }))

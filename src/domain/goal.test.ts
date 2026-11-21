@@ -24,6 +24,7 @@ const GOAL: GroupGoal = {
   liveAverage: 72,
   monthWeeks: [],
   monthAverage: null,
+  monthValueNow: null,
   contributions: [],
   lastResult: null,
 }
@@ -104,10 +105,20 @@ describe('goal copy', () => {
     expect(goalSummary({ ...GOAL, target: null, period: null })).toBe('Group goal')
   })
 
-  it('now: a monthly goal shows the month so far, else (and before its first lock) the live week', () => {
+  it("now: a monthly goal shows the server's month value now (what the lock would decide), a weekly goal the live week", () => {
     expect(goalNow(GOAL)).toBe(72)
-    expect(goalNow({ ...GOAL, period: 'monthly', monthAverage: 70 })).toBe(70)
-    expect(goalNow({ ...GOAL, period: 'monthly', monthAverage: null })).toBe(72)
+    expect(goalNow({ ...GOAL, monthValueNow: 90 })).toBe(72)
+    // The closing week: the locked weeks average 86, the live week pulls the month to 84.
+    expect(goalNow({ ...GOAL, period: 'monthly', monthAverage: 86, monthValueNow: 84 })).toBe(84)
+    // Before the month's first lock the month value is the live week alone.
+    expect(goalNow({ ...GOAL, period: 'monthly', monthAverage: null, monthValueNow: 72 })).toBe(72)
+    // No week with a value yet (nobody scored, or a group that was solo all month).
+    expect(goalNow({ ...GOAL, period: 'monthly', monthAverage: null, monthValueNow: null })).toBe(
+      null,
+    )
+    expect(goalSummary({ ...GOAL, period: 'monthly', monthAverage: 86, monthValueNow: 84 })).toBe(
+      'Group goal 85% this month. Now 84%.',
+    )
   })
 
   it('contribution labels: "Priya, 64%" or "Priya, no score"', () => {

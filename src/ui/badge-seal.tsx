@@ -18,6 +18,11 @@ export interface BadgeSealProps {
   status?: 'earned' | 'pending' | 'locked'
   /** The pending chip's text ("Unlocks at week lock"). */
   pendingChip?: string
+  /**
+   * A repeat badge's count mark ("×3"), drawn on an earned seal's corner. Decorative: the caller's
+   * accessible name says the count.
+   */
+  count?: string | null
   className?: string
 }
 
@@ -36,6 +41,7 @@ export function BadgeSeal({
   fill = 'sticky',
   status = 'earned',
   pendingChip,
+  count,
   className,
 }: BadgeSealProps) {
   const earned = status === 'earned'
@@ -48,7 +54,7 @@ export function BadgeSeal({
       <span
         aria-hidden="true"
         className={cn(
-          'flex items-center justify-center rounded-blob border-[2.5px]',
+          'relative flex items-center justify-center rounded-blob border-[2.5px]',
           earned
             ? cn('on-object border-obj-ink text-obj-ink', FILL[fill])
             : status === 'pending'
@@ -62,6 +68,14 @@ export function BadgeSeal({
           size={size === 120 ? 64 : 32}
           className={status === 'locked' ? 'opacity-60' : undefined}
         />
+        {earned && count ? (
+          <span
+            className="absolute -top-1.5 -right-2.5 rounded-wob-xs border-2 border-obj-ink bg-pola px-1 type-meta font-semibold text-obj-ink tabular-nums"
+            data-badge-count=""
+          >
+            {count}
+          </span>
+        ) : null}
       </span>
       <span
         className={cn(
