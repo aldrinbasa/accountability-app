@@ -75,6 +75,44 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"challenges": {
+                  Row: {
+                    "cancel_reason": string | null,"challenger_id": string,"checkin_id": string,"closed_at": string | null,"closes_at": string,"created_at": string,"early_close_at": string | null,"fake_count": number | null,"group_id": string,"id": string,"opened_at": string,"real_count": number | null,"status": string,"subject_user_id": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cancel_reason"?: string | null,"challenger_id": string,"checkin_id": string,"closed_at"?: string | null,"closes_at": string,"created_at"?: string,"early_close_at"?: string | null,"fake_count"?: number | null,"group_id": string,"id"?: string,"opened_at": string,"real_count"?: number | null,"status"?: string,"subject_user_id": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "cancel_reason"?: string | null,"challenger_id"?: string,"checkin_id"?: string,"closed_at"?: string | null,"closes_at"?: string,"created_at"?: string,"early_close_at"?: string | null,"fake_count"?: number | null,"group_id"?: string,"id"?: string,"opened_at"?: string,"real_count"?: number | null,"status"?: string,"subject_user_id"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "challenges_challenger_id_fkey"
+      columns: ["challenger_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "challenges_checkin_id_fkey"
+      columns: ["checkin_id"]
+isOneToOne: true
+      referencedRelation: "checkins"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "challenges_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "challenges_subject_user_id_fkey"
+      columns: ["subject_user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"checkins": {
                   Row: {
                     "caption": string | null,"captured_at": string,"commitment_id": string,"counted_at": string,"created_at": string,"full_pruned_at": string | null,"group_id": string,"id": string,"is_late": boolean,"received_at": string,"session_id": string | null,"updated_at": string,"user_id": string
@@ -554,7 +592,7 @@ isOneToOne: false
           Views: {
             "feed_items": {
                   Row: {
-                    "activity_name": string | null,"actor_avatar_path": string | null,"actor_id": string | null,"actor_name": string | null,"caption": string | null,"captured_at": string | null,"commitment_id": string | null,"commitment_kind": string | null,"counted_position": number | null,"full_pruned_at": string | null,"group_id": string | null,"is_extra": boolean | null,"is_late": boolean | null,"item_id": string | null,"item_kind": string | null,"miss_count": number | null,"payload": Json | null,"preset_key": string | null,"received_at": string | null,"sort_at": string | null,"subject_id": string | null,"subject_name": string | null,"target": number | null,"task_name": string | null
+                    "activity_name": string | null,"actor_avatar_path": string | null,"actor_id": string | null,"actor_name": string | null,"caption": string | null,"captured_at": string | null,"challenge_closes_at": string | null,"challenge_id": string | null,"challenge_status": string | null,"challenge_until": string | null,"commitment_id": string | null,"commitment_kind": string | null,"counted_position": number | null,"full_pruned_at": string | null,"group_id": string | null,"is_extra": boolean | null,"is_late": boolean | null,"item_id": string | null,"item_kind": string | null,"miss_count": number | null,"payload": Json | null,"preset_key": string | null,"received_at": string | null,"sort_at": string | null,"subject_id": string | null,"subject_name": string | null,"target": number | null,"task_name": string | null
                   }
                   ComputedFields: never
                   Relationships: [
@@ -605,6 +643,11 @@ isOneToOne: false
               "commitment_id": string
             }[]
                            },
+"create_challenge":
+{ Args: { "p_checkin_id": string }; Returns: {
+              "challenge_id": string,"closes_at": string,"status": string
+            }[]
+                           },
 "create_group":
 { Args: { "p_name": string }; Returns: string
                            },
@@ -644,6 +687,10 @@ isOneToOne: false
 "actor_name": string | null,
 "caption": string | null,
 "captured_at": string | null,
+"challenge_closes_at": string | null,
+"challenge_id": string | null,
+"challenge_status": string | null,
+"challenge_until": string | null,
 "commitment_id": string | null,
 "commitment_kind": string | null,
 "counted_position": number | null,
