@@ -27,14 +27,17 @@ export function isTabPath(pathname: string): pathname is TabPath {
   return TAB_PATHS.has(pathname)
 }
 
-/** `/feed/c/{checkinId}`: a check-in deep link, shown as the Feed tab. */
-const FEED_DEEP_LINK = /^\/feed\/c\/[^/]+\/?$/
+/**
+ * `/feed/c/{checkinId}` and `/feed/v/{voteId}`: a check-in or Vote card deep link, shown as the Feed
+ * tab.
+ */
+const FEED_DEEP_LINK = /^\/feed\/[cv]\/[^/]+\/?$/
 
 /** `/winner/{weekStart}`: the Winner card deep link (Story 4.5), over the Feed. */
 export const WINNER_DEEP_LINK = /^\/winner\/[^/]+\/?$/
 
 /**
- * The tab a path shows as: the tab itself, or the Feed for a check-in or winner deep link
+ * The tab a path shows as: the tab itself, or the Feed for a check-in, vote or winner deep link
  * (switcher, active Feed tab, cold-start history, stale-group state). Null for pushed screens and
  * everything else.
  */

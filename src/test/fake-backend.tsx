@@ -15,6 +15,7 @@ import type {
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
 import type { CreateChallengeResult } from '@/domain/challenge'
+import type { CastVoteResult, FeedVote, VoteChoice, VoteTally } from '@/domain/vote'
 import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
 import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
@@ -355,6 +356,11 @@ export function createFakeBackend(
     /** Friends today per group id, newest first as given. Default none. */
     friendsToday?: Record<string, FeedCheckin[]>
     /**
+     * `vote_tallies` per group id (default: every open vote item of the feed, 1 of the group's
+     * member count minus the owner, plus 1 for the reader's own ballot).
+     */
+    voteTallies?: Record<string, VoteTally[]>
+    /**
      * `get_board` per group id, for any week (default: no rows, `waiting` from the group's member
      * count). `boards` keyed `{groupId}:{weekStart}` wins for that week.
      */
@@ -422,6 +428,29 @@ export function createFakeBackend(
     }))
   const feed = options.feed ?? {}
   const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
+  const voteTallies: Record<string, VoteTally[]> | undefined = options.voteTallies
+    ? { ...options.voteTallies }
+    : undefined
+  const findVote = (id: string): FeedVote | undefined => {
+    for (const items of Object.values(feed)) {
+      const found = items.find((item): item is FeedVote => item.type === 'vote' && item.id === id)
+      if (found) return found
+    }
+    return undefined
+  }
+  const patchVote = (id: string, patch: Partial<FeedVote>) => {
+    for (const [groupId, items] of Object.entries(feed)) {
+      feed[groupId] = items.map((item) =>
+        item.type === 'vote' && item.id === id ? { ...item, ...patch } : item,
+      )
+    }
+  }
+  const shiftTally = (vote: FeedVote, by: number) => {
+    if (!voteTallies) return
+    voteTallies[vote.groupId] = (voteTallies[vote.groupId] ?? []).map((tally) =>
+      tally.targetId === vote.id ? { ...tally, votedCount: tally.votedCount + by } : tally,
+    )
+  }
   const board: Record<string, Board> = { ...options.board }
   const boards: Record<string, Board> = { ...options.boards }
   const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
@@ -866,6 +895,12 @@ export function createFakeBackend(
         null
       )
     }),
+    getFeedVote: vi.fn(async (groupId: string, voteId: string) => {
+      if (!groups.some((group) => group.id === groupId)) return null
+      return (
+        (feed[groupId] ?? []).find((item) => item.type === 'vote' && item.id === voteId) ?? null
+      )
+    }),
     // RLS: a non-member gets nothing.
     listFriendsToday: vi.fn(async (groupId: string) =>
       groups.some((group) => group.id === groupId) ? [...(friendsToday[groupId] ?? [])] : [],
@@ -934,7 +969,85 @@ export function createFakeBackend(
         entry.type === 'checkin' ? challenged(entry) : entry,
       )
       friendsToday[groupId] = (friendsToday[groupId] ?? []).map(challenged)
+      feed[groupId] = [
+        ...(feed[groupId] ?? []),
+        {
+          type: 'vote',
+          id: challengeId,
+          groupId,
+          sortAt: new Date().toISOString(),
+          checkinId,
+          challengerId: user?.id ?? null,
+          challengerName: profile?.displayName ?? '',
+          ownerId: item.authorId,
+          ownerName: item.authorName,
+          commitmentId: item.commitmentId,
+          commitmentKind: item.commitmentKind,
+          activityName: item.activityName,
+          presetKey: item.presetKey,
+          taskName: item.taskName,
+          capturedAt: item.capturedAt,
+          receivedAt: item.receivedAt,
+          fullPrunedAt: item.fullPrunedAt,
+          status: 'open',
+          closesAt,
+          fakeCount: null,
+          realCount: null,
+          variant: null,
+          cancelReason: null,
+          myChoice: null,
+          myCastAt: null,
+          canVote: false,
+        },
+      ]
       return { challengeId, status: 'open', closesAt }
+    }),
+    // The server's rules in short (no 6 s window: undo always succeeds unless the vote closed).
+    castVote: vi.fn(
+      async (_kind: 'challenge', id: string, choice: VoteChoice): Promise<CastVoteResult> => {
+        const vote = findVote(id)
+        if (!vote || !groups.some((group) => group.id === vote.groupId)) {
+          throw new BackendError('not_member')
+        }
+        if (vote.status !== 'open' || Date.now() >= Date.parse(vote.closesAt)) {
+          throw new BackendError('vote_closed')
+        }
+        if (!vote.canVote || vote.challengerId === user?.id || vote.ownerId === user?.id) {
+          throw new BackendError('not_eligible')
+        }
+        if (vote.myChoice !== null) throw new BackendError('already_voted')
+        const castAt = new Date().toISOString()
+        patchVote(id, { myChoice: choice, myCastAt: castAt })
+        shiftTally(vote, 1)
+        return { voteId: `vote-${id}`, castAt }
+      },
+    ),
+    undoVote: vi.fn(async (_kind: 'challenge', id: string) => {
+      const vote = findVote(id)
+      if (!vote || !groups.some((group) => group.id === vote.groupId)) {
+        throw new BackendError('not_member')
+      }
+      if (vote.status !== 'open') throw new BackendError('vote_closed')
+      if (vote.myChoice === null) return
+      patchVote(id, { myChoice: null, myCastAt: null })
+      shiftTally(vote, -1)
+    }),
+    listVoteTallies: vi.fn(async (groupId: string): Promise<VoteTally[]> => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      if (voteTallies) return [...(voteTallies[groupId] ?? [])]
+      return (feed[groupId] ?? []).flatMap((item): VoteTally[] =>
+        item.type === 'vote' && item.status === 'open'
+          ? [
+              {
+                targetKind: 'challenge',
+                targetId: item.id,
+                votedCount: 1 + (item.myChoice !== null ? 1 : 0),
+                eligibleCount: Math.max(1, group.memberCount - 1),
+              },
+            ]
+          : [],
+      )
     }),
   }
 }

@@ -17,6 +17,7 @@ import { PhotoViewer } from '@/features/feed/photo-viewer'
 import { WinnerSticky } from '@/features/feed/winner-sticky'
 import { GoalSticky } from '@/features/feed/goal-sticky'
 import { RulingSticky } from '@/features/feed/ruling-sticky'
+import { VoteCard } from '@/features/vote/vote-card'
 
 /** The next page starts loading this far before the end of the wall comes into view. */
 const LOAD_AHEAD = '600px'
@@ -57,14 +58,14 @@ export interface FeedWallProps {
   /** The last older page failed: no auto-loading until Retry. */
   loadMoreFailed?: boolean
   onLoadMore: () => void
-  /** The deep-linked check-in, whose article gets `anchorRef`. */
+  /** The deep-linked check-in or Vote card, whose article gets `anchorRef`. */
   anchorId?: string | null
   anchorRef?: Ref<HTMLElement>
 }
 
 /**
  * The scrapbook wall, newest first: one Polaroid per row (alternating -2.2 / 2 deg) with event,
- * miss, winner, goal and ruling stickies (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
+ * miss, winner, goal and ruling stickies and Vote cards (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
  * items skip layout and paint while off screen (`content-visibility: auto`). Nearing the end loads the
  * next page. Tapping a photo opens the Photo viewer; closing it returns focus to that photo.
  */
@@ -118,6 +119,22 @@ export function FeedWall({
           }
           const tilt = stickies % 2 === 0 ? 'right' : 'left'
           stickies += 1
+          if (item.type === 'vote') {
+            return (
+              <li key={item.id} className={className}>
+                <VoteCard
+                  item={item}
+                  viewer={viewer}
+                  tilt={tilt}
+                  articleRef={item.id === anchorId ? anchorRef : undefined}
+                  onOpenPhoto={(checkin, button) => {
+                    opener.current = button
+                    setOpen(checkin)
+                  }}
+                />
+              </li>
+            )
+          }
           return (
             <li key={item.id} className={className}>
               {item.type === 'miss' ? (

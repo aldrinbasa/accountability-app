@@ -69,11 +69,13 @@ import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from 
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
+import { isVoteChoice, type FeedVote } from '@/domain/vote'
 import type { WinnerPodiumMember, WinnerWeek } from '@/domain/winner'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
 import { challengeAdapter } from '@/adapters/supabase/challenges'
+import { voteAdapter } from '@/adapters/supabase/votes'
 import { toBackendError } from '@/adapters/supabase/rpc-error'
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
@@ -884,6 +886,59 @@ function toFeedRuling(
 }
 
 /**
+ * A challenge row (Story 5.2): the challenger (actor) and owner (subject) with live names, the
+ * check-in's commitment, photo and times, the challenge's status and deadline, and the payload's
+ * counts, variant, the reader's own ballot and `can_vote`; null when malformed.
+ */
+export function toFeedVote(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedVote | null {
+  const payload = row.payload
+  if (!isRecord(payload)) return null
+  const checkinId = payloadString(payload, 'checkin_id')
+  const status = row.challenge_status
+  if (checkinId === null || !isChallengeStatus(status) || !row.challenge_closes_at) return null
+  if (!row.commitment_id || !row.captured_at || !row.received_at) return null
+  const count = (key: string) => {
+    const value = payload[key]
+    return typeof value === 'number' ? value : null
+  }
+  const variant = payloadString(payload, 'variant')
+  const myChoice = payloadString(payload, 'my_choice')
+  return {
+    type: 'vote',
+    id,
+    groupId,
+    sortAt,
+    checkinId,
+    challengerId: row.actor_id,
+    challengerName: row.actor_name ?? '',
+    ownerId: row.subject_id,
+    ownerName: row.subject_name ?? '',
+    commitmentId: row.commitment_id,
+    commitmentKind: row.commitment_kind === 'task' ? 'task' : 'commitment',
+    activityName: row.activity_name ?? row.preset_key ?? '',
+    presetKey: row.preset_key,
+    taskName: row.task_name,
+    capturedAt: row.captured_at,
+    receivedAt: row.received_at,
+    fullPrunedAt: row.full_pruned_at,
+    status,
+    closesAt: row.challenge_closes_at,
+    fakeCount: count('fake_count'),
+    realCount: count('real_count'),
+    variant: variant === 'lone' || variant === 'normal' ? variant : null,
+    cancelReason: payloadString(payload, 'cancel_reason'),
+    myChoice: isVoteChoice(myChoice) ? myChoice : null,
+    myCastAt: payloadString(payload, 'my_cast_at'),
+    canVote: payload.can_vote === true,
+  }
+}
+
+/**
  * One `feed_items` row as a domain item, or null for a kind the app does not render or a row
  * missing what every item needs.
  */
@@ -923,6 +978,7 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
   if (kind === 'weekly_winner') return toFeedWinner(row, id, groupId, sortAt)
   if (kind === 'goal_result') return toFeedGoal(row, id, groupId, sortAt)
   if (kind === 'ruling') return toFeedRuling(row, id, groupId, sortAt)
+  if (kind === 'challenge') return toFeedVote(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -1116,6 +1172,7 @@ async function signPaths(
  */
 export const supabaseBackendAdapter: BackendPort = {
   ...challengeAdapter,
+  ...voteAdapter,
 
   async getSession() {
     const { data, error } = await supabase.auth.getSession()
@@ -1550,6 +1607,18 @@ export const supabaseBackendAdapter: BackendPort = {
       .eq('group_id', groupId)
       .eq('item_kind', 'checkin')
       .eq('item_id', checkinId)
+      .maybeSingle()
+    if (error) throw toBackendError(error, status)
+    return data ? toFeedItem(data) : null
+  },
+
+  async getFeedVote(groupId, voteId) {
+    const { data, error, status } = await supabase
+      .from('feed_items')
+      .select(FEED_COLUMNS)
+      .eq('group_id', groupId)
+      .eq('item_kind', 'challenge')
+      .eq('item_id', voteId)
       .maybeSingle()
     if (error) throw toBackendError(error, status)
     return data ? toFeedItem(data) : null

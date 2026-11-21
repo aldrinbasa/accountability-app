@@ -1,5 +1,6 @@
 import { formatLateLabel, type LateLabel } from '@/domain/checkin'
 import type { FeedGoal } from '@/domain/goal'
+import type { FeedVote } from '@/domain/vote'
 import { beatLine, joinNames } from '@/domain/winner'
 
 /**
@@ -171,7 +172,11 @@ export interface FeedRuling {
   variant: RulingVariant
 }
 
-export type FeedItem = FeedCheckin | FeedEvent | FeedMiss | FeedWinner | FeedGoal | FeedRuling
+export type FeedItem =
+  FeedCheckin | FeedEvent | FeedMiss | FeedWinner | FeedGoal | FeedRuling | FeedVote
+
+/** What a Feed deep link anchors on: a check-in (`/feed/c/{id}`) or a Vote card (`/feed/v/{id}`). */
+export type FeedAnchorKind = 'checkin' | 'vote'
 
 /** One keyset read: older than `before`, or newer than `after` (never both), at most `limit` rows. */
 export interface FeedRowsRequest {
@@ -198,7 +203,7 @@ export interface FeedPage {
   nextCursor: FeedCursor | null
   /** Anchored pages only: newer items exist above this page ("See newest"). */
   hasNewer?: boolean
-  /** Anchored pages only: the deep-linked check-in was found (false: gone, hidden, other group). */
+  /** Anchored pages only: the deep-linked item was found (false: gone, hidden, other group). */
   anchorFound?: boolean
 }
 

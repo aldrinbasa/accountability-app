@@ -1,0 +1,329 @@
+import { rulingLine } from '@/domain/challenge'
+import type { BackendErrorCode } from '@/domain/error-codes'
+import { errorCopy } from '@/domain/error-codes'
+import { feedTitle, type ChallengeStatus, type FeedCheckin, type FeedRuling } from '@/domain/feed'
+
+/**
+ * Votes on a challenge (Story 5.2). The server decides who may vote, every time and every count
+ * (`cast_vote`, `undo_vote`, `vote_tallies`, `private.close_vote`); this file only maps what the
+ * server sent onto the Vote card's state and words it.
+ */
+
+/** What a vote is on. Story 5.5 adds `freeze`. */
+export type VoteKind = 'challenge'
+
+/** A challenge ballot. */
+export type VoteChoice = 'fake' | 'real'
+
+export function isVoteChoice(value: unknown): value is VoteChoice {
+  return value === 'fake' || value === 'real'
+}
+
+/** The toast shows Undo this long (the server accepts it until `cast_at + 6 s`). */
+export const UNDO_WINDOW_MS = 5000
+/** When a ballot becomes final at the server: tallies are refetched after it. */
+export const BALLOT_FINAL_MS = 6000
+
+export const VOTE_COPY = {
+  kicker: 'CHALLENGE',
+  question: 'Fake or Real?',
+  rule: "If nobody else votes, it's ruled Fake.",
+  fake: 'Fake',
+  real: 'Real',
+  voteFake: 'Vote Fake',
+  voteReal: 'Vote Real',
+  undo: 'Undo',
+  retry: 'Retry',
+  challenger: 'You challenged · counts as Fake',
+  joinedLater: 'You joined after this vote opened.',
+  closing: "Voting's closed. The ruling is on its way.",
+  cancelled: 'Cancelled',
+  undone: 'Vote undone.',
+  offline: "You're offline. Votes need a signal.",
+  failed: "Couldn't send your vote. Check your signal and tap Retry.",
+  undoOffline: "Couldn't undo. You're offline.",
+  undoFailed: "Couldn't undo your vote. Tap Retry.",
+} as const
+
+/**
+ * A challenge on the wall (Story 5.2, `feed_items` `item_kind = 'challenge'`): sorted at
+ * `opened_at`, its id is the challenge id (the `/feed/v/{voteId}` id). The challenger and the
+ * check-in's owner with their live names, the check-in's commitment and photo, the challenge's state,
+ * the counts once closed, and the reader's own ballot (`myChoice`, readable only by its voter) and
+ * whether the reader is an eligible voter (`canVote`).
+ */
+export interface FeedVote {
+  type: 'vote'
+  /** The challenge id. */
+  id: string
+  groupId: string
+  /** `opened_at`. */
+  sortAt: string
+  checkinId: string
+  challengerId: string | null
+  challengerName: string
+  ownerId: string | null
+  ownerName: string
+  commitmentId: string
+  commitmentKind: 'commitment' | 'task'
+  activityName: string
+  presetKey: string | null
+  taskName: string | null
+  capturedAt: string
+  receivedAt: string
+  fullPrunedAt: string | null
+  status: ChallengeStatus
+  closesAt: string
+  /** Null while open. */
+  fakeCount: number | null
+  realCount: number | null
+  /** `lone` (no ballot counted) or `normal`; null unless closed. */
+  variant: 'lone' | 'normal' | null
+  /** Story 5.6 fills it. */
+  cancelReason: string | null
+  myChoice: VoteChoice | null
+  myCastAt: string | null
+  canVote: boolean
+}
+
+/** `vote_tallies`: one open vote's "N of M voted" (the challenger counts in both). */
+export interface VoteTally {
+  targetKind: VoteKind
+  targetId: string
+  votedCount: number
+  eligibleCount: number
+}
+
+/** What `cast_vote` returned. */
+export interface CastVoteResult {
+  voteId: string
+  castAt: string
+}
+
+/** The Vote card's state for the reader at `now`. */
+export type VoteCardState =
+  | { kind: 'open' }
+  | { kind: 'voted'; choice: VoteChoice }
+  | { kind: 'challenger' }
+  | { kind: 'owner' }
+  | { kind: 'joinedLater' }
+  | { kind: 'closing' }
+  | { kind: 'closed'; outcome: 'fake' | 'real' }
+  | { kind: 'cancelled' }
+
+/**
+ * Which Vote card the reader sees: cancelled, closed (with the ruling), past `closes_at` but not yet
+ * closed, the challenger's and the owner's locked cards, the reader's cast ballot, the buttons for an
+ * eligible voter, else the "joined later" line.
+ */
+export function voteCardState(
+  vote: Pick<FeedVote, 'status' | 'closesAt' | 'challengerId' | 'ownerId' | 'myChoice' | 'canVote'>,
+  viewer: { userId: string; now: Date },
+): VoteCardState {
+  if (vote.status === 'cancelled') return { kind: 'cancelled' }
+  if (vote.status === 'fake' || vote.status === 'real')
+    return { kind: 'closed', outcome: vote.status }
+  const closes = Date.parse(vote.closesAt)
+  if (!Number.isNaN(closes) && viewer.now.getTime() >= closes) return { kind: 'closing' }
+  if (viewer.userId !== '' && vote.challengerId === viewer.userId) return { kind: 'challenger' }
+  if (viewer.userId !== '' && vote.ownerId === viewer.userId) return { kind: 'owner' }
+  if (vote.myChoice !== null) return { kind: 'voted', choice: vote.myChoice }
+  if (vote.canVote) return { kind: 'open' }
+  return { kind: 'joinedLater' }
+}
+
+/** The kicker: what it shows ("CHALLENGE · 18 H LEFT") and what a screen reader says. */
+export interface VoteKicker {
+  text: string
+  spoken: string
+}
+
+/**
+ * The kicker of an open challenge: hours left rounded down ("CHALLENGE · 18 H LEFT", spoken
+ * "Challenge, 18 hours left"); under 1 hour the minutes, at least 1 ("CHALLENGE · 5 MIN LEFT").
+ * Plain "CHALLENGE" once it is past `closes_at`, closed or cancelled.
+ */
+export function voteKicker(vote: Pick<FeedVote, 'status' | 'closesAt'>, now: Date): VoteKicker {
+  const plain = { text: VOTE_COPY.kicker, spoken: 'Challenge' }
+  if (vote.status !== 'open') return plain
+  const closes = Date.parse(vote.closesAt)
+  if (Number.isNaN(closes)) return plain
+  const left = closes - now.getTime()
+  if (left <= 0) return plain
+  const hours = Math.floor(left / 3_600_000)
+  if (hours >= 1) {
+    return {
+      text: `${VOTE_COPY.kicker} · ${hours} H LEFT`,
+      spoken: `Challenge, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`,
+    }
+  }
+  const minutes = Math.max(1, Math.floor(left / 60_000))
+  return {
+    text: `${VOTE_COPY.kicker} · ${minutes} MIN LEFT`,
+    spoken: `Challenge, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`,
+  }
+}
+
+/** The check-in's title: the task's name, else the activity's. */
+export function voteTitle(vote: Pick<FeedVote, 'taskName' | 'activityName'>): string {
+  return feedTitle(vote)
+}
+
+/**
+ * "Lena challenged Dev's Study check-in." with the Feed's "You" rule: "You challenged Dev's Study
+ * check-in.", "Lena challenged your Study check-in.".
+ */
+export function voteWhoLine(vote: FeedVote, viewerId: string): string {
+  const who = viewerId !== '' && vote.challengerId === viewerId ? 'You' : vote.challengerName
+  const whose = viewerId !== '' && vote.ownerId === viewerId ? 'your' : `${vote.ownerName}'s`
+  return `${who} challenged ${whose} ${voteTitle(vote)} check-in.`
+}
+
+/** The card's heading for screen readers: "Challenge vote on Dev's Study check-in". */
+export function voteHeading(vote: FeedVote, viewerId: string): string {
+  const whose = viewerId !== '' && vote.ownerId === viewerId ? 'your' : `${vote.ownerName}'s`
+  return `Challenge vote on ${whose} ${voteTitle(vote)} check-in`
+}
+
+/** "3 of 4 voted". */
+export function tallyLine(tally: Pick<VoteTally, 'votedCount' | 'eligibleCount'>): string {
+  return `${tally.votedCount} of ${tally.eligibleCount} voted`
+}
+
+/** "Fake" / "Real". */
+export function choiceLabel(choice: VoteChoice): string {
+  return choice === 'fake' ? VOTE_COPY.fake : VOTE_COPY.real
+}
+
+/** The button's name: "Vote Fake" / "Vote Real". */
+export function choiceButtonLabel(choice: VoteChoice): string {
+  return choice === 'fake' ? VOTE_COPY.voteFake : VOTE_COPY.voteReal
+}
+
+/** "You voted Real · 3 of 4 voted" ("You voted Real" until the tally is in). */
+export function votedLine(
+  choice: VoteChoice,
+  tally: Pick<VoteTally, 'votedCount' | 'eligibleCount'> | null,
+): string {
+  const line = `You voted ${choiceLabel(choice)}`
+  return tally ? `${line} · ${tallyLine(tally)}` : line
+}
+
+/** The toast after a cast: "Voted Fake" (its Undo button follows). */
+export function votedToast(choice: VoteChoice): string {
+  return `Voted ${choiceLabel(choice)}`
+}
+
+/** The closed card's ruling line (Story 5.1's `rulingLine`); null unless closed with counts. */
+export function voteRulingLine(vote: FeedVote, viewerId: string): string | null {
+  if (vote.status !== 'fake' && vote.status !== 'real') return null
+  if (vote.fakeCount === null || vote.realCount === null) return null
+  const ruling: FeedRuling = {
+    type: 'ruling',
+    id: vote.id,
+    groupId: vote.groupId,
+    sortAt: vote.sortAt,
+    challengeId: vote.id,
+    checkinId: vote.checkinId,
+    challengerId: vote.challengerId,
+    challengerName: vote.challengerName,
+    ownerId: vote.ownerId,
+    ownerName: vote.ownerName,
+    title: voteTitle(vote),
+    outcome: vote.status,
+    fakeCount: vote.fakeCount,
+    realCount: vote.realCount,
+    variant: vote.variant ?? (vote.realCount === 0 && vote.fakeCount === 1 ? 'lone' : 'normal'),
+  }
+  return rulingLine(ruling, viewerId)
+}
+
+/** Whether the closed card still shows the thumbnail: not on Fake (Storage denies its photo). */
+export function voteShowsThumbnail(vote: Pick<FeedVote, 'status'>): boolean {
+  return vote.status !== 'fake'
+}
+
+/**
+ * The challenged check-in as a Feed check-in, for the thumbnail and the Photo viewer (no caption or
+ * counted position: the card's row carries neither).
+ */
+export function voteCheckin(vote: FeedVote): FeedCheckin {
+  return {
+    type: 'checkin',
+    id: vote.checkinId,
+    groupId: vote.groupId,
+    sortAt: vote.receivedAt,
+    authorId: vote.ownerId ?? '',
+    authorName: vote.ownerName,
+    authorAvatarPath: null,
+    commitmentId: vote.commitmentId,
+    commitmentKind: vote.commitmentKind,
+    activityName: vote.activityName,
+    presetKey: vote.presetKey,
+    taskName: vote.taskName,
+    capturedAt: vote.capturedAt,
+    receivedAt: vote.receivedAt,
+    isLate: false,
+    isExtra: false,
+    caption: null,
+    fullPrunedAt: vote.fullPrunedAt,
+    countedPosition: null,
+    target: null,
+    challengeId: vote.id,
+    challengeStatus: vote.status,
+    challengeClosesAt: vote.closesAt,
+    challengeUntil: null,
+  }
+}
+
+/** The thumbnail button's name: "View Dev's Study check-in photo". */
+export function voteThumbnailLabel(vote: FeedVote, viewerId: string): string {
+  const whose = viewerId !== '' && vote.ownerId === viewerId ? 'your' : `${vote.ownerName}'s`
+  return `View ${whose} ${voteTitle(vote)} check-in photo`
+}
+
+/**
+ * How a failed cast shows: `offline` (error toast, card stays unvoted), `failed` (Inline retry on
+ * the card, Retry resends the same choice), or a refusal (error toast with the table copy, then a
+ * Feed refetch).
+ */
+export type CastFailure =
+  { kind: 'offline' } | { kind: 'failed' } | { kind: 'refused'; text: string }
+
+export function castFailure(code: BackendErrorCode, offline: boolean): CastFailure {
+  if (offline) return { kind: 'offline' }
+  switch (code) {
+    case 'vote_closed':
+    case 'already_voted':
+    case 'not_eligible':
+    case 'not_member':
+    case 'group_waiting':
+    case 'invalid_vote':
+      return { kind: 'refused', text: errorCopy(code) }
+    default:
+      return { kind: 'failed' }
+  }
+}
+
+/**
+ * How a failed undo shows (always an error toast): offline; a plain failure (Retry while the toast's
+ * 5 s window is open); or a refusal with the table copy (`undo_expired`, `vote_closed`, `not_member`,
+ * then a Feed refetch).
+ */
+export type UndoFailure =
+  | { kind: 'offline'; text: string }
+  | { kind: 'failed'; text: string }
+  | { kind: 'refused'; text: string }
+
+export function undoFailure(code: BackendErrorCode, offline: boolean): UndoFailure {
+  if (offline) return { kind: 'offline', text: VOTE_COPY.undoOffline }
+  switch (code) {
+    case 'undo_expired':
+    case 'vote_closed':
+    case 'not_member':
+    case 'invalid_vote':
+      return { kind: 'refused', text: errorCopy(code) }
+    default:
+      return { kind: 'failed', text: VOTE_COPY.undoFailed }
+  }
+}

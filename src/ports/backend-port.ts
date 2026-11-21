@@ -31,6 +31,7 @@ import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
 import type { Streak } from '@/domain/streaks'
+import type { CastVoteResult, VoteChoice, VoteKind, VoteTally } from '@/domain/vote'
 
 /**
  * The app's one backend contract (AD-1). Story 1.3 adds the auth surface; later stories add reads,
@@ -258,6 +259,11 @@ export interface BackendPort {
   /** One check-in of the group's feed, or null when it is gone, hidden or in another group. */
   getFeedCheckin(groupId: string, checkinId: string): Promise<FeedItem | null>
   /**
+   * One challenge item of the group's feed (Story 5.2, the `/feed/v/{voteId}` anchor), or null when
+   * it is gone or in another group.
+   */
+  getFeedVote(groupId: string, voteId: string): Promise<FeedItem | null>
+  /**
    * `get_friends_today`: the group's check-ins received since the caller's local midnight, newest
    * first, at most 30 (Today's Friends today strip).
    */
@@ -279,4 +285,19 @@ export interface BackendPort {
    * `own_checkin`, `already_challenged`, `challenge_expired` or `week_locked`.
    */
   createChallenge(checkinId: string): Promise<CreateChallengeResult>
+  /**
+   * `cast_vote` (Story 5.2): the caller's ballot on an open vote; never closes it. Rejects with
+   * `invalid_vote`, `not_member`, `group_waiting`, `vote_closed`, `not_eligible` or `already_voted`.
+   */
+  castVote(kind: VoteKind, id: string, choice: VoteChoice): Promise<CastVoteResult>
+  /**
+   * `undo_vote`: deletes the caller's ballot until `cast_at + 6 s` (no ballot: nothing to do).
+   * Rejects with `invalid_vote`, `not_member`, `vote_closed` or `undo_expired`.
+   */
+  undoVote(kind: VoteKind, id: string): Promise<void>
+  /**
+   * `vote_tallies`: "N of M voted" per open vote of the group (the caller's own pending ballot
+   * already counted). Rejects with `not_member`.
+   */
+  listVoteTallies(groupId: string): Promise<VoteTally[]>
 }

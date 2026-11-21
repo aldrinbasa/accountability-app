@@ -14,7 +14,7 @@
 -- pointed at test_overrides so tests.freeze_time moves their clock.
 begin;
 set local timezone = 'UTC';
-select plan(47);
+select plan(48);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -395,6 +395,12 @@ select is(
   || '|' || (select e.payload ->> 'variant' from public.feed_events e
              where e.kind = 'ruling' and e.payload ->> 'challenge_id' = current_setting('test.ch_g1c')),
   'fake|1|0|lone', 'closing inside a ballot''s undo window leaves it out (no ballot counted: lone)');
+select tests.authenticate_as('alice');
+select is(
+  (select f.payload ->> 'variant' from public.feed_items f
+   where f.item_kind = 'challenge' and f.item_id = current_setting('test.ch_g1c')::uuid),
+  'lone', 'the closed challenge''s Feed row carries the lone variant');
+reset role;
 
 -- ===== Challenge B: a 2-2 tie stands =====
 -- alice challenges carol's Monday Walk at 13:00: bob, gina, harry (joined 10:00) and ivy (rejoined

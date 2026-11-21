@@ -1,4 +1,5 @@
 import type { FeedCheckin, FeedEvent, FeedMiss } from '@/domain/feed'
+import type { FeedVote } from '@/domain/vote'
 
 /** A check-in on `group-1`'s wall: Priya's Gym, 2 of 3, on time (override per test). */
 export function feedCheckin(overrides: Partial<FeedCheckin> = {}): FeedCheckin {
@@ -63,6 +64,42 @@ export function feedMiss(overrides: Partial<FeedMiss> = {}): FeedMiss {
     missCount: 1,
     tease: 'couch_wins',
     missedOn: '2026-11-19',
+    ...overrides,
+  }
+}
+
+/**
+ * An open challenge on `group-1`'s wall (Story 5.2): Lena (user-5) challenged Dev's (user-4) Study,
+ * 18 h 59 min left at 2026-11-20 03:00 UTC; the reader may vote (override per test).
+ */
+export function feedVote(overrides: Partial<FeedVote> = {}): FeedVote {
+  return {
+    type: 'vote',
+    id: '00000000-0000-4000-b000-000000000001',
+    groupId: 'group-1',
+    sortAt: '2026-11-20T01:59:00.000000+00:00',
+    checkinId: 'checkin-dev',
+    challengerId: 'user-5',
+    challengerName: 'Lena',
+    ownerId: 'user-4',
+    ownerName: 'Dev',
+    commitmentId: 'commitment-study',
+    commitmentKind: 'commitment',
+    activityName: 'Study',
+    presetKey: 'study',
+    taskName: null,
+    capturedAt: '2026-11-20T01:00:00.000Z',
+    receivedAt: '2026-11-20T01:00:30.000Z',
+    fullPrunedAt: null,
+    status: 'open',
+    closesAt: '2026-11-20T21:59:00.000Z',
+    fakeCount: null,
+    realCount: null,
+    variant: null,
+    cancelReason: null,
+    myChoice: null,
+    myCastAt: null,
+    canVote: true,
     ...overrides,
   }
 }

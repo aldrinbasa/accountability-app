@@ -52,6 +52,8 @@ export const routes: RouteObject[] = [
           { path: 'feed', element: <FeedScreen /> },
           // A check-in deep link: the Feed anchored on that polaroid (Story 3.4).
           { path: 'feed/c/:checkinId', element: <FeedScreen /> },
+          // A Vote card deep link: the Feed anchored on that challenge (Story 5.2).
+          { path: 'feed/v/:voteId', element: <FeedScreen /> },
           { path: 'board', element: <BoardScreen /> },
           // A member's profile in the group (Story 4.6), pushed from the Board.
           { path: 'board/m/:userId', element: <MemberProfileScreen /> },

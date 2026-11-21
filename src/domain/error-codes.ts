@@ -34,6 +34,12 @@ export const ERROR_COPY = {
   already_challenged: "That check-in can't be challenged anymore.",
   challenge_expired: "That check-in can't be challenged anymore.",
   group_waiting: 'Challenges need a second member in the group.',
+  // Story 5.2 (votes).
+  vote_closed: "That vote's already wrapped up.",
+  undo_expired: "That vote's already final.",
+  not_eligible: "You can't vote on this one.",
+  already_voted: 'You already voted on this one.',
+  invalid_vote: 'Pick Fake or Real.',
   // Raised from Epic 5 (freezes); the outbox already treats it as final (Story 3.3).
   session_frozen: 'That session is already frozen.',
 } as const

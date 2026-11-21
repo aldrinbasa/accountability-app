@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createFeedRepository } from '@/data/feed'
 import { createFakeBackend } from '@/test/fake-backend'
-import { feedCheckinId, feedCheckins, feedEvent } from '@/test/feed-items'
+import { feedCheckinId, feedCheckins, feedEvent, feedVote } from '@/test/feed-items'
 
 describe('feed repository', () => {
   it('pages 20 at a time by keyset, newest first, and stops at the end', async () => {
@@ -77,5 +77,27 @@ describe('feed repository', () => {
     expect(page.anchorFound).toBe(false)
     expect(backend.getFeedCheckin).not.toHaveBeenCalled()
     expect(backend.listFeed).not.toHaveBeenCalled()
+  })
+
+  it('anchors on a Vote card by its challenge id (Story 5.2)', async () => {
+    const vote = feedVote({ sortAt: '2026-11-19T23:58:30.000000+00:00' })
+    const backend = createFakeBackend(undefined, {
+      feed: { 'group-1': [...feedCheckins(5), vote] },
+    })
+    const repository = createFeedRepository(backend)
+    const page = await repository.around('group-1', vote.id, 'vote')
+    expect(page.anchorFound).toBe(true)
+    expect(backend.getFeedVote).toHaveBeenCalledWith('group-1', vote.id)
+    expect(backend.getFeedCheckin).not.toHaveBeenCalled()
+    expect(page.items.map((item) => item.id)).toEqual([
+      feedCheckinId(1),
+      feedCheckinId(2),
+      vote.id,
+      feedCheckinId(3),
+      feedCheckinId(4),
+      feedCheckinId(5),
+    ])
+    // A check-in id is never a vote.
+    expect((await repository.around('group-1', feedCheckinId(1), 'vote')).anchorFound).toBe(false)
   })
 })

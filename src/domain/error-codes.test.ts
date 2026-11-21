@@ -8,6 +8,14 @@ import {
 } from '@/domain/error-codes'
 
 describe('error-code table (AD-14)', () => {
+  it('maps the vote codes to copy (Story 5.2)', () => {
+    expect(errorCopy('vote_closed')).toBe("That vote's already wrapped up.")
+    expect(errorCopy('undo_expired')).toBe("That vote's already final.")
+    expect(errorCopy('not_eligible')).toBe("You can't vote on this one.")
+    expect(errorCopy('already_voted')).toBe('You already voted on this one.')
+    expect(errorCopy('invalid_vote')).toBe('Pick Fake or Real.')
+  })
+
   it('maps the profile codes to copy', () => {
     expect(errorCopy('invalid_display_name')).toBe('Pick a name your friends will recognize.')
     expect(ERROR_COPY.invalid_time_zone).toMatch(/time zone/)

@@ -5,6 +5,7 @@ import type { InfiniteData, UseInfiniteQueryResult } from '@tanstack/react-query
 import {
   FEED_COPY,
   switchedToast,
+  type FeedAnchorKind,
   type FeedItem,
   type FeedPage,
   type FeedViewer,
@@ -158,12 +159,21 @@ function WallFeed({ group }: { group: MyGroup }) {
 }
 
 /**
- * The wall anchored on a deep-linked check-in (`/feed/c/{checkinId}`): scrolls to and focuses that
- * polaroid once it is there. Gone, hidden or in another group: the Feed opens at the top with "That's
- * already wrapped up.". A `?g=` that moved the focus to another group says "Switched to {Group}.".
+ * The wall anchored on a deep-linked check-in (`/feed/c/{checkinId}`) or Vote card
+ * (`/feed/v/{voteId}`): scrolls to and focuses that item once it is there. Gone, hidden or in another
+ * group: the Feed opens at the top with "That's already wrapped up.". A `?g=` that moved the focus to
+ * another group says "Switched to {Group}.".
  */
-function AnchoredFeed({ group, checkinId }: { group: MyGroup; checkinId: string }) {
-  const query = useFeedAround(group.id, checkinId)
+function AnchoredFeed({
+  group,
+  anchorId,
+  kind,
+}: {
+  group: MyGroup
+  anchorId: string
+  kind: FeedAnchorKind
+}) {
+  const query = useFeedAround(group.id, anchorId, kind)
   const navigate = useNavigate()
   const location = useLocation()
   const anchorRef = useRef<HTMLElement | null>(null)
@@ -179,7 +189,7 @@ function AnchoredFeed({ group, checkinId }: { group: MyGroup; checkinId: string 
     if (linked === group.id && previousFocus !== null && previousFocus !== group.id) {
       showToast(switchedToast(group.name), { id: SWITCHED_TOAST_ID })
     }
-    // Once per deep link (the component is keyed by group and check-in).
+    // Once per deep link (the component is keyed by group and anchor).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -213,17 +223,18 @@ function AnchoredFeed({ group, checkinId }: { group: MyGroup; checkinId: string 
     }
   }, [first])
 
-  return <FeedContent group={group} query={query} anchorId={checkinId} anchorRef={anchorRef} />
+  return <FeedContent group={group} query={query} anchorId={anchorId} anchorRef={anchorRef} />
 }
 
 /**
- * The Feed tab (Story 3.4) for the focused group, and its deep link `/feed/c/{checkinId}`. While the
+ * The Feed tab (Story 3.4) for the focused group, and its deep links `/feed/c/{checkinId}` and
+ * `/feed/v/{voteId}` (Story 5.2). While the
  * groups load: blank. Load failed: an Empty state with Try again. No current groups: the create
  * screen, as on Today.
  */
 export function FeedScreen() {
   const { group, groups, query } = useFocusedGroup()
-  const { checkinId } = useParams()
+  const { checkinId, voteId } = useParams()
 
   if (groups === undefined) {
     if (!query.isError) return null
@@ -242,7 +253,19 @@ export function FeedScreen() {
   if (!group) return <CreateGroupScreen />
 
   if (checkinId) {
-    return <AnchoredFeed key={`${group.id}:${checkinId}`} group={group} checkinId={checkinId} />
+    return (
+      <AnchoredFeed
+        key={`${group.id}:c:${checkinId}`}
+        group={group}
+        anchorId={checkinId}
+        kind="checkin"
+      />
+    )
+  }
+  if (voteId) {
+    return (
+      <AnchoredFeed key={`${group.id}:v:${voteId}`} group={group} anchorId={voteId} kind="vote" />
+    )
   }
   return <WallFeed key={group.id} group={group} />
 }

@@ -4,6 +4,7 @@ import {
   FEED_ANCHOR_NEWER,
   FEED_ANCHOR_OLDER,
   FEED_PAGE_SIZE,
+  type FeedAnchorKind,
   type FeedCheckin,
   type FeedCursor,
   type FeedPage,
@@ -22,9 +23,14 @@ export function feedWallKey(groupId: string) {
   return [...feedKey(groupId), 'wall'] as const
 }
 
-/** `['feed', groupId, 'around', checkinId]`: the wall anchored on a deep-linked check-in. */
-export function feedAroundKey(groupId: string, checkinId: string) {
-  return [...feedKey(groupId), 'around', checkinId] as const
+/**
+ * `['feed', groupId, 'around', checkinId]`: the wall anchored on a deep-linked check-in;
+ * `['feed', groupId, 'around', 'vote', voteId]` on a Vote card.
+ */
+export function feedAroundKey(groupId: string, id: string, kind: FeedAnchorKind = 'checkin') {
+  return kind === 'checkin'
+    ? ([...feedKey(groupId), 'around', id] as const)
+    : ([...feedKey(groupId), 'around', kind, id] as const)
 }
 
 /** `['feed', groupId, 'today']`: Today's Friends today strip (refreshed with the wall's prefix). */
@@ -36,11 +42,11 @@ export interface FeedRepository {
   /** A page of `FEED_PAGE_SIZE` from the newest item (null) or older than `cursor`. */
   page(groupId: string, cursor: FeedCursor | null): Promise<FeedPage>
   /**
-   * A page anchored on a check-in: up to `FEED_ANCHOR_NEWER` newer items, the check-in, then up to
-   * `FEED_ANCHOR_OLDER` older. `anchorFound` is false (and the page empty) when it is gone, hidden or
-   * in another group.
+   * A page anchored on a check-in (or a Vote card, `kind` `vote`): up to `FEED_ANCHOR_NEWER` newer
+   * items, the anchor, then up to `FEED_ANCHOR_OLDER` older. `anchorFound` is false (and the page
+   * empty) when it is gone, hidden or in another group.
    */
-  around(groupId: string, checkinId: string): Promise<FeedPage>
+  around(groupId: string, id: string, kind?: FeedAnchorKind): Promise<FeedPage>
   /** The group's check-ins received since the member's local midnight, newest first. */
   today(groupId: string): Promise<FeedCheckin[]>
 }
@@ -63,10 +69,13 @@ export function createFeedRepository(backend: BackendPort): FeedRepository {
         nextCursor: rows.rowCount === FEED_PAGE_SIZE ? rows.oldest : null,
       }
     },
-    async around(groupId, checkinId) {
-      // A malformed id can never be a check-in (and would make Postgres raise 22P02).
-      if (!UUID.test(checkinId)) return NOT_FOUND
-      const anchor = await backend.getFeedCheckin(groupId, checkinId)
+    async around(groupId, id, kind = 'checkin') {
+      // A malformed id can never be an item (and would make Postgres raise 22P02).
+      if (!UUID.test(id)) return NOT_FOUND
+      const anchor =
+        kind === 'vote'
+          ? await backend.getFeedVote(groupId, id)
+          : await backend.getFeedCheckin(groupId, id)
       if (!anchor) return NOT_FOUND
       const cursor = { sortAt: anchor.sortAt, itemId: anchor.id }
       const [newer, older] = await Promise.all([
@@ -115,16 +124,17 @@ export function useFeed(groupId: string) {
 }
 
 /**
- * The wall anchored on a deep-linked check-in (`/feed/c/{checkinId}`): the first page holds the
- * newer items, the check-in and the older ones; later pages continue down by keyset.
+ * The wall anchored on a deep-linked check-in (`/feed/c/{checkinId}`) or Vote card
+ * (`/feed/v/{voteId}`, `kind` `vote`): the first page holds the newer items, the anchor and the older
+ * ones; later pages continue down by keyset.
  */
-export function useFeedAround(groupId: string, checkinId: string) {
+export function useFeedAround(groupId: string, id: string, kind: FeedAnchorKind = 'checkin') {
   const repository = useFeedRepository('useFeedAround')
   return useInfiniteQuery({
-    queryKey: feedAroundKey(groupId, checkinId),
+    queryKey: feedAroundKey(groupId, id, kind),
     queryFn: ({ pageParam }) =>
       pageParam === null
-        ? repository.around(groupId, checkinId)
+        ? repository.around(groupId, id, kind)
         : repository.page(groupId, pageParam),
     initialPageParam: null as FeedCursor | null,
     getNextPageParam: nextPageParam,

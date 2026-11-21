@@ -2521,4 +2521,25 @@ describe('feed reads', () => {
     db.query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 })
     expect(await adapter.getFeedCheckin('g-1', 'c-gone')).toBeNull()
   })
+
+  it('reads one challenge item of the group, or null (Story 5.2)', async () => {
+    const row = feedRow({
+      item_kind: 'challenge',
+      item_id: 'ch-1',
+      subject_id: 'u-2',
+      subject_name: 'Dev',
+      challenge_id: 'ch-1',
+      challenge_status: 'open',
+      challenge_closes_at: '2026-11-21T07:12:30+00:00',
+      challenge_until: null,
+      payload: { checkin_id: 'c-1', can_vote: true, my_choice: null },
+    })
+    db.query.maybeSingle.mockResolvedValueOnce({ data: row, error: null, status: 200 })
+    expect(await adapter.getFeedVote('g-1', 'ch-1')).toMatchObject({ type: 'vote', id: 'ch-1' })
+    expect(db.query.eq).toHaveBeenCalledWith('item_kind', 'challenge')
+    expect(db.query.eq).toHaveBeenCalledWith('item_id', 'ch-1')
+
+    db.query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 })
+    expect(await adapter.getFeedVote('g-1', 'ch-gone')).toBeNull()
+  })
 })
