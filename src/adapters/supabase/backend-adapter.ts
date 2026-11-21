@@ -75,6 +75,7 @@ import type { BackendPort } from '@/ports/backend-port'
 import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
 import { challengeAdapter } from '@/adapters/supabase/challenges'
+import { overturnAdapter } from '@/adapters/supabase/overturns'
 import { voteAdapter } from '@/adapters/supabase/votes'
 import { toBackendError } from '@/adapters/supabase/rpc-error'
 
@@ -882,6 +883,11 @@ function toFeedRuling(
     fakeCount,
     realCount,
     variant,
+    overturnUntil: payloadString(payload, 'overturn_until'),
+    canOverturn: payload.can_overturn === true,
+    overturnedById: payloadString(payload, 'overturned_by_id'),
+    overturnedByName: payloadString(payload, 'overturned_by_name'),
+    overturnedAt: payloadString(payload, 'overturned_at'),
   }
 }
 
@@ -935,6 +941,8 @@ export function toFeedVote(
     myChoice: isVoteChoice(myChoice) ? myChoice : null,
     myCastAt: payloadString(payload, 'my_cast_at'),
     canVote: payload.can_vote === true,
+    overturnedById: payloadString(payload, 'overturned_by_id'),
+    overturnedByName: payloadString(payload, 'overturned_by_name'),
   }
 }
 
@@ -1172,6 +1180,7 @@ async function signPaths(
  */
 export const supabaseBackendAdapter: BackendPort = {
   ...challengeAdapter,
+  ...overturnAdapter,
   ...voteAdapter,
 
   async getSession() {

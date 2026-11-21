@@ -196,6 +196,11 @@ describe('Challenge a check-in (Story 5.1)', () => {
       fakeCount: 0,
       realCount: 1,
       variant: 'normal',
+      overturnUntil: null,
+      canOverturn: false,
+      overturnedById: null,
+      overturnedByName: null,
+      overturnedAt: null,
     }
     await renderFeed([ruling])
     expect(

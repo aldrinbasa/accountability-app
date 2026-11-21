@@ -49,6 +49,8 @@ export interface FeedWallProps {
   viewer: FeedViewer
   /** Current members of the group: 2 or more offers Challenge on others' check-ins (Story 5.1). */
   memberCount?: number
+  /** The group's IANA zone: a ruling's Overturn button names the lock time in it (Story 5.3). */
+  groupZone?: string
   /** Older pages remain. */
   hasMore: boolean
   /** An older page is loading (one polaroid placeholder at the end). */
@@ -73,6 +75,7 @@ export function FeedWall({
   items,
   viewer,
   memberCount = 0,
+  groupZone,
   hasMore,
   loadingMore,
   fetching = false,
@@ -144,7 +147,12 @@ export function FeedWall({
               ) : item.type === 'goal' ? (
                 <GoalSticky item={item} tilt={tilt} />
               ) : item.type === 'ruling' ? (
-                <RulingSticky item={item} viewerId={viewer.userId} tilt={tilt} />
+                <RulingSticky
+                  item={item}
+                  viewer={viewer}
+                  groupZone={groupZone ?? viewer.zone}
+                  tilt={tilt}
+                />
               ) : (
                 <EventSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               )}

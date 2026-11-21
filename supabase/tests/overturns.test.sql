@@ -16,7 +16,7 @@
 -- test_overrides so tests.freeze_time moves their clock.
 begin;
 set local timezone = 'UTC';
-select plan(53);
+select plan(54);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -229,6 +229,11 @@ select pg_catalog.set_config('test.gB2', '00000000-0000-4000-a000-0000000053d2',
 select pg_catalog.set_config('test.aB1', '00000000-0000-4000-a000-0000000053e1', true);
 select pg_catalog.set_config('test.d1', '00000000-0000-4000-a000-0000000053f1', true);
 select pg_catalog.set_config('test.e1', '00000000-0000-4000-a000-0000000053f2', true);
+select pg_catalog.set_config('test.k1', '00000000-0000-4000-a000-000000005301', true);
+select pg_catalog.set_config('test.k2', '00000000-0000-4000-a000-000000005302', true);
+select pg_catalog.set_config('test.k3', '00000000-0000-4000-a000-000000005303', true);
+select pg_catalog.set_config('test.k4', '00000000-0000-4000-a000-000000005304', true);
+select pg_catalog.set_config('test.k5', '00000000-0000-4000-a000-000000005305', true);
 
 select pg_catalog.set_config('test.gym', pg_temp.add_plan('bob', 'g1', 'gym', array[1, 3, 5]::smallint[], '2026-11-09')::text, true);
 select pg_catalog.set_config('test.walk', pg_temp.add_plan('carol', 'g1', 'walk', array[1, 2]::smallint[], '2026-11-09')::text, true);
@@ -236,6 +241,8 @@ select pg_catalog.set_config('test.paint', pg_temp.add_plan('gina', 'g1', 'paint
 select pg_catalog.set_config('test.arun', pg_temp.add_plan('alice', 'g1', 'run', array[1]::smallint[], '2026-11-09')::text, true);
 select pg_catalog.set_config('test.clean', pg_temp.add_plan('dave', 'g2', 'clean', array[1]::smallint[], '2026-11-09')::text, true);
 select pg_catalog.set_config('test.erun', pg_temp.add_plan('erin', 'g2', 'run', array[1]::smallint[], '2026-11-09')::text, true);
+-- carol's Clean Mon to Thu from week B (Early Bird: one check-in per session).
+select pg_catalog.set_config('test.kclean', pg_temp.add_plan('carol', 'g1', 'clean', array[1, 2, 3, 4]::smallint[], '2026-11-16')::text, true);
 
 select tests.freeze_time('2026-11-09 00:30:00+00');
 select private.tick_step_1_sessions();
@@ -252,6 +259,10 @@ select pg_temp.checkin('gB1', 'paint', '2026-11-16', 1, '2026-11-16 08:00:00+00'
 select pg_temp.checkin('aB1', 'arun', '2026-11-16', 1, '2026-11-16 08:00:00+00');
 select pg_temp.checkin('d1', 'clean', '2026-11-16', 1, '2026-11-16 08:00:00+00');
 select pg_temp.checkin('e1', 'erun', '2026-11-16', 1, '2026-11-16 08:00:00+00');
+select pg_temp.checkin('k1', 'kclean', '2026-11-16', 1, '2026-11-16 06:00:00+00');
+select pg_temp.checkin('k2', 'kclean', '2026-11-16', 2, '2026-11-17 06:00:00+00');
+select pg_temp.checkin('k3', 'kclean', '2026-11-16', 4, '2026-11-19 06:00:00+00');
+select pg_temp.checkin('k4', 'kclean', '2026-11-16', 3, '2026-11-18 06:00:00+00');
 
 -- ===== Rulings =====
 -- Mon 9 Nov 12:00: bob challenges carol's Monday Walk; ruled Fake (lone).
@@ -415,7 +426,28 @@ select is(
   1, 'control: the Board shows bob''s miss mark for week A'
 );
 
+-- ===== Early Bird counts one check-in per session =====
+-- carol's Wednesday Clean (06:00) is ruled Fake, she re-posts it (taken 06:30), then it is
+-- overturned: four sessions, five live check-ins before 07:00, so no Early Bird (needs 5).
+reset role;
+select tests.freeze_time('2026-11-18 08:00:00+00');
+select tests.authenticate_as('bob');
+select public.create_challenge(current_setting('test.k4')::uuid);
+reset role;
+select private.close_vote(pg_temp.ch('k4'));
+select pg_temp.checkin('k5', 'kclean', '2026-11-16', 3, '2026-11-18 06:30:00+00');
+select tests.freeze_time('2026-11-18 09:00:00+00');
+select tests.authenticate_as('alice');
+select public.overturn_ruling(pg_temp.ch('k4'));
+reset role;
+select is(
+  (select count(*)::integer from private.badge_criteria_met(pg_temp.mid('carol', 'g1'), '2026-11-16') k
+   where k = 'early_bird'),
+  0, 'badges: an overturned original and its re-check-in count once (4 sessions before 07:00: no Early Bird)'
+);
+
 -- ===== One second before the lock: the overturn succeeds =====
+select tests.authenticate_as('alice');
 select tests.freeze_time('2026-11-18 23:59:59+00');
 select is((select p ->> 'can_overturn' from pg_temp.ruling('cA1') p), 'true',
   'one second before week A''s lock the admin may still overturn carol''s ruling');
@@ -497,7 +529,7 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.overturns o where o.group_id = current_setting('test.g1')::uuid),
-  2, 'RLS: a current member reads the group''s overturns'
+  3, 'RLS: a current member reads the group''s overturns'
 );
 select tests.authenticate_as('harry');
 select is((select count(*)::integer from public.overturns), 0, 'RLS: a non-member reads none');

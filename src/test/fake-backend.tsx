@@ -14,9 +14,9 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
-import type { CreateChallengeResult } from '@/domain/challenge'
+import type { CreateChallengeResult, OverturnResult } from '@/domain/challenge'
 import type { CastVoteResult, FeedVote, VoteChoice, VoteTally } from '@/domain/vote'
-import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
+import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest, FeedRuling } from '@/domain/feed'
 import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
@@ -956,6 +956,13 @@ export function createFakeBackend(
             fakeCount: 1,
             realCount: 0,
             variant: 'two_person',
+            // The fake's week lock: three days on. The challenger is the caller, so an admin
+            // caller may overturn (the owner is someone else).
+            overturnUntil: new Date(Date.now() + 3 * 86_400_000).toISOString(),
+            canOverturn: group.role === 'admin',
+            overturnedById: null,
+            overturnedByName: null,
+            overturnedAt: null,
           },
         ]
         friendsToday[groupId] = (friendsToday[groupId] ?? []).filter((e) => e.id !== checkinId)
@@ -998,9 +1005,39 @@ export function createFakeBackend(
           myChoice: null,
           myCastAt: null,
           canVote: false,
+          overturnedById: null,
+          overturnedByName: null,
         },
       ]
       return { challengeId, status: 'open', closesAt }
+    }),
+    // The server's rules in short: the current admin, a Fake ruling not yet overturned, not their
+    // own check-in, before the ruling's `overturnUntil`. The ruling sticky and its Vote card name
+    // the admin; the check-in itself is not restored on the fake wall.
+    overturnRuling: vi.fn(async (challengeId: string): Promise<OverturnResult> => {
+      const ruling = Object.values(feed)
+        .flat()
+        .find(
+          (item): item is FeedRuling => item.type === 'ruling' && item.challengeId === challengeId,
+        )
+      const group = groups.find((g) => g.id === ruling?.groupId)
+      if (!ruling || !group) throw new BackendError('not_member')
+      if (group.role !== 'admin') throw new BackendError('not_admin')
+      if (ruling.outcome !== 'fake') throw new BackendError('not_fake_ruling')
+      if (ruling.overturnedAt !== null) throw new BackendError('already_overturned')
+      if (ruling.ownerId === user?.id) throw new BackendError('own_checkin')
+      if (ruling.overturnUntil === null || Date.now() >= Date.parse(ruling.overturnUntil)) {
+        throw new BackendError('week_locked')
+      }
+      const createdAt = new Date().toISOString()
+      const by = { overturnedById: user?.id ?? null, overturnedByName: profile?.displayName ?? '' }
+      feed[group.id] = (feed[group.id] ?? []).map((item) =>
+        item.type === 'ruling' && item.challengeId === challengeId
+          ? { ...item, ...by, overturnedAt: createdAt, canOverturn: false }
+          : item,
+      )
+      patchVote(challengeId, by)
+      return { overturnId: `overturn-${challengeId}`, createdAt }
     }),
     // The server's rules in short (no 6 s window: undo always succeeds unless the vote closed).
     castVote: vi.fn(

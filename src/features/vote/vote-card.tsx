@@ -16,6 +16,7 @@ import {
   votedToast,
   voteHeading,
   voteKicker,
+  voteOverturnLine,
   voteRulingLine,
   voteShowsThumbnail,
   voteThumbnailLabel,
@@ -51,7 +52,8 @@ export interface VoteCardProps {
  * "Fake or Real?", the rule line, Fake | Real on a level row, and "N of M voted" from
  * `vote_tallies`. A tap casts at once; the toast "Voted Fake" offers Undo for 5 s. Locked states
  * (challenger, owner, joined later, past the deadline) show a status line instead of buttons; a
- * closed card shows the ruling line, a cancelled one a struck kicker. The card's own polite status
+ * closed card shows the ruling line (the overturned line once an admin overturned a Fake ruling,
+ * with its thumbnail back), a cancelled one a struck kicker. The card's own polite status
  * announces "Vote undone." and a ruling that arrives while it is on screen, once each.
  */
 export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCardProps) {
@@ -67,6 +69,8 @@ export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCa
   const state = voteCardState(item, viewer)
   const kicker = voteKicker(item, viewer.now)
   const ruling = voteRulingLine(item, viewer.userId)
+  // Story 5.3: an overturned Fake ruling reads "Overturned by Jo · Dev's Study is back." instead.
+  const closedLine = voteOverturnLine(item, viewer.userId) ?? ruling
   const toastId = `vote-${item.id}`
 
   // A ruling that arrives while the card is mounted is read once.
@@ -200,7 +204,9 @@ export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCa
           </div>
         </div>
         {showQuestion ? <p className="mt-2 type-meta text-obj-muted">{VOTE_COPY.rule}</p> : null}
-        {state.kind === 'closed' && ruling ? <p className="mt-2 type-hand-md">{ruling}</p> : null}
+        {state.kind === 'closed' && closedLine ? (
+          <p className="mt-2 type-hand-md">{closedLine}</p>
+        ) : null}
         {state.kind === 'cancelled' ? (
           <p className="mt-2 type-hand-md">{VOTE_COPY.cancelled}</p>
         ) : null}

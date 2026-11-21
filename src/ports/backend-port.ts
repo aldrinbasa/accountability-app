@@ -2,7 +2,7 @@ import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { Board, GroupWeek } from '@/domain/board'
 import type { MemberProfile, Title } from '@/domain/badges'
-import type { CreateChallengeResult } from '@/domain/challenge'
+import type { CreateChallengeResult, OverturnResult } from '@/domain/challenge'
 import type { WinnerWeek } from '@/domain/winner'
 import type {
   CheckinPhotoSize,
@@ -285,6 +285,13 @@ export interface BackendPort {
    * `own_checkin`, `already_challenged`, `challenge_expired` or `week_locked`.
    */
   createChallenge(checkinId: string): Promise<CreateChallengeResult>
+  /**
+   * `overturn_ruling` (Story 5.3): the group's current admin overturns a Fake ruling before the
+   * check-in's week locks; the check-in counts again. Rejects with `not_member` (caller or the
+   * check-in's owner not a current member), `not_admin`, `not_fake_ruling`, `already_overturned`,
+   * `own_checkin` or `week_locked`.
+   */
+  overturnRuling(challengeId: string): Promise<OverturnResult>
   /**
    * `cast_vote` (Story 5.2): the caller's ballot on an open vote; never closes it. Rejects with
    * `invalid_vote`, `not_member`, `group_waiting`, `vote_closed`, `not_eligible` or `already_voted`.

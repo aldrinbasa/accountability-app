@@ -100,6 +100,8 @@ export function feedVote(overrides: Partial<FeedVote> = {}): FeedVote {
     myChoice: null,
     myCastAt: null,
     canVote: true,
+    overturnedById: null,
+    overturnedByName: null,
     ...overrides,
   }
 }

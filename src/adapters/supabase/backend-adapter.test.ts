@@ -2101,8 +2101,45 @@ describe('feed mapping', () => {
       fakeCount: 1,
       realCount: 0,
       variant: 'two_person',
+      overturnUntil: null,
+      canOverturn: false,
+      overturnedById: null,
+      overturnedByName: null,
+      overturnedAt: null,
     })
     expect(toFeedItem({ ...ruling, task_name: 'Tax forms' })).toMatchObject({ title: 'Tax forms' })
+    // Story 5.3: the overturn fields the view folds into the ruling row.
+    expect(
+      toFeedItem({
+        ...ruling,
+        payload: {
+          ...(ruling.payload as object),
+          overturn_until: '2026-11-22T15:59:00+00:00',
+          can_overturn: true,
+          overturned_by_id: null,
+          overturned_by_name: null,
+          overturned_at: null,
+        },
+      }),
+    ).toMatchObject({ overturnUntil: '2026-11-22T15:59:00+00:00', canOverturn: true })
+    expect(
+      toFeedItem({
+        ...ruling,
+        payload: {
+          ...(ruling.payload as object),
+          overturn_until: '2026-11-22T15:59:00+00:00',
+          can_overturn: false,
+          overturned_by_id: 'u-1',
+          overturned_by_name: 'Jo',
+          overturned_at: '2026-11-21T10:00:00.5+00:00',
+        },
+      }),
+    ).toMatchObject({
+      canOverturn: false,
+      overturnedById: 'u-1',
+      overturnedByName: 'Jo',
+      overturnedAt: '2026-11-21T10:00:00.5+00:00',
+    })
     expect(
       toFeedItem({ ...ruling, payload: { ...(ruling.payload as object), outcome: 'maybe' } }),
     ).toBeNull()

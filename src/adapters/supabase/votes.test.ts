@@ -162,6 +162,8 @@ describe('feed_items challenge rows (Story 5.2)', () => {
       myChoice: 'real',
       myCastAt: '2026-11-20T08:30:00+00:00',
       canVote: true,
+      overturnedById: null,
+      overturnedByName: null,
     })
   })
 
@@ -181,6 +183,22 @@ describe('feed_items challenge rows (Story 5.2)', () => {
       myChoice: null,
       canVote: false,
     })
+    // Story 5.3: an overturned Fake ruling names the admin.
+    expect(
+      toFeedItem(
+        challengeRow({
+          challenge_status: 'fake',
+          payload: {
+            checkin_id: 'c-1',
+            fake_count: 3,
+            real_count: 1,
+            variant: 'normal',
+            overturned_by_id: 'u-jo',
+            overturned_by_name: 'Jo',
+          },
+        }),
+      ),
+    ).toMatchObject({ status: 'fake', overturnedById: 'u-jo', overturnedByName: 'Jo' })
     expect(toFeedItem(challengeRow({ payload: null }))).toBeNull()
     expect(toFeedItem(challengeRow({ challenge_status: 'weird' }))).toBeNull()
     expect(toFeedItem(challengeRow({ challenge_closes_at: null }))).toBeNull()

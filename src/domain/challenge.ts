@@ -1,6 +1,7 @@
 import type { BackendErrorCode } from '@/domain/error-codes'
 import { errorCopy } from '@/domain/error-codes'
 import { feedTitle, type FeedCheckin, type FeedRuling, type FeedViewer } from '@/domain/feed'
+import { formatLockTime } from '@/domain/time-zones'
 
 /**
  * Challenges (Story 5.1). The server decides who may challenge, every time and every outcome
@@ -17,6 +18,13 @@ export const CHALLENGE_COPY = {
   failed: "Couldn't send the challenge. Tap Retry.",
   gone: "That check-in can't be challenged anymore.",
   rulingKicker: 'Ruling',
+  overturnOffline: "You're offline. Overturns need a signal.",
+  overturnFailed: "Couldn't overturn the ruling. Tap Retry.",
+  overturnLocked: 'This week has locked. The ruling is final.',
+  overturnNotAdmin: 'Only the group admin can overturn a ruling.',
+  overturnOwn: "You can't overturn a ruling on your own check-in.",
+  overturnOwnerLeft: 'That member left the group, so the ruling stands.',
+  retry: 'Retry',
 } as const
 
 /** What `create_challenge` returned: the new challenge, `fake` when a 2-member group ruled at once. */
@@ -181,4 +189,93 @@ export function rulingLine(item: FeedRuling, viewerId: string): string {
     return `Ruled Fake · ${who} challenged · ${what} removed.`
   }
   return `Ruled Fake · ${what} removed. ${counts}`
+}
+
+/** What `overturn_ruling` returned (Story 5.3). */
+export interface OverturnResult {
+  overturnId: string
+  createdAt: string
+}
+
+/** The overturn fields a ruling sticky or a Vote card carries. */
+interface Overturnable {
+  ownerId: string | null
+  ownerName: string
+  overturnedById: string | null
+  overturnedByName: string | null
+}
+
+/** True once an admin overturned the ruling. */
+export function isOverturned(item: Pick<Overturnable, 'overturnedById' | 'overturnedByName'>) {
+  return item.overturnedById !== null || item.overturnedByName !== null
+}
+
+/**
+ * The overturned line, with the Feed's "You" rule: "Overturned by Jo · Dev's Study is back.";
+ * the admin reads "Overturned by you · …", the owner "… · Your Study is back.". Null until
+ * overturned.
+ */
+export function overturnLine(item: Overturnable, title: string, viewerId: string): string | null {
+  if (!isOverturned(item)) return null
+  const byYou = viewerId !== '' && item.overturnedById === viewerId
+  const ownCheckin = viewerId !== '' && item.ownerId === viewerId
+  const who = byYou ? 'you' : (item.overturnedByName ?? '')
+  return `Overturned by ${who} · ${owner(item.ownerName, ownCheckin)} ${title} is back.`
+}
+
+/**
+ * Whether the ruling sticky shows the admin's Overturn button: the server said the reader may
+ * (`can_overturn`), the ruling is Fake and not overturned, and the clock is still before the
+ * server's `overturn_until` (the week's lock).
+ */
+export function canShowOverturn(
+  item: Pick<
+    FeedRuling,
+    'outcome' | 'canOverturn' | 'overturnUntil' | 'overturnedById' | 'overturnedByName'
+  >,
+  now: Date,
+): boolean {
+  if (!item.canOverturn || item.outcome !== 'fake' || isOverturned(item)) return false
+  if (item.overturnUntil === null) return false
+  const until = Date.parse(item.overturnUntil)
+  return !Number.isNaN(until) && now.getTime() < until
+}
+
+/**
+ * The button: "Overturn (admin) until Wed 23:59", the lock time in the group's zone, naming it
+ * when the member's zone differs ("until Wed 23:59 London time").
+ */
+export function overturnButtonLabel(
+  overturnUntil: string,
+  groupZone: string,
+  memberZone: string,
+): string {
+  return `Overturn (admin) until ${formatLockTime(overturnUntil, groupZone, memberZone)}`
+}
+
+/**
+ * How a failed overturn shows: `offline` (error toast), `failed` (Inline retry on the sticky, Retry
+ * resends), or a refusal (error toast with its copy, then a Feed refetch).
+ */
+export type OverturnFailure =
+  { kind: 'offline'; text: string } | { kind: 'failed' } | { kind: 'refused'; text: string }
+
+export function overturnFailure(code: BackendErrorCode, offline: boolean): OverturnFailure {
+  if (offline) return { kind: 'offline', text: CHALLENGE_COPY.overturnOffline }
+  switch (code) {
+    case 'week_locked':
+      return { kind: 'refused', text: CHALLENGE_COPY.overturnLocked }
+    case 'not_admin':
+      return { kind: 'refused', text: CHALLENGE_COPY.overturnNotAdmin }
+    case 'own_checkin':
+      return { kind: 'refused', text: CHALLENGE_COPY.overturnOwn }
+    // Also raised when the check-in's owner left: the admin is told the ruling stands.
+    case 'not_member':
+      return { kind: 'refused', text: CHALLENGE_COPY.overturnOwnerLeft }
+    case 'not_fake_ruling':
+    case 'already_overturned':
+      return { kind: 'refused', text: errorCopy(code) }
+    default:
+      return { kind: 'failed' }
+  }
 }

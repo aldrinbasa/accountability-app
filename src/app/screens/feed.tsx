@@ -113,6 +113,7 @@ function FeedContent({ group, query, anchorId = null, anchorRef }: FeedContentPr
           items={items}
           viewer={viewer}
           memberCount={group.memberCount}
+          groupZone={group.timeZone}
           hasMore={query.hasNextPage}
           loadingMore={query.isFetchingNextPage}
           // Any fetch in flight (a whole refetch too) holds auto-load, so a next page never

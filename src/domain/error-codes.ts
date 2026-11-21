@@ -40,6 +40,10 @@ export const ERROR_COPY = {
   not_eligible: "You can't vote on this one.",
   already_voted: 'You already voted on this one.',
   invalid_vote: 'Pick Fake or Real.',
+  // Story 5.3 (overturn). `not_admin` and `week_locked` keep their copy above; the overturn flow
+  // shows its own lines for them (src/domain/challenge.ts).
+  not_fake_ruling: 'Only a Fake ruling can be overturned.',
+  already_overturned: "That ruling's already overturned.",
   // Raised from Epic 5 (freezes); the outbox already treats it as final (Story 3.3).
   session_frozen: 'That session is already frozen.',
 } as const

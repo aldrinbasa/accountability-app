@@ -1,4 +1,4 @@
-import { rulingLine } from '@/domain/challenge'
+import { isOverturned, overturnLine, rulingLine } from '@/domain/challenge'
 import type { BackendErrorCode } from '@/domain/error-codes'
 import { errorCopy } from '@/domain/error-codes'
 import { feedTitle, type ChallengeStatus, type FeedCheckin, type FeedRuling } from '@/domain/feed'
@@ -84,6 +84,9 @@ export interface FeedVote {
   myChoice: VoteChoice | null
   myCastAt: string | null
   canVote: boolean
+  /** Story 5.3: the admin who overturned a Fake ruling (live name, else as at the overturn). */
+  overturnedById: string | null
+  overturnedByName: string | null
 }
 
 /** `vote_tallies`: one open vote's "N of M voted" (the challenger counts in both). */
@@ -234,13 +237,32 @@ export function voteRulingLine(vote: FeedVote, viewerId: string): string | null 
     fakeCount: vote.fakeCount,
     realCount: vote.realCount,
     variant: vote.variant ?? (vote.realCount === 0 && vote.fakeCount === 1 ? 'lone' : 'normal'),
+    overturnUntil: null,
+    canOverturn: false,
+    overturnedById: vote.overturnedById,
+    overturnedByName: vote.overturnedByName,
+    overturnedAt: null,
   }
   return rulingLine(ruling, viewerId)
 }
 
-/** Whether the closed card still shows the thumbnail: not on Fake (Storage denies its photo). */
-export function voteShowsThumbnail(vote: Pick<FeedVote, 'status'>): boolean {
-  return vote.status !== 'fake'
+/**
+ * The closed Fake card's overturned line (Story 5.3): "Overturned by Jo · Dev's Study is back."
+ * with the Feed's "You" rule; null unless a Fake ruling was overturned.
+ */
+export function voteOverturnLine(vote: FeedVote, viewerId: string): string | null {
+  if (vote.status !== 'fake') return null
+  return overturnLine(vote, voteTitle(vote), viewerId)
+}
+
+/**
+ * Whether the closed card still shows the thumbnail: not on a standing Fake ruling (Storage denies
+ * its photo); again once overturned.
+ */
+export function voteShowsThumbnail(
+  vote: Pick<FeedVote, 'status' | 'overturnedById' | 'overturnedByName'>,
+): boolean {
+  return vote.status !== 'fake' || isOverturned(vote)
 }
 
 /**

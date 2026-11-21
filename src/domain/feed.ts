@@ -170,6 +170,14 @@ export interface FeedRuling {
   fakeCount: number
   realCount: number
   variant: RulingVariant
+  /** Story 5.3: the check-in's week lock (`lock_at`), the overturn deadline; null on Real. */
+  overturnUntil: string | null
+  /** The reader may overturn now (the server's rule: admin, Fake, not own, owner current, unlocked). */
+  canOverturn: boolean
+  /** The overturning admin by id and name (live, else as at the overturn); null until overturned. */
+  overturnedById: string | null
+  overturnedByName: string | null
+  overturnedAt: string | null
 }
 
 export type FeedItem =

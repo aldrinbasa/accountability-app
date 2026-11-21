@@ -9,6 +9,7 @@ import {
   votedToast,
   voteHeading,
   voteKicker,
+  voteOverturnLine,
   voteRulingLine,
   voteShowsThumbnail,
   voteThumbnailLabel,
@@ -114,6 +115,16 @@ describe('Vote card copy', () => {
     expect(voteRulingLine(feedVote(), 'user-9')).toBeNull()
     expect(voteShowsThumbnail(closed)).toBe(false)
     expect(voteShowsThumbnail(feedVote())).toBe(true)
+  })
+
+  it('an overturned Fake card names the admin and shows its thumbnail again (Story 5.3)', () => {
+    const closed = feedVote({ status: 'fake', fakeCount: 3, realCount: 1, variant: 'normal' })
+    const overturned = { ...closed, overturnedById: 'user-1', overturnedByName: 'Jo' }
+    expect(voteOverturnLine(closed, 'user-9')).toBeNull()
+    expect(voteOverturnLine(overturned, 'user-9')).toBe("Overturned by Jo · Dev's Study is back.")
+    expect(voteOverturnLine(overturned, 'user-1')).toBe("Overturned by you · Dev's Study is back.")
+    expect(voteOverturnLine(overturned, 'user-4')).toBe('Overturned by Jo · Your Study is back.')
+    expect(voteShowsThumbnail(overturned)).toBe(true)
   })
 
   it('the check-in for the Photo viewer', () => {

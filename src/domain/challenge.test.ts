@@ -9,6 +9,11 @@ import {
   challengeSheetBody,
   challengeSheetMeta,
   challengeSheetTitle,
+  canShowOverturn,
+  CHALLENGE_COPY,
+  overturnButtonLabel,
+  overturnFailure,
+  overturnLine,
   rulingLine,
 } from '@/domain/challenge'
 import { errorCopy, isRpcErrorCode } from '@/domain/error-codes'
@@ -35,6 +40,11 @@ function ruling(overrides: Partial<FeedRuling> = {}): FeedRuling {
     fakeCount: 3,
     realCount: 1,
     variant: 'normal',
+    overturnUntil: '2026-11-22T15:59:00.000Z',
+    canOverturn: false,
+    overturnedById: null,
+    overturnedByName: null,
+    overturnedAt: null,
     ...overrides,
   }
 }
@@ -217,5 +227,83 @@ describe('rulingLine', () => {
     expect(rulingLine(ruling({ outcome: 'real', fakeCount: 0, realCount: 1 }), 'user-4')).toBe(
       'Ruled Real · Your Study stands. 0 Fake, 1 Real.',
     )
+  })
+})
+
+describe('overturn (Story 5.3)', () => {
+  const overturned = { overturnedById: 'user-1', overturnedByName: 'Jo' }
+
+  it('words the overturned line with the "You" rule', () => {
+    expect(overturnLine(ruling(overturned), 'Study', 'user-9')).toBe(
+      "Overturned by Jo · Dev's Study is back.",
+    )
+    expect(overturnLine(ruling(overturned), 'Study', 'user-1')).toBe(
+      "Overturned by you · Dev's Study is back.",
+    )
+    expect(overturnLine(ruling(overturned), 'Study', 'user-4')).toBe(
+      'Overturned by Jo · Your Study is back.',
+    )
+    expect(overturnLine(ruling(), 'Study', 'user-1')).toBeNull()
+    // The admin's profile name gone: the event's name still reads.
+    expect(
+      overturnLine(ruling({ overturnedById: null, overturnedByName: 'Jo' }), 'Study', 'user-9'),
+    ).toBe("Overturned by Jo · Dev's Study is back.")
+  })
+
+  it('shows the button only when the server allows it and before overturn_until', () => {
+    const before = new Date('2026-11-22T15:58:59.000Z')
+    const at = new Date('2026-11-22T15:59:00.000Z')
+    expect(canShowOverturn(ruling({ canOverturn: true }), before)).toBe(true)
+    expect(canShowOverturn(ruling({ canOverturn: true }), at)).toBe(false)
+    expect(canShowOverturn(ruling(), before)).toBe(false)
+    expect(canShowOverturn(ruling({ canOverturn: true, outcome: 'real' }), before)).toBe(false)
+    expect(canShowOverturn(ruling({ canOverturn: true, ...overturned }), before)).toBe(false)
+    expect(canShowOverturn(ruling({ canOverturn: true, overturnUntil: null }), before)).toBe(false)
+    expect(canShowOverturn(ruling({ canOverturn: true, overturnUntil: 'nope' }), before)).toBe(
+      false,
+    )
+  })
+
+  it("labels the button with the lock in the group's zone, naming it when the member's differs", () => {
+    // Monday 00:00 Manila is the lock: it reads as Sun 23:59.
+    expect(overturnButtonLabel('2026-11-22T16:00:00.000Z', 'Asia/Manila', 'Asia/Manila')).toBe(
+      'Overturn (admin) until Sun 23:59',
+    )
+    expect(overturnButtonLabel('2026-11-22T23:59:00.000Z', 'Europe/London', 'Asia/Manila')).toBe(
+      'Overturn (admin) until Sun 23:59 London time',
+    )
+  })
+
+  it('maps failures: offline, refusals with their copy, anything else to Retry', () => {
+    expect(overturnFailure('network', true)).toEqual({
+      kind: 'offline',
+      text: "You're offline. Overturns need a signal.",
+    })
+    expect(overturnFailure('network', false)).toEqual({ kind: 'failed' })
+    expect(overturnFailure('unknown', false)).toEqual({ kind: 'failed' })
+    expect(overturnFailure('week_locked', false)).toEqual({
+      kind: 'refused',
+      text: 'This week has locked. The ruling is final.',
+    })
+    expect(overturnFailure('not_admin', false)).toEqual({
+      kind: 'refused',
+      text: 'Only the group admin can overturn a ruling.',
+    })
+    expect(overturnFailure('not_fake_ruling', false)).toEqual({
+      kind: 'refused',
+      text: 'Only a Fake ruling can be overturned.',
+    })
+    expect(overturnFailure('already_overturned', false)).toEqual({
+      kind: 'refused',
+      text: "That ruling's already overturned.",
+    })
+    expect(overturnFailure('not_member', false)).toEqual({
+      kind: 'refused',
+      text: 'That member left the group, so the ruling stands.',
+    })
+    expect(overturnFailure('own_checkin', false)).toEqual({
+      kind: 'refused',
+      text: CHALLENGE_COPY.overturnOwn,
+    })
   })
 })
