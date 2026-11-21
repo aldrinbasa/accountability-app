@@ -262,8 +262,8 @@ select is(
   (select coalesce(e.actor_id::text, 'none') || '|' || (e.payload ->> 'week_start') || '|' || e.created_at
    from public.feed_events e
    where e.group_id = current_setting('test.g1')::uuid and e.kind = 'weekly_winner'),
-  'none|2026-11-09|2026-11-19 00:00:01+00',
-  'the event: no actor (the winners are in the payload), the week, written at the lock'
+  'none|2026-11-09|2026-11-19 00:00:00.001+00',
+  'the event: no actor (the winners are in the payload), the week, at the week''s lock time + 1 ms (Epic 4 retro)'
 );
 select is(
   (select pg_catalog.string_agg(a.membership_id::text || a.week_start::text, ',' order by a.membership_id)

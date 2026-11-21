@@ -16,7 +16,7 @@
 -- Solo (frank): weekly 50 from 2 Nov; P: 100, a solo week.
 begin;
 set local timezone = 'UTC';
-select plan(49);
+select plan(50);
 
 select tests.create_supabase_user(u)
 from (values ('alice'), ('bob'), ('cara'), ('dave'), ('erin'), ('gina'), ('hank'), ('frank'),
@@ -408,10 +408,10 @@ select is(pg_temp.events('crew') || ';' || pg_temp.events('pair') || ';' || pg_t
   '2026-11-09:weekly:85:85.0:true;2026-11-09:weekly:85:84.5:false;;',
   'one goal_result event per decided result: Crew hit, Pair missed; none mid-month or solo');
 select is(
-  (select e.actor_id is null and e.created_at = '2026-11-19 00:00:01+00'
+  (select e.actor_id is null and e.created_at = '2026-11-19 00:00:00+00'
    from public.feed_events e
    where e.group_id = current_setting('test.crew')::uuid and e.kind = 'goal_result'),
-  true, 'the event names nobody and carries the lock time');
+  true, 'the event names nobody and carries the week''s lock time (Epic 4 retro), not the tick''s');
 select is(pg_temp.team_players('crew'), 'Alice@2026-11-09,Bob@2026-11-09,Cara@2026-11-09',
   'goal hit: every member current at the lock earns Team Player, a member without a score too');
 select is(pg_temp.team_players('pair') || '|' || pg_temp.team_players('solo') || '|'
@@ -459,6 +459,11 @@ select is(
   'Gina:100,Hank:90',
   'contributions come in ranking order with their weekly points'
 );
+select is(
+  (select gg.month_value_now from public.get_group_goal(current_setting('test.month')::uuid) gg),
+  82.5::numeric,
+  'month_value_now: the locked weeks plus W''s live average, the value W''s lock decides below (Epic 4 retro)'
+);
 select is(pg_temp.status('month', 'gina', 'team_player'), 'pending',
   'monthly: W closes the month and (70.0 + 95.0) / 2 meets 80, so Team Player is pending');
 
@@ -483,12 +488,12 @@ select is(pg_temp.events('month'), '2026-11-16:monthly:80:82.5:true',
 select is(pg_temp.team_players('month'), 'Gina@2026-11-16,Hank@2026-11-16',
   'monthly hit: both members earn Team Player at the closing lock');
 select is(pg_temp.goal_row('crew', '2026-11-16') || ';' || pg_temp.events('crew'),
-  '||||;2026-11-09:weekly:85:85.0:true',
-  'Crew at W: nobody scored, so no goal values and no new event');
+  '95|monthly||false|85.0;2026-11-09:weekly:85:85.0:true,2026-11-16:monthly:95:85.0:false',
+  'Crew at W (95 monthly, nobody scored): the closing lock still decides November from P''s 85.0, judged weekly before (Epic 4 retro)');
 select is(
   (select pg_catalog.count(*)::integer from public.badge_awards a
    where a.group_id = current_setting('test.crew')::uuid and a.badge_key = 'team_player'),
-  3, 'Team Player is earned once per membership'
+  3, 'Crew''s missed month awards no Team Player: still the 3 awards from P'
 );
 
 select * from finish();
