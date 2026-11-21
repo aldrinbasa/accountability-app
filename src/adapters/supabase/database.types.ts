@@ -523,6 +523,38 @@ isOneToOne: false
                   Relationships: [
                     
                   ]
+                },"votes": {
+                  Row: {
+                    "cast_at": string,"challenge_id": string | null,"choice": string,"created_at": string,"freeze_request_id": string | null,"group_id": string,"id": string,"updated_at": string,"voter_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "cast_at": string,"challenge_id"?: string | null,"choice": string,"created_at"?: string,"freeze_request_id"?: string | null,"group_id": string,"id"?: string,"updated_at"?: string,"voter_id": string
+                  }
+                  Update: {
+                    "cast_at"?: string,"challenge_id"?: string | null,"choice"?: string,"created_at"?: string,"freeze_request_id"?: string | null,"group_id"?: string,"id"?: string,"updated_at"?: string,"voter_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "votes_challenge_id_fkey"
+      columns: ["challenge_id"]
+isOneToOne: false
+      referencedRelation: "challenges"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "votes_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "votes_voter_id_fkey"
+      columns: ["voter_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"week_commitment_results": {
                   Row: {
                     "commitment_id": string,"created_at": string,"done": number,"frozen": number,"group_id": string,"id": string,"membership_id": string,"planned": number,"streak_after": number | null,"target_met": boolean,"updated_at": string,"week_start": string
@@ -641,6 +673,11 @@ isOneToOne: false
 "add_task":
 { Args: { "p_custom_name"?: string,"p_deadline"?: string,"p_group_activity_id"?: string,"p_group_id": string,"p_name"?: string,"p_preset_key"?: string }; Returns: {
               "commitment_id": string
+            }[]
+                           },
+"cast_vote":
+{ Args: { "p_choice": string,"p_id": string,"p_kind": string }; Returns: {
+              "cast_at": string,"vote_id": string
             }[]
                            },
 "create_challenge":
@@ -813,9 +850,17 @@ isOneToOne: false
               "pending_time_zone": string,"pending_week_start": string,"time_zone": string
             }[]
                            },
+"undo_vote":
+{ Args: { "p_id": string,"p_kind": string }; Returns: undefined
+                           },
 "update_commitment":
 { Args: { "p_commitment_id": string,"p_days"?: (number)[],"p_end_date"?: string,"p_target"?: number }; Returns: {
               "changes_from": string
+            }[]
+                           },
+"vote_tallies":
+{ Args: { "p_group_id": string }; Returns: {
+              "eligible_count": number,"target_id": string,"target_kind": string,"voted_count": number
             }[]
                            }
           }
