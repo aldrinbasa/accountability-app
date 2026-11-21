@@ -16,7 +16,7 @@
 -- their clock (rolled back with everything else).
 begin;
 set local timezone = 'UTC';
-select plan(53);
+select plan(58);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -147,6 +147,7 @@ alter function private.lock_due_weeks() set search_path = test_overrides, pg_cat
 alter function private.current_streak(uuid) set search_path = test_overrides, pg_catalog;
 alter function private.commitment_is_active(public.commitments) set search_path = test_overrides, pg_catalog;
 alter function public.post_checkin(uuid, uuid, timestamptz, text) set search_path = test_overrides, pg_catalog;
+alter function private.checkin_challenge_until(uuid, timestamptz) set search_path = test_overrides, pg_catalog;
 
 select pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('proofy.tick'));
 
@@ -299,6 +300,16 @@ select is(
 );
 
 -- ===== 2-person group: ruled Fake at once =====
+reset role;
+select ok(
+  exists (
+    select 1 from private.badge_criteria_met(
+      (select m.id from public.memberships m
+       where m.group_id = current_setting('test.g2')::uuid and m.user_id = tests.get_supabase_uid('erin')),
+      '2026-11-16') k
+    where k = 'first_proof'),
+  'badges (control): before the challenge erin''s check-in earns First Proof'
+);
 select tests.authenticate_as('dave');
 select is(
   (select r.status || '|' || (r.closes_at = '2026-11-17 10:00:00+00')::text
@@ -330,6 +341,15 @@ select ok(
   private.checkin_removed(current_setting('test.e1')::uuid)
   and not private.checkin_removed(current_setting('test.b1')::uuid),
   'checkin_removed: true for the Fake-ruled check-in only'
+);
+select ok(
+  not exists (
+    select 1 from private.badge_criteria_met(
+      (select m.id from public.memberships m
+       where m.group_id = current_setting('test.g2')::uuid and m.user_id = tests.get_supabase_uid('erin')),
+      '2026-11-16') k
+    where k = 'first_proof'),
+  'badges: a Fake-ruled check-in does not earn First Proof'
 );
 select is(
   (select private.session_status(s) || '|' || coalesce(s.miss_recorded_at::text, 'null')
@@ -463,8 +483,11 @@ select throws_ok(
 );
 
 -- ===== Lone challenger at the timeout, after a paused tick =====
--- closes_at Wed 07:59:59; the next tick runs an hour late.
+-- closes_at Wed 07:59:59; the next tick runs an hour late. bob (the only other voter at opened_at)
+-- is marked as left meanwhile: the ruling still reads lone, not 2-person (restored afterwards).
 reset role;
+update public.memberships set ended_at = '2026-11-17 12:00:00+00', end_reason = 'left'
+where group_id = current_setting('test.g1')::uuid and user_id = tests.get_supabase_uid('bob');
 select tests.freeze_time('2026-11-18 09:00:00+00');
 select private.tick();
 select is(
@@ -477,8 +500,10 @@ select is(
   (select count(*)::text || '|' || max(e.payload ->> 'variant') || '|' || max(e.payload ->> 'outcome')
    from pg_temp.rulings('c1') e),
   '1|lone|fake',
-  'nobody else voted: one ruling event with the lone variant'
+  'nobody else voted: one ruling event with the lone variant (a voter leaving later keeps it lone)'
 );
+update public.memberships set ended_at = null, end_reason = null
+where group_id = current_setting('test.g1')::uuid and user_id = tests.get_supabase_uid('bob');
 select is(
   (select private.session_status(s) || '|' || s.miss_recorded_at::text from pg_temp.sess('walk', 1) s),
   'missed|2026-11-18 09:00:00+00',
@@ -536,6 +561,11 @@ select is(
   'open|2026-11-26 00:00:00+00',
   'Wednesday evening: closes_at is capped at the week''s lock'
 );
+select is(
+  (select f.challenge_until::text from public.feed_items f where f.item_id = current_setting('test.b2')::uuid),
+  '2026-11-26 00:00:00+00',
+  'Feed: challenge_until is capped at the lock too, not received_at + 24 h'
+);
 reset role;
 select is(
   (select gw.lock_at::text from public.group_weeks gw
@@ -583,6 +613,25 @@ select is(
   private.checkin_lock_at(current_setting('test.b3')::uuid)::text,
   '2026-10-29 00:00:00+00',
   'checkin_lock_at: the week of the check-in''s counted_at in the owner''s zone'
+);
+
+-- ===== A failing step 3 is recorded and blocks the lock =====
+create or replace function private.tick_step_3_close_votes()
+returns text
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'step three broke';
+end;
+$$;
+select tests.freeze_time('2026-12-03 00:00:00+00');
+select lives_ok($$ select private.tick() $$, 'a failing step 3 does not fail the tick');
+select ok(
+  (select h.last_error_step = 3 and h.last_error = 'step three broke' from public.heartbeat h)
+  and (select gw.locked_at is null and gw.lock_at <= '2026-12-03 00:00:00+00' from public.group_weeks gw
+       where gw.group_id = current_setting('test.g1')::uuid and gw.week_start = '2026-11-23'),
+  'the heartbeat records step 3 and the due week does not lock'
 );
 
 select * from finish();
