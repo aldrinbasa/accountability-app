@@ -16,7 +16,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: ['**', '!seed-dev']
 
 concurrency:
   group: ci-${{ github.ref }}
