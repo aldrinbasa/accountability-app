@@ -4,6 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider, type InitialEntry } from 'react-router'
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type { Board, BoardRow, GroupWeek } from '@/domain/board'
+import type { MemberProfile, ProfileBadge, Title } from '@/domain/badges'
+import type { Streak } from '@/domain/streaks'
 import type {
   CheckinPhotoSize,
   CheckinTarget,
@@ -12,12 +15,14 @@ import type {
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
 import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
+import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
 import type { CommitmentDetails, MyPlanItem, UpdateCommitmentInput } from '@/domain/my-plan'
 import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from '@/domain/plan'
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
+import type { WinnerWeek } from '@/domain/winner'
 import type { BackendPort } from '@/ports/backend-port'
 import type { CameraPort } from '@/ports/camera-port'
 import type { ImageEncodePort } from '@/ports/image-encode-port'
@@ -137,6 +142,109 @@ export const TEST_PLAN_PREVIEW: PlanPreview = {
   lastWeekTarget: null,
 }
 
+/** The group's current week the fake answers by default (the week of `TEST_PLAN_PREVIEW`). */
+export const TEST_GROUP_WEEK: GroupWeek = {
+  weekStart: '2026-11-16',
+  lockAt: '2026-11-25T16:00:00.000Z',
+}
+
+/** A `get_board` row with defaults for the Board-only fields (no misses, streak, plan or tasks). */
+export function boardRow(
+  row: Partial<BoardRow> & Pick<BoardRow, 'userId' | 'displayName'>,
+): BoardRow {
+  return {
+    avatarPath: null,
+    weeklyPoints: null,
+    sessionsDone: 0,
+    sessionsPlanned: 0,
+    sessionsFrozen: 0,
+    rank: null,
+    missCount: 0,
+    bestStreak: 0,
+    plan: [],
+    taskCount: 0,
+    isWinner: false,
+    ...row,
+  }
+}
+
+/** A board of `TEST_GROUP_WEEK` in the test group's zone (current week, not waiting). */
+export function testBoard(board: Partial<Board> = {}): Board {
+  return {
+    waiting: false,
+    rows: [],
+    lockAt: TEST_GROUP_WEEK.lockAt,
+    isCurrentWeek: true,
+    timeZone: TEST_GROUP.timeZone,
+    locked: false,
+    ...board,
+  }
+}
+
+/** The 15 catalog badges (key, name, icon) in display order, as the migration seeds them. */
+const CATALOG: readonly [string, string, string][] = [
+  ['first_proof', 'First Proof', 'camera'],
+  ['hat_trick', 'Hat Trick', 'fire'],
+  ['on_a_roll', 'On a Roll', 'fire-simple'],
+  ['unbreakable', 'Unbreakable', 'shield-check'],
+  ['clean_sheet', 'Clean Sheet', 'check-circle'],
+  ['back_to_back', 'Back-to-Back', 'checks'],
+  ['monthly_machine', 'Monthly Machine', 'calendar-check'],
+  ['comeback', 'Comeback', 'arrow-fat-up'],
+  ['weekly_winner', 'Weekly Winner', 'trophy'],
+  ['dynasty', 'Dynasty', 'crown'],
+  ['team_player', 'Team Player', 'users-three'],
+  ['fair_judge', 'Fair Judge', 'gavel'],
+  ['early_bird', 'Early Bird', 'sun-horizon'],
+  ['night_owl', 'Night Owl', 'moon-stars'],
+  ['task_slayer', 'Task Slayer', 'list-checks'],
+]
+
+/**
+ * The 15 badges, all locked, with test copy ("How {name} is earned", "{name} line"); `overrides`
+ * per key set status, dates or copy.
+ */
+export function testBadges(overrides: Record<string, Partial<ProfileBadge>> = {}): ProfileBadge[] {
+  return CATALOG.map(([key, name, icon]) => ({
+    key,
+    name,
+    howEarned: `How ${name} is earned`,
+    line: `${name} line`,
+    icon,
+    status: 'locked',
+    awardedAt: null,
+    pendingLockAt: null,
+    ...overrides[key],
+  }))
+}
+
+/** A current member's profile: no points (Couch Potato), all badges locked, no streaks or plan. */
+export function testMemberProfile(profile: Partial<MemberProfile> = {}): MemberProfile {
+  return {
+    displayName: TEST_PROFILE.displayName,
+    avatarPath: null,
+    isCurrentMember: true,
+    allTimePoints: 0,
+    titleKey: 'couch_potato',
+    timeZone: TEST_GROUP.timeZone,
+    badges: testBadges(),
+    streaks: [],
+    plan: [],
+    taskCount: 0,
+    ...profile,
+  }
+}
+
+/** The title ladder the migration seeds. */
+export const TEST_TITLES: Title[] = [
+  { key: 'couch_potato', name: 'Couch Potato', minPoints: 0 },
+  { key: 'warming_up', name: 'Warming Up', minPoints: 300 },
+  { key: 'regular', name: 'Regular', minPoints: 1000 },
+  { key: 'grinder', name: 'Grinder', minPoints: 2500 },
+  { key: 'machine', name: 'Machine', minPoints: 5000 },
+  { key: 'legend', name: 'Legend', minPoints: 10000 },
+]
+
 /**
  * The fake's pro-rated last week: ISO weekday of the end date (Monday = 1) as the days of that week.
  * Test-only stand-in for the server's rule.
@@ -177,6 +285,26 @@ export const TEST_COMMITMENT: CommitmentDetails = {
   minEndDate: '2026-11-29',
   state: 'active',
   canEdit: true,
+}
+
+/** A group goal read: no goal, nobody scored, the default group's three members (override any field). */
+export function testGroupGoal(goal: Partial<GroupGoal> = {}): GroupGoal {
+  return {
+    weekStart: TEST_GROUP_WEEK.weekStart,
+    memberCount: 3,
+    target: null,
+    period: null,
+    liveAverage: null,
+    monthWeeks: [],
+    monthAverage: null,
+    contributions: TEST_MEMBERS.map((m) => ({
+      userId: m.userId,
+      name: m.displayName,
+      weeklyPoints: null,
+    })),
+    lastResult: null,
+    ...goal,
+  }
 }
 
 export interface FakeBackend extends BackendPort {
@@ -224,6 +352,31 @@ export function createFakeBackend(
     /** Friends today per group id, newest first as given. Default none. */
     friendsToday?: Record<string, FeedCheckin[]>
     /**
+     * `get_board` per group id, for any week (default: no rows, `waiting` from the group's member
+     * count). `boards` keyed `{groupId}:{weekStart}` wins for that week.
+     */
+    board?: Record<string, Board>
+    boards?: Record<string, Board>
+    /** `get_streaks` per group id (default none). */
+    streaks?: Record<string, Streak[]>
+    /** `get_group_week` per group id (default `TEST_GROUP_WEEK`). */
+    groupWeeks?: Record<string, GroupWeek>
+    /**
+     * `get_winner_week` per `{groupId}:{weekStart}` (locked weeks). The latest (no week asked) is the
+     * one with the greatest Monday of that group. Default none.
+     */
+    winnerWeeks?: Record<string, WinnerWeek>
+    /**
+     * `get_member_profile` per `{groupId}:{userId}` (default: the signed-in member of a group they
+     * are in gets `testMemberProfile()`; anyone else null).
+     */
+    memberProfiles?: Record<string, MemberProfile | null>
+    /**
+     * `get_group_goal` per group id (default `testGroupGoal` with the group's member count);
+     * `setGroupGoal` writes the target and period into it.
+     */
+    goals?: Record<string, GroupGoal>
+    /**
      * The server clock for `setTimeZone` (ISO instant). Default `2026-11-18T12:00:00Z`, the day of
      * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
      */
@@ -260,9 +413,19 @@ export function createFakeBackend(
       isLate: false,
       doneCount: 1,
       target: 1,
+      weeklyPoints: null,
+      rank: null,
+      passedUserIds: [],
     }))
   const feed = options.feed ?? {}
   const friendsToday: Record<string, FeedCheckin[]> = { ...options.friendsToday }
+  const board: Record<string, Board> = { ...options.board }
+  const boards: Record<string, Board> = { ...options.boards }
+  const groupWeeks: Record<string, GroupWeek> = { ...options.groupWeeks }
+  const streaks: Record<string, Streak[]> = { ...options.streaks }
+  const winnerWeeks: Record<string, WinnerWeek> = { ...options.winnerWeeks }
+  const memberProfiles: Record<string, MemberProfile | null> = { ...options.memberProfiles }
+  const goals: Record<string, GroupGoal> = { ...options.goals }
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -606,6 +769,67 @@ export function createFakeBackend(
       ]
       return result
     }),
+    getGroupWeek: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return groupWeeks[groupId] ?? TEST_GROUP_WEEK
+    }),
+    getBoard: vi.fn(async (groupId: string, weekStart: string) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      return (
+        boards[`${groupId}:${weekStart}`] ??
+        board[groupId] ??
+        testBoard({ waiting: group.memberCount < 2, rows: [] })
+      )
+    }),
+    getStreaks: vi.fn(async (groupId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return streaks[groupId] ?? []
+    }),
+    getWinnerWeek: vi.fn(async (groupId: string, weekStart: string | null) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      if (weekStart !== null) return winnerWeeks[`${groupId}:${weekStart}`] ?? null
+      const latest = Object.entries(winnerWeeks)
+        .filter(([key]) => key.startsWith(`${groupId}:`))
+        .sort(([a], [b]) => (a < b ? 1 : -1))[0]
+      return latest ? latest[1] : null
+    }),
+    getMemberProfile: vi.fn(async (groupId: string, userId: string) => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      const key = `${groupId}:${userId}`
+      if (key in memberProfiles) return memberProfiles[key] ?? null
+      return userId === user?.id
+        ? testMemberProfile({ displayName: profile?.displayName ?? '' })
+        : null
+    }),
+    listTitles: vi.fn(async () => [...TEST_TITLES]),
+    getGroupGoal: vi.fn(async (groupId: string) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      return goals[groupId] ?? testGroupGoal({ memberCount: group.memberCount })
+    }),
+    setGroupGoal: vi.fn(async (groupId: string, target: number, period: GoalPeriod) => {
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      if (group.role !== 'admin') throw new BackendError('not_admin')
+      if (target < 50 || target > 100 || target % 5 !== 0) throw new BackendError('invalid_goal')
+      goals[groupId] = {
+        ...(goals[groupId] ?? testGroupGoal({ memberCount: group.memberCount })),
+        target,
+        period,
+      }
+    }),
+    // The member's check-ins in the fake feed, newest first.
+    listMemberCheckins: vi.fn(async (groupId: string, userId: string, limit: number) =>
+      groups.some((group) => group.id === groupId)
+        ? (feed[groupId] ?? [])
+            .filter(
+              (item): item is FeedCheckin => item.type === 'checkin' && item.authorId === userId,
+            )
+            .sort((a, b) => -compareFeed(cursorOf(a), cursorOf(b)))
+            .slice(0, limit)
+        : [],
+    ),
     // RLS: a non-member reads an empty wall. Keyset on (sortAt, id), newest first.
     listFeed: vi.fn(async (groupId: string, request: FeedRowsRequest) => {
       const all = groups.some((group) => group.id === groupId)

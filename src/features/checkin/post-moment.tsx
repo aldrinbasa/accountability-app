@@ -27,9 +27,11 @@ function prefersReducedMotion(): boolean {
  * The post moment on Today (Stories 3.2, 3.5): the member's last post in this group drops, wobbles
  * and sticks down (900 ms) as a fixed overlay at the top of Today, then fades, while the check-in
  * settles into the Friends today strip as its first mini (no layout shift). A polite "Posted. Gym 4
- * of 5." once and a light haptic. Transform and opacity only; the overlay is `aria-hidden`, never
- * takes pointer input, and any tap jumps to the end state. `prefers-reduced-motion`: no overlay, the
- * announcement kept.
+ * of 5. 67 weekly points. Rank 1." once (points and rank when ranked, Story 4.1) and a light haptic.
+ * The Score sticker's count bump and the rank chip's wobble play inside the same moment. Transform
+ * and opacity only; the overlay is `aria-hidden`, never takes pointer input, and any tap jumps to
+ * the end state. `prefers-reduced-motion`: no overlay, the announcement kept. A late post's points
+ * and rank are left out of the announcement (they may belong to an earlier week).
  */
 export function PostMoment({ groupId }: { groupId: string }) {
   const moment = usePostMoment(groupId)
@@ -43,7 +45,15 @@ export function PostMoment({ groupId }: { groupId: string }) {
     // Once per post, also when effects run twice (StrictMode) or Today mounts again.
     if (!announce || moment === null || getPostMoment()?.announced) return
     markPostMomentAnnounced(moment.checkinId)
-    setMessage(postedAnnouncement(moment.title, moment.doneCount, moment.target))
+    setMessage(
+      // A late post may have scored an earlier week: its points and rank are not read out.
+      postedAnnouncement(
+        moment.title,
+        moment.doneCount,
+        moment.target,
+        moment.isLate ? undefined : { weeklyPoints: moment.weeklyPoints, rank: moment.rank },
+      ),
+    )
     if (typeof navigator.vibrate === 'function') {
       try {
         navigator.vibrate(HAPTIC_MS)

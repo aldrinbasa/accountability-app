@@ -101,6 +101,20 @@ describe('posting copy and rules', () => {
     expect(postedAnnouncement('Gym', 4, 5)).toBe('Posted. Gym 4 of 5.')
   })
 
+  it('adds the weekly points and rank when ranked (Story 4.1)', () => {
+    expect(postedAnnouncement('Gym', 4, 5, { weeklyPoints: 67, rank: 1 })).toBe(
+      'Posted. Gym 4 of 5. 67 weekly points. Rank 1.',
+    )
+    // A group of one: the points, no rank (2026-11-20 decision: a solo member scores).
+    expect(postedAnnouncement('Gym', 4, 5, { weeklyPoints: 100, rank: null })).toBe(
+      'Posted. Gym 4 of 5. 100 weekly points.',
+    )
+    // No score: the short form.
+    expect(postedAnnouncement('Gym', 0, 5, { weeklyPoints: null, rank: null })).toBe(
+      'Posted. Gym 0 of 5.',
+    )
+  })
+
   it('builds the object path and the alt text', () => {
     expect(checkinPhotoPath('g1', 'k1', 360)).toBe('g1/k1/360.webp')
     expect(checkinAlt('Gym', null)).toBe('Your Gym check-in')

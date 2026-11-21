@@ -30,13 +30,17 @@ export function isTabPath(pathname: string): pathname is TabPath {
 /** `/feed/c/{checkinId}`: a check-in deep link, shown as the Feed tab. */
 const FEED_DEEP_LINK = /^\/feed\/c\/[^/]+\/?$/
 
+/** `/winner/{weekStart}`: the Winner card deep link (Story 4.5), over the Feed. */
+export const WINNER_DEEP_LINK = /^\/winner\/[^/]+\/?$/
+
 /**
- * The tab a path shows as: the tab itself, or the Feed for a check-in deep link (switcher, active
- * Feed tab, cold-start history). Null for pushed screens and everything else.
+ * The tab a path shows as: the tab itself, or the Feed for a check-in or winner deep link
+ * (switcher, active Feed tab, cold-start history, stale-group state). Null for pushed screens and
+ * everything else.
  */
 export function tabOf(pathname: string): TabPath | null {
   if (isTabPath(pathname)) return pathname
-  return FEED_DEEP_LINK.test(pathname) ? '/feed' : null
+  return FEED_DEEP_LINK.test(pathname) || WINNER_DEEP_LINK.test(pathname) ? '/feed' : null
 }
 
 /** Router location state carried by tab entries that sit on top of a /today entry. */

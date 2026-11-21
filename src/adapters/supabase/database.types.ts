@@ -23,7 +23,59 @@ export type Database = {
           }
         },"public": {
           Tables: {
-            "checkins": {
+            "badge_awards": {
+                  Row: {
+                    "awarded_at": string,"badge_key": string,"created_at": string,"group_id": string,"id": string,"membership_id": string,"updated_at": string,"user_id": string | null,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "awarded_at"?: string,"badge_key": string,"created_at"?: string,"group_id": string,"id"?: string,"membership_id": string,"updated_at"?: string,"user_id"?: string | null,"week_start": string
+                  }
+                  Update: {
+                    "awarded_at"?: string,"badge_key"?: string,"created_at"?: string,"group_id"?: string,"id"?: string,"membership_id"?: string,"updated_at"?: string,"user_id"?: string | null,"week_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "badge_awards_badge_key_fkey"
+      columns: ["badge_key"]
+isOneToOne: false
+      referencedRelation: "badges"
+      referencedColumns: ["key"]
+    },{
+      foreignKeyName: "badge_awards_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "badge_awards_membership_id_fkey"
+      columns: ["membership_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "badge_awards_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"badges": {
+                  Row: {
+                    "created_at": string,"how_earned": string,"icon": string,"key": string,"line": string,"name": string,"sort_order": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"how_earned": string,"icon": string,"key": string,"line": string,"name": string,"sort_order": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"how_earned"?: string,"icon"?: string,"key"?: string,"line"?: string,"name"?: string,"sort_order"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"checkins": {
                   Row: {
                     "caption": string | null,"captured_at": string,"commitment_id": string,"counted_at": string,"created_at": string,"full_pruned_at": string | null,"group_id": string,"id": string,"is_late": boolean,"received_at": string,"session_id": string | null,"updated_at": string,"user_id": string
                   }
@@ -195,16 +247,68 @@ isOneToOne: false
       referencedColumns: ["key"]
     }
                   ]
-                },"group_weeks": {
+                },"group_goals": {
                   Row: {
-                    "created_at": string,"group_id": string,"lock_at": string,"updated_at": string,"week_start": string
+                    "created_at": string,"created_by": string,"effective_week_start": string,"group_id": string,"id": string,"period": string,"target_pct": number,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "created_at"?: string,"group_id": string,"lock_at": string,"updated_at"?: string,"week_start": string
+                    "created_at"?: string,"created_by": string,"effective_week_start": string,"group_id": string,"id"?: string,"period": string,"target_pct": number,"updated_at"?: string
                   }
                   Update: {
-                    "created_at"?: string,"group_id"?: string,"lock_at"?: string,"updated_at"?: string,"week_start"?: string
+                    "created_at"?: string,"created_by"?: string,"effective_week_start"?: string,"group_id"?: string,"id"?: string,"period"?: string,"target_pct"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "group_goals_created_by_fkey"
+      columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_goals_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"group_week_results": {
+                  Row: {
+                    "created_at": string,"goal_average": number | null,"goal_hit": boolean | null,"goal_period": string | null,"goal_result_average": number | null,"goal_target": number | null,"group_id": string,"id": string,"ranked": boolean,"scored": boolean,"updated_at": string,"week_start": string,"winner_user_ids": (string)[]
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"goal_average"?: number | null,"goal_hit"?: boolean | null,"goal_period"?: string | null,"goal_result_average"?: number | null,"goal_target"?: number | null,"group_id": string,"id"?: string,"ranked"?: boolean,"scored": boolean,"updated_at"?: string,"week_start": string,"winner_user_ids"?: (string)[]
+                  }
+                  Update: {
+                    "created_at"?: string,"goal_average"?: number | null,"goal_hit"?: boolean | null,"goal_period"?: string | null,"goal_result_average"?: number | null,"goal_target"?: number | null,"group_id"?: string,"id"?: string,"ranked"?: boolean,"scored"?: boolean,"updated_at"?: string,"week_start"?: string,"winner_user_ids"?: (string)[]
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "group_week_results_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "group_week_results_group_week_fkey"
+      columns: ["group_id","week_start"]
+isOneToOne: false
+      referencedRelation: "group_weeks"
+      referencedColumns: ["group_id","week_start"]
+    }
+                  ]
+                },"group_weeks": {
+                  Row: {
+                    "created_at": string,"group_id": string,"lock_at": string,"locked_at": string | null,"updated_at": string,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"group_id": string,"lock_at": string,"locked_at"?: string | null,"updated_at"?: string,"week_start": string
+                  }
+                  Update: {
+                    "created_at"?: string,"group_id"?: string,"lock_at"?: string,"locked_at"?: string | null,"updated_at"?: string,"week_start"?: string
                   }
                   Relationships: [
                     {
@@ -367,6 +471,84 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"titles": {
+                  Row: {
+                    "created_at": string,"key": string,"min_points": number,"name": string,"sort_order": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"key": string,"min_points": number,"name": string,"sort_order": number,"updated_at"?: string
+                  }
+                  Update: {
+                    "created_at"?: string,"key"?: string,"min_points"?: number,"name"?: string,"sort_order"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    
+                  ]
+                },"week_commitment_results": {
+                  Row: {
+                    "commitment_id": string,"created_at": string,"done": number,"frozen": number,"group_id": string,"id": string,"membership_id": string,"planned": number,"streak_after": number | null,"target_met": boolean,"updated_at": string,"week_start": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "commitment_id": string,"created_at"?: string,"done": number,"frozen": number,"group_id": string,"id"?: string,"membership_id": string,"planned": number,"streak_after"?: number | null,"target_met": boolean,"updated_at"?: string,"week_start": string
+                  }
+                  Update: {
+                    "commitment_id"?: string,"created_at"?: string,"done"?: number,"frozen"?: number,"group_id"?: string,"id"?: string,"membership_id"?: string,"planned"?: number,"streak_after"?: number | null,"target_met"?: boolean,"updated_at"?: string,"week_start"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "week_commitment_results_commitment_id_fkey"
+      columns: ["commitment_id"]
+isOneToOne: false
+      referencedRelation: "commitments"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "week_commitment_results_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "week_commitment_results_membership_id_fkey"
+      columns: ["membership_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"week_results": {
+                  Row: {
+                    "created_at": string,"group_id": string,"id": string,"membership_id": string,"rank": number | null,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"updated_at": string,"user_id": string | null,"week_start": string,"weekly_points": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "created_at"?: string,"group_id": string,"id"?: string,"membership_id": string,"rank"?: number | null,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"updated_at"?: string,"user_id"?: string | null,"week_start": string,"weekly_points"?: number | null
+                  }
+                  Update: {
+                    "created_at"?: string,"group_id"?: string,"id"?: string,"membership_id"?: string,"rank"?: number | null,"sessions_done"?: number,"sessions_frozen"?: number,"sessions_planned"?: number,"updated_at"?: string,"user_id"?: string | null,"week_start"?: string,"weekly_points"?: number | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "week_results_group_id_fkey"
+      columns: ["group_id"]
+isOneToOne: false
+      referencedRelation: "groups"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "week_results_membership_id_fkey"
+      columns: ["membership_id"]
+isOneToOne: false
+      referencedRelation: "memberships"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "week_results_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 }
           }
           Views: {
@@ -439,6 +621,11 @@ isOneToOne: false
               "ends_after_week_start": string
             }[]
                            },
+"get_board":
+{ Args: { "p_group_id": string,"p_week_start": string }; Returns: {
+              "avatar_path": string,"best_streak": number,"display_name": string,"is_current_week": boolean,"is_winner": boolean,"lock_at": string,"locked": boolean,"miss_count": number,"plan": Json,"rank": number,"sessions_done": number,"sessions_frozen": number,"sessions_planned": number,"task_count": number,"time_zone": string,"user_id": string,"waiting": boolean,"weekly_points": number
+            }[]
+                           },
 "get_checkin_targets":
 { Args: { "p_group_id": string }; Returns: {
               "activity_name": string,"commitment_id": string,"custom_name": string,"deadline": string,"done_count": number,"due_today": boolean,"kind": string,"member_today": string,"name": string,"preset_key": string,"schedule_type": string,"target": number,"wont_count": string
@@ -482,14 +669,34 @@ isOneToOne: false
         isOneToOne: false
         isSetofReturn: true
       } },
+"get_group_goal":
+{ Args: { "p_group_id": string }; Returns: {
+              "contributions": Json,"last_result": Json,"live_average": number,"member_count": number,"month_average": number,"month_weeks": Json,"period": string,"target_pct": number,"week_start": string
+            }[]
+                           },
+"get_group_week":
+{ Args: { "p_group_id": string }; Returns: {
+              "lock_at": string,"week_start": string
+            }[]
+                           },
 "get_invite":
 { Args: { "p_code": string }; Returns: {
               "admin_display_name": string,"group_id": string,"group_name": string,"member_count": number,"status": string
             }[]
                            },
+"get_member_profile":
+{ Args: { "p_group_id": string,"p_user_id": string }; Returns: {
+              "all_time_points": number,"avatar_path": string,"badges": Json,"display_name": string,"is_current_member": boolean,"plan": Json,"streaks": Json,"task_count": number,"time_zone": string,"title_key": string
+            }[]
+                           },
 "get_my_plan":
 { Args: { "p_group_id": string }; Returns: {
               "activity_name": string,"can_delete": boolean,"can_edit": boolean,"commitment_id": string,"custom_name": string,"days": (number)[],"deadline": string,"end_date": string,"ends_on": string,"kind": string,"name": string,"preset_key": string,"schedule_type": string,"section": string,"starts_on": string,"state": string,"target": number
+            }[]
+                           },
+"get_streaks":
+{ Args: { "p_group_id": string }; Returns: {
+              "back_to_zero": boolean,"commitment_id": string,"current_streak": number,"user_id": string
             }[]
                            },
 "get_task":
@@ -507,6 +714,11 @@ isOneToOne: false
               "done": number,"has_plan": boolean,"left": number,"member_today": string,"planned": number,"week_number": number,"week_start": string
             }[]
                            },
+"get_winner_week":
+{ Args: { "p_group_id": string,"p_week_start": string }; Returns: {
+              "avatar_path": string,"badge_line": string,"badge_name": string,"display_name": string,"is_winner": boolean,"lock_at": string,"rank": number,"ranked": boolean,"scored": boolean,"user_id": string,"week_start": string,"weekly_points": number,"winner_user_ids": (string)[]
+            }[]
+                           },
 "join_group":
 { Args: { "p_code": string }; Returns: string
                            },
@@ -520,7 +732,7 @@ isOneToOne: false
                            },
 "post_checkin":
 { Args: { "p_caption"?: string,"p_captured_at": string,"p_commitment_id": string,"p_id": string }; Returns: {
-              "checkin_id": string,"counted": boolean,"done_count": number,"is_late": boolean,"session_id": string,"target": number
+              "checkin_id": string,"counted": boolean,"done_count": number,"is_late": boolean,"passed_user_ids": (string)[],"rank": number,"session_id": string,"target": number,"weekly_points": number
             }[]
                            },
 "remove_member":
@@ -546,6 +758,9 @@ isOneToOne: false
         isOneToOne: true
         isSetofReturn: false
       } },
+"set_group_goal":
+{ Args: { "p_group_id": string,"p_period": string,"p_target_pct": number }; Returns: undefined
+                           },
 "set_time_zone":
 { Args: { "p_group_id"?: string,"p_time_zone": string }; Returns: {
               "pending_time_zone": string,"pending_week_start": string,"time_zone": string

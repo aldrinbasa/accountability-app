@@ -1,5 +1,8 @@
 import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
+import type { Board, GroupWeek } from '@/domain/board'
+import type { MemberProfile, Title } from '@/domain/badges'
+import type { WinnerWeek } from '@/domain/winner'
 import type {
   CheckinPhotoSize,
   CheckinTarget,
@@ -7,6 +10,7 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import type { FeedCheckin, FeedItem, FeedRows, FeedRowsRequest } from '@/domain/feed'
+import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
   CommitmentDetails,
@@ -25,6 +29,7 @@ import type {
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import type { TodayItem, TodaySummary } from '@/domain/today'
+import type { Streak } from '@/domain/streaks'
 
 /**
  * The app's one backend contract (AD-1). Story 1.3 adds the auth surface; later stories add reads,
@@ -196,9 +201,52 @@ export interface BackendPort {
    * `post_checkin`: the server sets the timing, matches a session (or stores an extra) and returns
    * the week's counts. The same id and payload again return the stored result. Rejects with
    * `bad_capture_time`, `not_member`, `commitment_ended`, `week_locked`, `photo_missing`,
-   * `checkin_conflict` or `invalid_caption`.
+   * `checkin_conflict` or `invalid_caption`. Story 4.1 adds the member's weekly points, rank and
+   * the members the post passed.
    */
   postCheckin(input: PostCheckinInput): Promise<PostCheckinResult>
+
+  /**
+   * `get_group_week`: the group's current week (Monday and lock time) from its `group_weeks` row
+   * (AD-11). Rejects with `not_member`.
+   */
+  getGroupWeek(groupId: string): Promise<GroupWeek>
+  /**
+   * `get_board`: the group's ranking for a week (`weekStart` = a `getGroupWeek` Monday), ranked rows
+   * first, plus whether the group is waiting. Rejects with `not_member`.
+   */
+  getBoard(groupId: string, weekStart: string): Promise<Board>
+  /**
+   * `get_streaks`: the current streak of every commitment (null for a task) of the group's current
+   * members, with whether it is back to 0 after a reset (Story 4.2). Rejects with `not_member`.
+   */
+  getStreaks(groupId: string): Promise<Streak[]>
+  /**
+   * `get_winner_week`: a locked week's flags, winners, podium members and lock time (Story 4.5);
+   * `weekStart` null reads the group's most recent locked week. Null for an unknown or unlocked
+   * week (or no locked week yet). Rejects with `not_member`.
+   */
+  getWinnerWeek(groupId: string, weekStart: string | null): Promise<WinnerWeek | null>
+  /**
+   * `get_member_profile`: a member in the group (Story 4.6): name, avatar, all-time points, title,
+   * the 15 badges with their status, streaks and plan. Null for someone never in the group; a member
+   * who left comes back with `isCurrentMember` false. Rejects with `not_member`.
+   */
+  getMemberProfile(groupId: string, userId: string): Promise<MemberProfile | null>
+  /** The `titles` ladder, lowest first. */
+  listTitles(): Promise<Title[]>
+  /** A member's latest check-ins in the group's feed, newest first, at most `limit`. */
+  listMemberCheckins(groupId: string, userId: string, limit: number): Promise<FeedCheckin[]>
+  /**
+   * `get_group_goal` (Story 4.7): the goal in effect for the current week, its live and monthly
+   * averages, every current member's part and the latest decided result. Rejects with `not_member`.
+   */
+  getGroupGoal(groupId: string): Promise<GroupGoal>
+  /**
+   * `set_group_goal`: a new goal version from the group's current week. Rejects with `not_member`,
+   * `not_admin` or `invalid_goal`.
+   */
+  setGroupGoal(groupId: string, target: number, period: GoalPeriod): Promise<void>
 
   /**
    * `feed_items` of a group (check-ins the caller may see and membership events), keyset paged on

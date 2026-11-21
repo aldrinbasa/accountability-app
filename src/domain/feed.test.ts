@@ -9,10 +9,12 @@ import {
   missDay,
   missLine,
   photoRenditions,
+  winnerStickyLine,
   type FeedCheckin,
   type FeedEvent,
   type FeedMiss,
   type FeedViewer,
+  type FeedWinner,
 } from '@/domain/feed'
 
 const NOW = new Date('2026-11-20T09:00:00Z') // Friday 20 Nov, 09:00 London (GMT)
@@ -250,5 +252,43 @@ describe('missDay', () => {
     expect(missDay('2026-11-22', 'Europe/London', NOW)).toBe('22 Nov')
     expect(missDay(null, 'Europe/London', NOW)).toBe('')
     expect(missDay('soon', 'Europe/London', NOW)).toBe('')
+  })
+})
+
+describe('winnerStickyLine (Story 4.5)', () => {
+  function winner(winners: FeedWinner['winners']): FeedWinner {
+    return {
+      type: 'winner',
+      id: 'w-1',
+      groupId: 'g-1',
+      sortAt: '2026-11-19T00:00:30.000000+00:00',
+      weekStart: '2026-11-09',
+      weeklyPoints: 94,
+      winners,
+    }
+  }
+
+  it('a single winner, with the tease naming them', () => {
+    expect(winnerStickyLine(winner([{ userId: 'marco', name: 'Marco' }]), 'jo')).toBe(
+      "Last week's winner · Marco · 94 · Bow down. Or just beat Marco.",
+    )
+  })
+
+  it('co-winners: names joined with "&", "each", no tease', () => {
+    expect(
+      winnerStickyLine(
+        winner([
+          { userId: 'jo', name: 'Jo' },
+          { userId: 'marco', name: 'Marco' },
+        ]),
+        'dev',
+      ),
+    ).toBe("Last week's winners · Jo & Marco · 94 each.")
+  })
+
+  it('the winner reading their own sticky gets no tease', () => {
+    expect(winnerStickyLine(winner([{ userId: 'marco', name: 'Marco' }]), 'marco')).toBe(
+      "Last week's winner · Marco · 94.",
+    )
   })
 })

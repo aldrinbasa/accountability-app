@@ -12,6 +12,15 @@ import {
   type PresetActivity,
 } from '@/domain/activities'
 import { AuthError, type AuthErrorCode, type AuthUser } from '@/domain/auth'
+import type { Board, BoardRow, GroupWeek, PlanItem } from '@/domain/board'
+import type {
+  BadgeStatus,
+  MemberProfile,
+  ProfileBadge,
+  ProfileStreak,
+  Title,
+} from '@/domain/badges'
+import type { Streak } from '@/domain/streaks'
 import {
   checkinPhotoPath,
   isWontCount,
@@ -21,11 +30,20 @@ import {
 } from '@/domain/checkin'
 import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
 import {
+  isGoalPeriod,
+  type FeedGoal,
+  type GoalContribution,
+  type GoalMonthWeek,
+  type GoalResult,
+  type GroupGoal,
+} from '@/domain/goal'
+import {
   isFeedEventKind,
   type FeedCheckin,
   type FeedCursor,
   type FeedItem,
   type FeedMiss,
+  type FeedWinner,
   type FeedRows,
   type FeedRowsRequest,
 } from '@/domain/feed'
@@ -50,6 +68,7 @@ import type { AddCommitmentInput, AddTaskInput, PlanPreview, TaskDetails } from 
 import type { Profile } from '@/domain/profile'
 import type { TimeZoneState } from '@/domain/time-zones'
 import { isTodaySection, type TodayItem, type TodaySummary } from '@/domain/today'
+import type { WinnerPodiumMember, WinnerWeek } from '@/domain/winner'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
@@ -484,7 +503,246 @@ export function toPostCheckinResult(row: PostCheckinRow): PostCheckinResult {
     isLate: row.is_late,
     doneCount: row.done_count,
     target: row.target,
+    weeklyPoints: row.weekly_points ?? null,
+    rank: row.rank ?? null,
+    passedUserIds: row.passed_user_ids ?? [],
   }
+}
+
+type GroupWeekRow = Database['public']['Functions']['get_group_week']['Returns'][number]
+
+/** The `get_group_week` row as the group's current week. */
+export function toGroupWeek(row: GroupWeekRow): GroupWeek {
+  return { weekStart: row.week_start, lockAt: row.lock_at }
+}
+
+type BoardRpcRow = Database['public']['Functions']['get_board']['Returns'][number]
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** `get_board`'s `plan` jsonb as plan items; anything malformed is dropped. */
+export function toPlanItems(value: unknown): PlanItem[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): PlanItem[] => {
+    if (!isRecord(item) || typeof item.activity_name !== 'string') return []
+    const scheduleType = item.schedule_type
+    if (scheduleType !== 'fixed_days' && scheduleType !== 'times_per_week') return []
+    const days = Array.isArray(item.days)
+      ? item.days.filter((day): day is number => typeof day === 'number')
+      : null
+    const target = typeof item.target === 'number' ? item.target : null
+    return [{ activityName: item.activity_name, scheduleType, days, target }]
+  })
+}
+
+/**
+ * `get_board` rows as a board, in the server's order. `waiting`, `lock_at`, `is_current_week` and
+ * `time_zone` repeat on every row; a board with no rows (never for a member) counts as waiting. The
+ * generated type misses the nullable columns.
+ */
+export function toBoard(rows: readonly BoardRpcRow[]): Board {
+  const first = rows[0]
+  return {
+    waiting: first?.waiting ?? true,
+    lockAt: first?.lock_at ?? null,
+    isCurrentWeek: first?.is_current_week ?? false,
+    timeZone: first?.time_zone ?? null,
+    locked: first?.locked ?? false,
+    rows: rows.map((row): BoardRow => ({
+      userId: row.user_id,
+      displayName: row.display_name,
+      avatarPath: row.avatar_path ?? null,
+      weeklyPoints: row.weekly_points ?? null,
+      sessionsDone: row.sessions_done,
+      sessionsPlanned: row.sessions_planned,
+      sessionsFrozen: row.sessions_frozen,
+      rank: row.rank ?? null,
+      missCount: row.miss_count ?? 0,
+      bestStreak: row.best_streak ?? 0,
+      plan: toPlanItems(row.plan),
+      taskCount: row.task_count ?? 0,
+      isWinner: row.is_winner ?? false,
+    })),
+  }
+}
+
+type WinnerRpcRow = Database['public']['Functions']['get_winner_week']['Returns'][number]
+
+/**
+ * `get_winner_week` rows as the locked week, or null when there are none (an unknown or unlocked
+ * week, or no locked week yet). The week columns repeat on every row; a row without a member (a
+ * locked week with nobody on its podium) only carries them. The generated type misses the nullable
+ * columns.
+ */
+export function toWinnerWeek(rows: readonly WinnerRpcRow[]): WinnerWeek | null {
+  const first = rows[0]
+  if (!first) return null
+  return {
+    weekStart: first.week_start,
+    lockAt: first.lock_at,
+    scored: first.scored ?? false,
+    ranked: first.ranked ?? false,
+    winnerUserIds: first.winner_user_ids ?? [],
+    podium: rows.flatMap((row): WinnerPodiumMember[] =>
+      row.user_id === null || row.rank === null
+        ? []
+        : [
+            {
+              userId: row.user_id,
+              displayName: row.display_name ?? '',
+              avatarPath: row.avatar_path ?? null,
+              weeklyPoints: row.weekly_points ?? 0,
+              rank: row.rank,
+              isWinner: row.is_winner ?? false,
+            },
+          ],
+    ),
+    badgeName: first.badge_name ?? '',
+    badgeLine: first.badge_line ?? '',
+  }
+}
+
+type MemberProfileRow = Database['public']['Functions']['get_member_profile']['Returns'][number]
+
+function isBadgeStatus(value: unknown): value is BadgeStatus {
+  return value === 'earned' || value === 'pending' || value === 'locked'
+}
+
+/** `get_member_profile`'s `badges` jsonb in catalog order; malformed entries are dropped. */
+export function toProfileBadges(value: unknown): ProfileBadge[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): ProfileBadge[] => {
+    if (!isRecord(item) || typeof item.key !== 'string' || typeof item.name !== 'string') return []
+    return [
+      {
+        key: item.key,
+        name: item.name,
+        howEarned: typeof item.how_earned === 'string' ? item.how_earned : '',
+        line: typeof item.line === 'string' ? item.line : '',
+        icon: typeof item.icon === 'string' ? item.icon : '',
+        status: isBadgeStatus(item.status) ? item.status : 'locked',
+        awardedAt: typeof item.awarded_at === 'string' ? item.awarded_at : null,
+        pendingLockAt: typeof item.pending_lock_at === 'string' ? item.pending_lock_at : null,
+      },
+    ]
+  })
+}
+
+/** `get_member_profile`'s `streaks` jsonb; malformed entries are dropped. */
+export function toProfileStreaks(value: unknown): ProfileStreak[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): ProfileStreak[] =>
+    isRecord(item) && typeof item.commitment_id === 'string'
+      ? [
+          {
+            commitmentId: item.commitment_id,
+            activityName: typeof item.activity_name === 'string' ? item.activity_name : '',
+            currentStreak: typeof item.current_streak === 'number' ? item.current_streak : 0,
+            backToZero: item.back_to_zero === true,
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * The `get_member_profile` row as a profile, or null without a row (someone never in the group).
+ * The generated type misses the nullable columns.
+ */
+export function toMemberProfile(rows: readonly MemberProfileRow[]): MemberProfile | null {
+  const row = rows[0]
+  if (!row) return null
+  return {
+    displayName: row.display_name ?? '',
+    avatarPath: row.avatar_path ?? null,
+    isCurrentMember: row.is_current_member ?? false,
+    allTimePoints: row.all_time_points ?? 0,
+    titleKey: row.title_key ?? null,
+    timeZone: row.time_zone ?? null,
+    badges: toProfileBadges(row.badges),
+    streaks: toProfileStreaks(row.streaks),
+    plan: toPlanItems(row.plan),
+    taskCount: row.task_count ?? 0,
+  }
+}
+
+type GroupGoalRow = Database['public']['Functions']['get_group_goal']['Returns'][number]
+
+function jsonNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** `get_group_goal`'s `last_result` jsonb as a result, or null (none, or malformed). */
+export function toGoalResult(value: unknown): GoalResult | null {
+  if (!isRecord(value)) return null
+  const target = jsonNumber(value.target)
+  const average = jsonNumber(value.average)
+  if (
+    typeof value.week_start !== 'string' ||
+    !isGoalPeriod(value.period) ||
+    target === null ||
+    average === null ||
+    typeof value.hit !== 'boolean'
+  ) {
+    return null
+  }
+  return { weekStart: value.week_start, period: value.period, target, average, hit: value.hit }
+}
+
+/**
+ * The `get_group_goal` row as the Goal panel's data; malformed jsonb entries are dropped. The
+ * generated type misses the nullable columns (no goal, nobody scored).
+ */
+export function toGroupGoal(rows: readonly GroupGoalRow[]): GroupGoal {
+  const row = rows[0]
+  if (!row) throw new BackendError('unknown', 'get_group_goal returned no row')
+  const period = isGoalPeriod(row.period) ? row.period : null
+  const target = jsonNumber(row.target_pct)
+  const monthWeeks: unknown = row.month_weeks
+  const contributions: unknown = row.contributions
+  return {
+    weekStart: row.week_start,
+    memberCount: row.member_count ?? 0,
+    target: period === null ? null : target,
+    period: target === null ? null : period,
+    liveAverage: jsonNumber(row.live_average),
+    monthWeeks: Array.isArray(monthWeeks)
+      ? monthWeeks.flatMap((item): GoalMonthWeek[] => {
+          if (!isRecord(item) || typeof item.week_start !== 'string') return []
+          const average = jsonNumber(item.goal_average)
+          return average === null ? [] : [{ weekStart: item.week_start, average }]
+        })
+      : [],
+    monthAverage: jsonNumber(row.month_average),
+    contributions: Array.isArray(contributions)
+      ? contributions.flatMap((item): GoalContribution[] =>
+          isRecord(item) && typeof item.user_id === 'string'
+            ? [
+                {
+                  userId: item.user_id,
+                  name: typeof item.name === 'string' ? item.name : '',
+                  weeklyPoints: jsonNumber(item.weekly_points),
+                },
+              ]
+            : [],
+        )
+      : [],
+    lastResult: toGoalResult(row.last_result),
+  }
+}
+
+type StreakRpcRow = Database['public']['Functions']['get_streaks']['Returns'][number]
+
+/** `get_streaks` rows as streaks. The generated type misses the nullable streak (null for a task). */
+export function toStreaks(rows: readonly StreakRpcRow[]): Streak[] {
+  return rows.map((row): Streak => ({
+    commitmentId: row.commitment_id,
+    userId: row.user_id,
+    currentStreak: row.current_streak ?? null,
+    backToZero: row.back_to_zero ?? false,
+  }))
 }
 
 /** `post_checkin` arguments (the caption only when there is one). */
@@ -508,6 +766,44 @@ function payloadString(payload: FeedItemRow['payload'], key: string): string | n
   if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
   const value = payload[key]
   return typeof value === 'string' ? value : null
+}
+
+/**
+ * A weekly winner row (Story 4.5): the payload's week, points and winners (names at the lock); null
+ * when the payload is malformed or names nobody.
+ */
+function toFeedWinner(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedWinner | null {
+  const payload = row.payload
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null
+  const weekStart = payloadString(payload, 'week_start')
+  const points = payload.weekly_points
+  const list = payload.winners
+  if (weekStart === null || typeof points !== 'number' || !Array.isArray(list)) return null
+  const winners = list.flatMap((entry) =>
+    isRecord(entry) && typeof entry.user_id === 'string' && typeof entry.name === 'string'
+      ? [{ userId: entry.user_id, name: entry.name }]
+      : [],
+  )
+  if (winners.length === 0) return null
+  return { type: 'winner', id, groupId, sortAt, weekStart, weeklyPoints: points, winners }
+}
+
+/** A goal result row (Story 4.7), or null when the payload is malformed. */
+function toFeedGoal(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedGoal | null {
+  const payload = row.payload
+  if (!isRecord(payload)) return null
+  const result = toGoalResult(payload)
+  return result ? { type: 'goal', id, groupId, sortAt, ...result } : null
 }
 
 /** A miss row (Story 3.5): the live title and count, the payload's tease, day and schedule type. */
@@ -570,6 +866,8 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
     }
   }
   if (kind === 'miss') return toFeedMiss(row, id, groupId, sortAt)
+  if (kind === 'weekly_winner') return toFeedWinner(row, id, groupId, sortAt)
+  if (kind === 'goal_result') return toFeedGoal(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -1098,6 +1396,93 @@ export const supabaseBackendAdapter: BackendPort = {
     const row = data?.[0]
     if (!row) throw new BackendError('unknown', 'post_checkin returned no row')
     return toPostCheckinResult(row)
+  },
+
+  async getGroupWeek(groupId) {
+    const { data, error, status } = await supabase.rpc('get_group_week', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    const row = data?.[0]
+    if (!row) throw new BackendError('unknown', 'get_group_week returned no row')
+    return toGroupWeek(row)
+  },
+
+  async getBoard(groupId, weekStart) {
+    const { data, error, status } = await supabase.rpc('get_board', {
+      p_group_id: groupId,
+      p_week_start: weekStart,
+    })
+    if (error) throw toBackendError(error, status)
+    return toBoard(data ?? [])
+  },
+
+  async getWinnerWeek(groupId, weekStart) {
+    const { data, error, status } = await supabase.rpc('get_winner_week', {
+      p_group_id: groupId,
+      // SQL null reads the group's most recent locked week; the generated type misses that.
+      p_week_start: weekStart as string,
+    })
+    if (error) throw toBackendError(error, status)
+    return toWinnerWeek(data ?? [])
+  },
+
+  async getMemberProfile(groupId, userId) {
+    const { data, error, status } = await supabase.rpc('get_member_profile', {
+      p_group_id: groupId,
+      p_user_id: userId,
+    })
+    if (error) throw toBackendError(error, status)
+    return toMemberProfile(data ?? [])
+  },
+
+  async getGroupGoal(groupId) {
+    const { data, error, status } = await supabase.rpc('get_group_goal', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toGroupGoal(data ?? [])
+  },
+
+  async setGroupGoal(groupId, target, period) {
+    const { error, status } = await supabase.rpc('set_group_goal', {
+      p_group_id: groupId,
+      p_target_pct: target,
+      p_period: period,
+    })
+    if (error) throw toBackendError(error, status)
+  },
+
+  async listTitles() {
+    const { data, error, status } = await supabase
+      .from('titles')
+      .select('key, name, min_points')
+      .order('min_points', { ascending: true })
+    if (error) throw toBackendError(error, status)
+    return (data ?? []).map((row): Title => ({
+      key: row.key,
+      name: row.name,
+      minPoints: row.min_points,
+    }))
+  },
+
+  async listMemberCheckins(groupId, userId, limit) {
+    const { data, error, status } = await supabase
+      .from('feed_items')
+      .select(FEED_COLUMNS)
+      .eq('group_id', groupId)
+      .eq('item_kind', 'checkin')
+      .eq('actor_id', userId)
+      .order('sort_at', { ascending: false })
+      .order('item_id', { ascending: false })
+      .limit(limit)
+    if (error) throw toBackendError(error, status)
+    return (data ?? []).flatMap((row): FeedCheckin[] => {
+      const item = toFeedItem(row)
+      return item?.type === 'checkin' ? [item] : []
+    })
+  },
+
+  async getStreaks(groupId) {
+    const { data, error, status } = await supabase.rpc('get_streaks', { p_group_id: groupId })
+    if (error) throw toBackendError(error, status)
+    return toStreaks(data ?? [])
   },
 
   async listFeed(groupId, request: FeedRowsRequest) {

@@ -1481,6 +1481,9 @@ describe('check-ins', () => {
           is_late: false,
           done_count: 2,
           target: 3,
+          weekly_points: 67,
+          rank: 2,
+          passed_user_ids: ['u2'],
         },
       ],
       error: null,
@@ -1500,6 +1503,9 @@ describe('check-ins', () => {
       isLate: false,
       doneCount: 2,
       target: 3,
+      weeklyPoints: 67,
+      rank: 2,
+      passedUserIds: ['u2'],
     })
     expect(db.rpc).toHaveBeenLastCalledWith('post_checkin', {
       p_id: 'k1',
@@ -1608,6 +1614,296 @@ function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_it
   }
 }
 
+describe('board (Stories 4.1 and 4.3)', () => {
+  it('get_group_week maps the current week', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [{ week_start: '2026-11-16', lock_at: '2026-11-25T16:00:00+00:00' }],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getGroupWeek('g1')).toEqual({
+      weekStart: '2026-11-16',
+      lockAt: '2026-11-25T16:00:00+00:00',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_group_week', { p_group_id: 'g1' })
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await backendCodeOf(adapter.getGroupWeek('g1'))).toBe('unknown')
+  })
+
+  it('get_board maps the rows in the server order, waiting and the nullable columns', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          user_id: 'u1',
+          display_name: 'Jo',
+          avatar_path: 'u1/1.webp',
+          weekly_points: 67,
+          sessions_done: 4,
+          sessions_planned: 6,
+          sessions_frozen: 0,
+          rank: 1,
+          waiting: false,
+          miss_count: 2,
+          best_streak: 6,
+          plan: [
+            { activity_name: 'Gym', schedule_type: 'times_per_week', days: null, target: 3 },
+            { activity_name: 'Study', schedule_type: 'fixed_days', days: [1, 3, 5], target: null },
+            { activity_name: 'Broken', schedule_type: 'other', days: null, target: null },
+            'junk',
+          ],
+          task_count: 1,
+          lock_at: '2026-11-25T16:00:00+00:00',
+          is_current_week: true,
+          time_zone: 'Asia/Manila',
+          locked: true,
+          is_winner: true,
+        },
+        {
+          user_id: 'u2',
+          display_name: 'Sam',
+          avatar_path: null,
+          weekly_points: null,
+          sessions_done: 0,
+          sessions_planned: 0,
+          sessions_frozen: 0,
+          rank: null,
+          waiting: false,
+          miss_count: 0,
+          best_streak: 0,
+          plan: [],
+          task_count: 0,
+          lock_at: '2026-11-25T16:00:00+00:00',
+          is_current_week: true,
+          time_zone: 'Asia/Manila',
+          locked: true,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({
+      waiting: false,
+      lockAt: '2026-11-25T16:00:00+00:00',
+      isCurrentWeek: true,
+      timeZone: 'Asia/Manila',
+      locked: true,
+      rows: [
+        {
+          userId: 'u1',
+          displayName: 'Jo',
+          avatarPath: 'u1/1.webp',
+          weeklyPoints: 67,
+          sessionsDone: 4,
+          sessionsPlanned: 6,
+          sessionsFrozen: 0,
+          rank: 1,
+          missCount: 2,
+          bestStreak: 6,
+          // Malformed plan items are dropped.
+          plan: [
+            { activityName: 'Gym', scheduleType: 'times_per_week', days: null, target: 3 },
+            { activityName: 'Study', scheduleType: 'fixed_days', days: [1, 3, 5], target: null },
+          ],
+          taskCount: 1,
+          isWinner: true,
+        },
+        {
+          userId: 'u2',
+          displayName: 'Sam',
+          avatarPath: null,
+          weeklyPoints: null,
+          sessionsDone: 0,
+          sessionsPlanned: 0,
+          sessionsFrozen: 0,
+          rank: null,
+          missCount: 0,
+          bestStreak: 0,
+          plan: [],
+          taskCount: 0,
+          // Missing from an older server: not a winner.
+          isWinner: false,
+        },
+      ],
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_board', {
+      p_group_id: 'g1',
+      p_week_start: '2026-11-16',
+    })
+  })
+
+  it('get_board with no rows counts as waiting', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await adapter.getBoard('g1', '2026-11-16')).toEqual({
+      waiting: true,
+      rows: [],
+      lockAt: null,
+      isCurrentWeek: false,
+      timeZone: null,
+      locked: false,
+    })
+  })
+
+  it('get_board maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: pgError('not_member'),
+      status: 400,
+    })
+    expect(await backendCodeOf(adapter.getBoard('g1', '2026-11-16'))).toBe('not_member')
+  })
+})
+
+describe('winner (Story 4.5)', () => {
+  const weekColumns = {
+    week_start: '2026-11-09',
+    lock_at: '2026-11-18T16:00:00+00:00',
+    scored: true,
+    ranked: true,
+    winner_user_ids: ['u1', 'u2'],
+    badge_name: 'Weekly Winner',
+    badge_line: 'Top of the board. Enjoy it while it lasts.',
+  }
+
+  it('get_winner_week maps the week and its podium, winners first', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          ...weekColumns,
+          user_id: 'u1',
+          display_name: 'Jo',
+          avatar_path: 'u1/1.webp',
+          weekly_points: 94,
+          rank: 1,
+          is_winner: true,
+        },
+        {
+          ...weekColumns,
+          user_id: 'u2',
+          display_name: 'Marco',
+          avatar_path: null,
+          weekly_points: 94,
+          rank: 2,
+          is_winner: true,
+        },
+        {
+          ...weekColumns,
+          user_id: 'u3',
+          display_name: 'Dev',
+          avatar_path: null,
+          weekly_points: 70,
+          rank: 3,
+          is_winner: false,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getWinnerWeek('g1', '2026-11-09')).toEqual({
+      weekStart: '2026-11-09',
+      lockAt: '2026-11-18T16:00:00+00:00',
+      scored: true,
+      ranked: true,
+      winnerUserIds: ['u1', 'u2'],
+      podium: [
+        {
+          userId: 'u1',
+          displayName: 'Jo',
+          avatarPath: 'u1/1.webp',
+          weeklyPoints: 94,
+          rank: 1,
+          isWinner: true,
+        },
+        {
+          userId: 'u2',
+          displayName: 'Marco',
+          avatarPath: null,
+          weeklyPoints: 94,
+          rank: 2,
+          isWinner: true,
+        },
+        {
+          userId: 'u3',
+          displayName: 'Dev',
+          avatarPath: null,
+          weeklyPoints: 70,
+          rank: 3,
+          isWinner: false,
+        },
+      ],
+      badgeName: 'Weekly Winner',
+      badgeLine: 'Top of the board. Enjoy it while it lasts.',
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_winner_week', {
+      p_group_id: 'g1',
+      p_week_start: '2026-11-09',
+    })
+  })
+
+  it('get_winner_week asks for the latest locked week with a null week, and maps no rows to null', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await adapter.getWinnerWeek('g1', null)).toBeNull()
+    expect(db.rpc).toHaveBeenLastCalledWith('get_winner_week', {
+      p_group_id: 'g1',
+      p_week_start: null,
+    })
+  })
+
+  it('a locked week with nobody on its podium keeps the week columns and an empty podium', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          ...weekColumns,
+          ranked: false,
+          winner_user_ids: [],
+          user_id: null,
+          display_name: null,
+          avatar_path: null,
+          weekly_points: null,
+          rank: null,
+          is_winner: null,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getWinnerWeek('g1', '2026-11-09')).toMatchObject({
+      ranked: false,
+      winnerUserIds: [],
+      podium: [],
+    })
+  })
+
+  it('get_winner_week maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getWinnerWeek('g1', null))).toBe('not_member')
+  })
+})
+
+describe('streaks (Story 4.2)', () => {
+  it('get_streaks maps the rows, a task keeping its null streak', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        { commitment_id: 'c1', user_id: 'u1', current_streak: 6, back_to_zero: false },
+        { commitment_id: 'c2', user_id: 'u1', current_streak: 0, back_to_zero: true },
+        { commitment_id: 't1', user_id: 'u2', current_streak: null, back_to_zero: false },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getStreaks('g1')).toEqual([
+      { commitmentId: 'c1', userId: 'u1', currentStreak: 6, backToZero: false },
+      { commitmentId: 'c2', userId: 'u1', currentStreak: 0, backToZero: true },
+      { commitmentId: 't1', userId: 'u2', currentStreak: null, backToZero: false },
+    ])
+    expect(db.rpc).toHaveBeenLastCalledWith('get_streaks', { p_group_id: 'g1' })
+  })
+
+  it('get_streaks maps not_member', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('not_member'), status: 400 })
+    expect(await backendCodeOf(adapter.getStreaks('g1'))).toBe('not_member')
+  })
+})
+
 describe('feed mapping', () => {
   it('maps check-ins and stickies, drops kinds the app does not render, keeps the raw cursors', () => {
     const rows = [
@@ -1696,6 +1992,42 @@ describe('feed mapping', () => {
     expect(toFeedItem({ ...miss, miss_count: 0 })).toBeNull()
   })
 
+  it('maps a weekly winner from its payload; a malformed one is dropped', () => {
+    const winner = feedRow({
+      item_kind: 'weekly_winner',
+      item_id: 'w-1',
+      sort_at: '2026-11-19T00:00:30+00:00',
+      actor_id: null,
+      actor_name: null,
+      commitment_id: null,
+      payload: {
+        week_start: '2026-11-09',
+        weekly_points: 94,
+        winner_user_ids: ['u-1', 'u-2'],
+        winners: [{ user_id: 'u-1', name: 'Jo' }, { user_id: 'u-2', name: 'Marco' }, 'junk'],
+      },
+    })
+    expect(toFeedItem(winner)).toEqual({
+      type: 'winner',
+      id: 'w-1',
+      groupId: winner.group_id,
+      sortAt: '2026-11-19T00:00:30+00:00',
+      weekStart: '2026-11-09',
+      weeklyPoints: 94,
+      winners: [
+        { userId: 'u-1', name: 'Jo' },
+        { userId: 'u-2', name: 'Marco' },
+      ],
+    })
+    expect(
+      toFeedItem({
+        ...winner,
+        payload: { week_start: '2026-11-09', weekly_points: 94, winners: [] },
+      }),
+    ).toBeNull()
+    expect(toFeedItem({ ...winner, payload: null })).toBeNull()
+  })
+
   it('quotes the timestamp in the keyset filter', () => {
     expect(keysetFilter({ sortAt: '2026-11-20T07:12:30.123456+00:00', itemId: 'c-1' }, 'lt')).toBe(
       'sort_at.lt."2026-11-20T07:12:30.123456+00:00",and(sort_at.eq."2026-11-20T07:12:30.123456+00:00",item_id.lt.c-1)',
@@ -1732,6 +2064,254 @@ describe('feed mapping', () => {
   })
 })
 
+describe('member profile (Story 4.6)', () => {
+  it('get_member_profile maps the profile, its badges, streaks and plan; malformed entries dropped', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          display_name: 'Ada',
+          avatar_path: null,
+          is_current_member: true,
+          all_time_points: 1284,
+          title_key: 'regular',
+          time_zone: 'Asia/Manila',
+          badges: [
+            {
+              key: 'first_proof',
+              name: 'First Proof',
+              how_earned: 'Your first check-in',
+              line: 'Pics or it did not happen.',
+              icon: 'camera',
+              status: 'earned',
+              awarded_at: '2026-11-12T00:00:01+00:00',
+              pending_lock_at: null,
+            },
+            {
+              key: 'clean_sheet',
+              name: 'Clean Sheet',
+              how_earned: 'A perfect week',
+              line: 'Every session.',
+              icon: 'check-circle',
+              status: 'pending',
+              awarded_at: null,
+              pending_lock_at: '2026-11-25T16:00:00+00:00',
+            },
+            { key: 'broken' },
+            {
+              key: 'dynasty',
+              name: 'Dynasty',
+              how_earned: 'Weekly winner 3 times',
+              line: 'Three crowns.',
+              icon: 'crown',
+              status: 'weird',
+            },
+          ],
+          streaks: [
+            { commitment_id: 'c1', activity_name: 'Gym', current_streak: 0, back_to_zero: true },
+            { activity_name: 'no id' },
+          ],
+          plan: [{ activity_name: 'Gym', schedule_type: 'times_per_week', days: null, target: 3 }],
+          task_count: 1,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.getMemberProfile('g1', 'u1')).toEqual({
+      displayName: 'Ada',
+      avatarPath: null,
+      isCurrentMember: true,
+      allTimePoints: 1284,
+      titleKey: 'regular',
+      timeZone: 'Asia/Manila',
+      badges: [
+        {
+          key: 'first_proof',
+          name: 'First Proof',
+          howEarned: 'Your first check-in',
+          line: 'Pics or it did not happen.',
+          icon: 'camera',
+          status: 'earned',
+          awardedAt: '2026-11-12T00:00:01+00:00',
+          pendingLockAt: null,
+        },
+        {
+          key: 'clean_sheet',
+          name: 'Clean Sheet',
+          howEarned: 'A perfect week',
+          line: 'Every session.',
+          icon: 'check-circle',
+          status: 'pending',
+          awardedAt: null,
+          pendingLockAt: '2026-11-25T16:00:00+00:00',
+        },
+        {
+          key: 'dynasty',
+          name: 'Dynasty',
+          howEarned: 'Weekly winner 3 times',
+          line: 'Three crowns.',
+          icon: 'crown',
+          status: 'locked',
+          awardedAt: null,
+          pendingLockAt: null,
+        },
+      ],
+      streaks: [{ commitmentId: 'c1', activityName: 'Gym', currentStreak: 0, backToZero: true }],
+      plan: [{ activityName: 'Gym', scheduleType: 'times_per_week', days: null, target: 3 }],
+      taskCount: 1,
+    })
+    expect(db.rpc).toHaveBeenLastCalledWith('get_member_profile', {
+      p_group_id: 'g1',
+      p_user_id: 'u1',
+    })
+  })
+
+  it('get_member_profile with no row (never in the group) is null; not_member rejects', async () => {
+    db.rpc.mockResolvedValueOnce({ data: [], error: null, status: 200 })
+    expect(await adapter.getMemberProfile('g1', 'nobody')).toBeNull()
+    db.rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'P0001', message: 'not_member', details: '', hint: '' },
+      status: 400,
+    })
+    await expect(adapter.getMemberProfile('g1', 'u1')).rejects.toMatchObject({ code: 'not_member' })
+  })
+
+  it('listTitles reads the ladder lowest first', async () => {
+    db.query.order.mockResolvedValueOnce({
+      data: [
+        { key: 'couch_potato', name: 'Couch Potato', min_points: 0 },
+        { key: 'warming_up', name: 'Warming Up', min_points: 300 },
+      ],
+      error: null,
+      status: 200,
+    })
+    expect(await adapter.listTitles()).toEqual([
+      { key: 'couch_potato', name: 'Couch Potato', minPoints: 0 },
+      { key: 'warming_up', name: 'Warming Up', minPoints: 300 },
+    ])
+    expect(db.from).toHaveBeenCalledWith('titles')
+    expect(db.query.order).toHaveBeenLastCalledWith('min_points', { ascending: true })
+  })
+})
+
+describe('group goal (Story 4.7)', () => {
+  it('get_group_goal maps the goal, month weeks, contributions and last result; malformed entries dropped', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          week_start: '2026-11-16',
+          member_count: 3,
+          target_pct: 80,
+          period: 'monthly',
+          live_average: 72.5,
+          month_weeks: [{ week_start: '2026-11-02', goal_average: 70 }, { week_start: 'x' }],
+          month_average: 70,
+          contributions: [
+            { user_id: 'u-1', name: 'Jo', weekly_points: 81 },
+            { user_id: 'u-2', name: 'Priya', weekly_points: null },
+            'junk',
+          ],
+          last_result: {
+            week_start: '2026-11-09',
+            period: 'weekly',
+            target: 85,
+            average: 84.5,
+            hit: false,
+          },
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.getGroupGoal('g1')).resolves.toEqual({
+      weekStart: '2026-11-16',
+      memberCount: 3,
+      target: 80,
+      period: 'monthly',
+      liveAverage: 72.5,
+      monthWeeks: [{ weekStart: '2026-11-02', average: 70 }],
+      monthAverage: 70,
+      contributions: [
+        { userId: 'u-1', name: 'Jo', weeklyPoints: 81 },
+        { userId: 'u-2', name: 'Priya', weeklyPoints: null },
+      ],
+      lastResult: {
+        weekStart: '2026-11-09',
+        period: 'weekly',
+        target: 85,
+        average: 84.5,
+        hit: false,
+      },
+    })
+    expect(db.rpc).toHaveBeenCalledWith('get_group_goal', { p_group_id: 'g1' })
+  })
+
+  it('get_group_goal without a goal: nulls, empty lists, no result', async () => {
+    db.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          week_start: '2026-11-16',
+          member_count: 1,
+          target_pct: null,
+          period: null,
+          live_average: null,
+          month_weeks: [],
+          month_average: null,
+          contributions: [],
+          last_result: null,
+        },
+      ],
+      error: null,
+      status: 200,
+    })
+    await expect(adapter.getGroupGoal('g1')).resolves.toMatchObject({
+      memberCount: 1,
+      target: null,
+      period: null,
+      liveAverage: null,
+      lastResult: null,
+    })
+  })
+
+  it('set_group_goal sends the target and period; a refusal maps to its code', async () => {
+    db.rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.setGroupGoal('g1', 85, 'weekly')
+    expect(db.rpc).toHaveBeenCalledWith('set_group_goal', {
+      p_group_id: 'g1',
+      p_target_pct: 85,
+      p_period: 'weekly',
+    })
+    db.rpc.mockResolvedValueOnce({ data: null, error: pgError('invalid_goal'), status: 400 })
+    expect(await backendCodeOf(adapter.setGroupGoal('g1', 47, 'weekly'))).toBe('invalid_goal')
+  })
+
+  it('maps a goal_result feed row; a malformed payload is dropped', () => {
+    const goal = feedRow({
+      item_kind: 'goal_result',
+      item_id: 'e-9',
+      sort_at: '2026-11-19T00:00:01+00:00',
+      actor_id: null,
+      actor_name: null,
+      commitment_id: null,
+      payload: { week_start: '2026-11-09', period: 'weekly', target: 85, average: 85, hit: true },
+    })
+    expect(toFeedItem(goal)).toEqual({
+      type: 'goal',
+      id: 'e-9',
+      groupId: goal.group_id,
+      sortAt: '2026-11-19T00:00:01+00:00',
+      weekStart: '2026-11-09',
+      period: 'weekly',
+      target: 85,
+      average: 85,
+      hit: true,
+    })
+    expect(toFeedItem({ ...goal, payload: { week_start: '2026-11-09', hit: true } })).toBeNull()
+    expect(toFeedItem({ ...goal, payload: null })).toBeNull()
+  })
+})
+
 describe('feed reads', () => {
   const NEWER = feedRow({ item_id: 'c-new', sort_at: '2026-11-20T08:00:00+00:00' })
   const OLDER = feedRow({ item_id: 'c-old', sort_at: '2026-11-20T07:00:00+00:00' })
@@ -1765,6 +2345,17 @@ describe('feed reads', () => {
     expect(db.query.order).toHaveBeenNthCalledWith(2, 'item_id', { ascending: false })
     expect(db.query.limit).toHaveBeenCalledWith(20)
     expect(page.items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
+  })
+
+  it("reads a member's latest check-ins (Story 4.6)", async () => {
+    answer([NEWER, OLDER])
+    const items = await adapter.listMemberCheckins('g-1', 'user-1', 12)
+    expect(db.from).toHaveBeenCalledWith('feed_items')
+    expect(db.query.eq).toHaveBeenCalledWith('group_id', 'g-1')
+    expect(db.query.eq).toHaveBeenCalledWith('item_kind', 'checkin')
+    expect(db.query.eq).toHaveBeenCalledWith('actor_id', 'user-1')
+    expect(db.query.limit).toHaveBeenCalledWith(12)
+    expect(items.map((item) => item.id)).toEqual(['c-new', 'c-old'])
   })
 
   it('reads older than a cursor', async () => {

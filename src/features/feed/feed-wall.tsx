@@ -14,6 +14,8 @@ import { FeedPolaroid } from '@/features/feed/feed-polaroid'
 import { MissSticky } from '@/features/feed/miss-sticky'
 import { NextPagePlaceholder } from '@/features/feed/feed-skeleton'
 import { PhotoViewer } from '@/features/feed/photo-viewer'
+import { WinnerSticky } from '@/features/feed/winner-sticky'
+import { GoalSticky } from '@/features/feed/goal-sticky'
 
 /** The next page starts loading this far before the end of the wall comes into view. */
 const LOAD_AHEAD = '600px'
@@ -115,6 +117,10 @@ export function FeedWall({
             <li key={item.id} className={className}>
               {item.type === 'miss' ? (
                 <MissSticky item={item} viewer={viewer} tilt={tilt} />
+              ) : item.type === 'winner' ? (
+                <WinnerSticky item={item} viewerId={viewer.userId} tilt={tilt} />
+              ) : item.type === 'goal' ? (
+                <GoalSticky item={item} tilt={tilt} />
               ) : (
                 <EventSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               )}

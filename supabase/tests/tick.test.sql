@@ -37,8 +37,8 @@ select columns_are('public', 'sessions',
         'ends_at', 'miss_recorded_at', 'created_at', 'updated_at'],
   'sessions has the story''s columns and no outcome column');
 select columns_are('public', 'group_weeks',
-  array['group_id', 'week_start', 'lock_at', 'created_at', 'updated_at'],
-  'group_weeks has the story''s columns');
+  array['group_id', 'week_start', 'lock_at', 'created_at', 'updated_at', 'locked_at'],
+  'group_weeks has the story''s columns (plus locked_at, Story 4.4)');
 select columns_are('public', 'heartbeat',
   array['id', 'last_run_at', 'last_error_step', 'last_error', 'last_error_at'],
   'heartbeat has the story''s columns');

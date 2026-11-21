@@ -28,17 +28,26 @@ import { ProgressRing } from '@/ui/progress-ring'
  * Done (Story 3.2: fixed days counted today, a task checked in): dashed outline, transparent fill and
  * the "Done" check doodle in place of Check in. Times per week keeps Check in; its meta says
  * "counted today" or "target met" and the ring fills. `bump` plays the post moment's count bump.
+ *
+ * `streak` (Story 4.2) closes the meta line: "Fixed days · Mon Wed Fri · streak 6", "… · Done ·
+ * streak 7", "… · back to 0". It is plain text inside the meta, so it is read with the row;
+ * `streakPop` plays the milestone pop on it once (3, 10 or 25).
  */
 export function DueRow({
   item,
   onMore,
   onCheckIn,
   bump = false,
+  streak = null,
+  streakPop = false,
 }: {
   item: TodayItem
   onMore?: (button: HTMLButtonElement) => void
   onCheckIn?: (button: HTMLButtonElement) => void
   bump?: boolean
+  /** The streak part of the meta ("streak 6", "back to 0"), or null for none. */
+  streak?: string | null
+  streakPop?: boolean
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
   const checkInRef = useRef<HTMLButtonElement>(null)
@@ -74,7 +83,20 @@ export function DueRow({
       )}
       <div className="min-w-0 flex-1">
         <h3 className="break-words type-title-sm">{title}</h3>
-        <p className="break-words type-meta text-muted">{scheduleMeta(item)}</p>
+        <p className="break-words type-meta text-muted">
+          {scheduleMeta(item)}
+          {streak ? (
+            <>
+              {' · '}
+              <span
+                data-streak=""
+                className={cn('inline-block', streakPop && 'animate-streak-pop')}
+              >
+                {streak}
+              </span>
+            </>
+          ) : null}
+        </p>
       </div>
       {onMore ? (
         <button

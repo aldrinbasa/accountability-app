@@ -88,6 +88,9 @@ function backend(options: Parameters<typeof createFakeBackend>[1] = {}): FakeBac
       sessionId: 's1',
       counted: true,
       isLate: false,
+      weeklyPoints: null,
+      rank: null,
+      passedUserIds: [],
       doneCount: 2,
       target: 3,
     }),
@@ -283,6 +286,9 @@ describe('posting', () => {
               sessionId: 's1',
               counted: true,
               isLate: false,
+              weeklyPoints: null,
+              rank: null,
+              passedUserIds: [],
               doneCount: 2,
               target: 3,
             })
@@ -431,6 +437,27 @@ describe('after the post', () => {
       expect(moment).not.toBeNull()
       expect(document.activeElement).toBe(moment)
     })
+  })
+
+  it('the post keeps the cached streak; its refetch at 3 pops the row once (Story 4.2)', async () => {
+    const streak = (currentStreak: number) => ({
+      commitmentId: 'c-gym',
+      userId: 'u1',
+      currentStreak,
+      backToZero: false,
+    })
+    const fake = backend({ streaks: { [TEST_GROUP.id]: [streak(2)] } })
+    const { user } = await renderToday(fake)
+    await waitFor(() => expect(screen.getByText('streak 2')).toBeInTheDocument())
+    const dialog = await preview(user)
+    vi.mocked(fake.getTodayItems).mockResolvedValue([{ ...GYM, counted: 2, countedToday: true }])
+    vi.mocked(fake.getStreaks).mockResolvedValue([streak(3)])
+    await user.click(within(dialog).getByRole('button', { name: 'Post' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(getPostMoment()?.streakBefore).toBe(2)
+    await waitFor(() =>
+      expect(document.querySelector('.animate-streak-pop')).toHaveTextContent('streak 3'),
+    )
   })
 
   it('a snap-first post from another tab ends on Today with the post moment', async () => {

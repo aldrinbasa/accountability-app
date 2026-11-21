@@ -72,6 +72,18 @@ export interface PostCheckinResult {
   doneCount: number
   /** Sessions this week. */
   target: number
+  /**
+   * The member's weekly points in the group after the post (Story 4.1), null with no score this
+   * week. The server's value; never computed on the device (AD-4).
+   */
+  weeklyPoints: number | null
+  /** The member's rank after the post, null when unranked (no score, or a waiting group). */
+  rank: number | null
+  /**
+   * Members this post moved the poster past. Empty for an extra, a post counted at its capture time
+   * (sent over 10 minutes late), a waiting group and an idempotent replay.
+   */
+  passedUserIds: string[]
 }
 
 /** The two renditions uploaded per check-in (long edge in px). */
@@ -165,9 +177,21 @@ export function pickerStatus(target: CheckinTarget): string {
   return `${shortDayName(target.memberToday)} · due`
 }
 
-/** The post moment's one polite announcement: "Posted. Gym 4 of 5." */
-export function postedAnnouncement(title: string, doneCount: number, target: number): string {
-  return `Posted. ${title} ${doneCount} of ${target}.`
+/**
+ * The post moment's one polite announcement: "Posted. Gym 4 of 5. 67 weekly points. Rank 1." The
+ * points sentence whenever the post has a score (a group of one too: "Posted. Gym 4 of 5. 67 weekly
+ * points."), the rank sentence only when ranked; no score keeps "Posted. Gym 4 of 5."
+ */
+export function postedAnnouncement(
+  title: string,
+  doneCount: number,
+  target: number,
+  score: { weeklyPoints: number | null; rank: number | null } = { weeklyPoints: null, rank: null },
+): string {
+  const base = `Posted. ${title} ${doneCount} of ${target}.`
+  if (score.weeklyPoints === null) return base
+  const points = `${base} ${score.weeklyPoints} weekly points.`
+  return score.rank === null ? points : `${points} Rank ${score.rank}.`
 }
 
 /** The polaroid photo's alt text: "Your Gym check-in, caption: leg day." */

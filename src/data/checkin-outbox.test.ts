@@ -41,6 +41,9 @@ function result(input: PostCheckinInput): PostCheckinResult {
     sessionId: 's1',
     counted: true,
     isLate: false,
+    weeklyPoints: null,
+    rank: null,
+    passedUserIds: [],
     doneCount: 1,
     target: 3,
   }

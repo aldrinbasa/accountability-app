@@ -11,6 +11,7 @@ import { NotInGroupState } from '@/features/group/not-in-group-state'
 import { useStaleGroupLink, useSyncFocusedGroup } from '@/features/group/use-focused-group'
 import { CameraHost } from '@/app/camera-host'
 import { OutboxHost } from '@/app/outbox-host'
+import { WinnerHost } from '@/app/winner-host'
 import { AppBottomNav } from '@/app/shell/app-bottom-nav'
 import { tabOf, type TabPath } from '@/app/shell/tabs'
 import { useFinishTodayReturn } from '@/app/shell/use-tab-navigation'
@@ -56,7 +57,8 @@ function OfflineBanner() {
  * Today, Feed or Board opened with the `?g=` of a group the member left or was removed from (and
  * not the stored focus) shows "You're not in {Group} anymore." instead (no switcher), and `?g=`
  * stays until "Go to Today". The camera overlay (`CameraHost`) opens over all of it, and the check-in
- * outbox (`OutboxHost`) runs while the shell is mounted. The offline Banner sits in the top bar.
+ * outbox (`OutboxHost`) runs while the shell is mounted. The offline Banner sits in the top bar. The
+ * Winner card (`WinnerHost`, Story 4.5) opens by itself once per locked week with winners.
  */
 export function AppShell() {
   const { pathname } = useLocation()
@@ -104,6 +106,7 @@ export function AppShell() {
             )}
           </main>
           <AppBottomNav />
+          <WinnerHost paused={stale !== null} />
           <ScrollRestoration getKey={scrollKey} />
         </div>
       </CameraHost>

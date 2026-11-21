@@ -344,6 +344,62 @@ select {
   animation: count-bump 400ms ease-out both;
 }
 
+/* A streak reaching 3, 10 or 25 pops once: 500 ms (Story 4.2). */
+@keyframes streak-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.4);
+  }
+  70% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@utility animate-streak-pop {
+  animation: streak-pop 500ms ease-out both;
+}
+
+/* The rank chip swaps in with a short wobble: 300 ms (Story 4.1). */
+@keyframes chip-wobble {
+  0% {
+    transform: rotate(0);
+  }
+  30% {
+    transform: rotate(-3deg);
+  }
+  60% {
+    transform: rotate(2.5deg);
+  }
+  85% {
+    transform: rotate(-1deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@utility animate-chip-wobble {
+  animation: chip-wobble 300ms ease-out both;
+}
+
+/* The Winner card rises into place and fades in: 300 ms (Story 4.5). A tap ends it at once. */
+@keyframes winner-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(32px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@utility animate-winner-rise {
+  animation: winner-rise 300ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
 /* Reduced motion: no transitions or animations anywhere; end states appear at once. */
 @media (prefers-reduced-motion: reduce) {
   *,

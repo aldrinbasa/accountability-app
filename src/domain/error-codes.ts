@@ -27,6 +27,7 @@ export const ERROR_COPY = {
   photo_missing: "The photo didn't finish uploading. Tap Retry.",
   checkin_conflict: 'That photo was already posted.',
   invalid_caption: 'Keep the caption to 80 characters.',
+  invalid_goal: 'Pick a target from 50% to 100%, in steps of 5.',
   // Raised from Epic 5 (freezes); the outbox already treats it as final (Story 3.3).
   session_frozen: 'That session is already frozen.',
 } as const
