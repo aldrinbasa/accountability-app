@@ -23,6 +23,11 @@ export function feedCheckin(overrides: Partial<FeedCheckin> = {}): FeedCheckin {
     fullPrunedAt: null,
     countedPosition: 2,
     target: 3,
+    challengeId: null,
+    challengeStatus: null,
+    challengeClosesAt: null,
+    // 24 h after `receivedAt`: challengeable on the test day.
+    challengeUntil: '2026-11-21T00:12:30.000Z',
     ...overrides,
   }
 }

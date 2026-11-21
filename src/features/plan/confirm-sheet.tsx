@@ -11,6 +11,8 @@ export interface ConfirmSheetProps<F extends string> {
   onOpenChange: (open: boolean) => void
   title: string
   body: string
+  /** An optional `meta` line under the body (the challenge Sheet's ritual line). */
+  meta?: string | null
   /** The one full-width coral button, and its busy label. */
   actionLabel: string
   busyLabel: string
@@ -20,6 +22,10 @@ export interface ConfirmSheetProps<F extends string> {
   onError: (code: BackendErrorCode) => SaveFailure<F>
   /** The copy of the caller's own failures (offline and failed use the Plan sheet's copy). */
   failureText: (failure: F) => string
+  /** Offline copy in place of the Plan sheet's ("You're offline. Challenges need a signal."). */
+  offlineText?: string
+  /** Plain-failure copy in place of the Plan sheet's ("Couldn't send the challenge. Tap Retry."). */
+  failedText?: string
   /** Where focus goes on close. */
   returnFocusTo?: () => HTMLElement | null
   /** The request went through (called before the sheet closes, so focus can go elsewhere). */
@@ -27,9 +33,9 @@ export interface ConfirmSheetProps<F extends string> {
 }
 
 /**
- * A confirm Sheet (Story 2.4 delete task, Story 2.6 end commitment): a title, one body line and one
- * full-width coral button; the close is cancel. Offline and failure show the Plan sheet's Inline
- * retry copy with Retry; the caller's own failures show its copy with no Retry. A request that
+ * A confirm Sheet (Story 2.4 delete task, Story 2.6 end commitment, Story 5.1 challenge): a title,
+ * one body line (plus an optional meta line) and one full-width coral button; the close is cancel.
+ * Offline and failure show the Plan sheet's Inline retry copy (or the caller's) with Retry; the caller's own failures show its copy with no Retry. A request that
  * settles after the sheet closed is ignored (the done callback still runs), and every open starts
  * without the last open's failure.
  */
@@ -38,11 +44,14 @@ export function ConfirmSheet<F extends string>({
   onOpenChange,
   title,
   body,
+  meta,
   actionLabel,
   busyLabel,
   run,
   onError,
   failureText,
+  offlineText = PLAN_COPY.offline,
+  failedText = PLAN_COPY.failed,
   returnFocusTo,
   onDone,
 }: ConfirmSheetProps<F>) {
@@ -71,8 +80,8 @@ export function ConfirmSheet<F extends string>({
   }
 
   function text(value: SaveFailure<F>): string {
-    if (value === 'offline') return PLAN_COPY.offline
-    if (value === 'failed') return PLAN_COPY.failed
+    if (value === 'offline') return offlineText
+    if (value === 'failed') return failedText
     return failureText(value as F)
   }
 
@@ -80,6 +89,7 @@ export function ConfirmSheet<F extends string>({
     <Sheet open={open} onOpenChange={change} title={title} returnFocusTo={returnFocusTo}>
       <div className="flex flex-col gap-4">
         <p className="type-body">{body}</p>
+        {meta ? <p className="-mt-2 type-meta text-muted">{meta}</p> : null}
         {failure ? (
           <InlineRetry
             onRetry={canRetry(failure) ? () => void flow.send() : undefined}

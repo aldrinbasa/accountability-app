@@ -57,6 +57,21 @@ export interface FeedCheckin {
   countedPosition: number | null
   /** The commitment's sessions that week; null for an extra. */
   target: number | null
+  /** The check-in's challenge (Story 5.1), null when nobody challenged it. */
+  challengeId: string | null
+  /** `open`, `real` or `cancelled` (a Fake-ruled check-in never reaches the wall); null without one. */
+  challengeStatus: ChallengeStatus | null
+  /** When an open challenge closes (server time); null without one. */
+  challengeClosesAt: string | null
+  /** Challengeable until `least(received_at + 24 h, lock_at)` (server time). */
+  challengeUntil: string | null
+}
+
+/** A challenge's state as the server stores it. */
+export type ChallengeStatus = 'open' | 'fake' | 'real' | 'cancelled'
+
+export function isChallengeStatus(value: unknown): value is ChallengeStatus {
+  return value === 'open' || value === 'fake' || value === 'real' || value === 'cancelled'
 }
 
 /** A membership sticky. */
@@ -130,7 +145,33 @@ export interface FeedWinner {
   winners: { userId: string; name: string }[]
 }
 
-export type FeedItem = FeedCheckin | FeedEvent | FeedMiss | FeedWinner | FeedGoal
+/** How a challenge was decided: at once in a 2-member group, by the lone challenger, or by votes. */
+export type RulingVariant = 'two_person' | 'lone' | 'normal'
+
+/**
+ * A ruling sticky (Story 5.1): a closed challenge. The challenger and the check-in's owner by id and
+ * name, the check-in's title (task name, else activity), the outcome and the counts.
+ */
+export interface FeedRuling {
+  type: 'ruling'
+  id: string
+  groupId: string
+  sortAt: string
+  challengeId: string
+  checkinId: string
+  challengerId: string | null
+  challengerName: string
+  ownerId: string | null
+  ownerName: string
+  /** The task's name, else the activity's. */
+  title: string
+  outcome: 'fake' | 'real'
+  fakeCount: number
+  realCount: number
+  variant: RulingVariant
+}
+
+export type FeedItem = FeedCheckin | FeedEvent | FeedMiss | FeedWinner | FeedGoal | FeedRuling
 
 /** One keyset read: older than `before`, or newer than `after` (never both), at most `limit` rows. */
 export interface FeedRowsRequest {

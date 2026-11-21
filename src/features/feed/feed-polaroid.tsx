@@ -8,13 +8,20 @@ import {
   type FeedCheckin,
   type FeedViewer,
 } from '@/domain/feed'
+import { challengeChip } from '@/domain/challenge'
 import { LateLabel } from '@/ui/late-label'
 import { Polaroid } from '@/ui/polaroid'
+import { VoteChip } from '@/ui/vote-chip'
+import { ChallengeActions } from '@/features/challenge/challenge-actions'
 import { CheckinPhoto } from '@/features/feed/checkin-photo'
 
-/** "Marco · Gym · 3/3 · 07:12" with the name in bold, plus the Late label of a late check-in. */
+/**
+ * "Marco · Gym · 3/3 · 07:12" with the name in bold, plus the Late label of a late check-in and the
+ * Vote chip of an open challenge ("CHALLENGED · 18 H LEFT").
+ */
 export function CheckinMeta({ item, viewer }: { item: FeedCheckin; viewer: FeedViewer }) {
   const late = checkinLateLabel(item)
+  const chip = challengeChip(item, viewer.now)
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
       <span>
@@ -22,6 +29,7 @@ export function CheckinMeta({ item, viewer }: { item: FeedCheckin; viewer: FeedV
         {` · ${checkinMetaRest(item, viewer)}`}
       </span>
       {late ? <LateLabel text={late.text} spoken={late.spoken} /> : null}
+      {chip ? <VoteChip text={chip.text} spoken={chip.spoken} /> : null}
     </span>
   )
 }
@@ -29,6 +37,8 @@ export function CheckinMeta({ item, viewer }: { item: FeedCheckin; viewer: FeedV
 export interface FeedPolaroidProps {
   item: FeedCheckin
   viewer: FeedViewer
+  /** Current members of the group (Challenge needs 2 or more). */
+  memberCount?: number
   tilt: 'left' | 'right'
   eager: boolean
   onOpen: (item: FeedCheckin, opener: HTMLButtonElement) => void
@@ -39,11 +49,26 @@ export interface FeedPolaroidProps {
 /**
  * A check-in on the wall: an `article` with an `h2` ("Marco · Gym · 07:12"), the taped Polaroid
  * inset from the column so its tilted corners never scroll sideways, the caption in `hand-lg` and
- * the meta line. Tapping the photo opens the Photo viewer.
+ * the meta line. Tapping the photo opens the Photo viewer. While the viewer may challenge it, the
+ * Overflow sits right of the caption (Story 5.1).
  */
-export function FeedPolaroid({ item, viewer, tilt, eager, onOpen, articleRef }: FeedPolaroidProps) {
+export function FeedPolaroid({
+  item,
+  viewer,
+  memberCount = 0,
+  tilt,
+  eager,
+  onOpen,
+  articleRef,
+}: FeedPolaroidProps) {
   return (
-    <article ref={articleRef} tabIndex={-1} className="outline-none" data-feed-item={item.id}>
+    <article
+      ref={articleRef}
+      tabIndex={-1}
+      className="outline-none"
+      data-feed-item={item.id}
+      data-challenge-host=""
+    >
       <h2 className="sr-only">{checkinHeading(item, viewer)}</h2>
       <Polaroid
         tilt={tilt}
@@ -58,6 +83,7 @@ export function FeedPolaroid({ item, viewer, tilt, eager, onOpen, articleRef }: 
           />
         }
         caption={item.caption}
+        captionAction={<ChallengeActions item={item} viewer={viewer} memberCount={memberCount} />}
         meta={<CheckinMeta item={item} viewer={viewer} />}
       />
     </article>

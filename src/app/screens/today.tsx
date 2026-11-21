@@ -71,6 +71,7 @@ function GroupToday({ group }: { group: MyGroup }) {
         groupId={group.id}
         seeAllHref={`/feed${search}`}
         onSeeAll={() => goToTab('/feed')}
+        memberCount={group.memberCount}
       />
     </Screen>
   )

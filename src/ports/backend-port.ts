@@ -2,6 +2,7 @@ import type { GroupActivity, PresetActivity } from '@/domain/activities'
 import type { AuthUser } from '@/domain/auth'
 import type { Board, GroupWeek } from '@/domain/board'
 import type { MemberProfile, Title } from '@/domain/badges'
+import type { CreateChallengeResult } from '@/domain/challenge'
 import type { WinnerWeek } from '@/domain/winner'
 import type {
   CheckinPhotoSize,
@@ -271,4 +272,11 @@ export interface BackendPort {
    * cache can answer it (used offline).
    */
   checkinPhotoCacheUrl(path: string): string
+
+  /**
+   * `create_challenge` (Story 5.1): challenges another current member's check-in. In a group of two
+   * the server rules it Fake at once (`status` `fake`). Rejects with `not_member`, `group_waiting`,
+   * `own_checkin`, `already_challenged`, `challenge_expired` or `week_locked`.
+   */
+  createChallenge(checkinId: string): Promise<CreateChallengeResult>
 }

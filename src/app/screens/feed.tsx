@@ -111,6 +111,7 @@ function FeedContent({ group, query, anchorId = null, anchorRef }: FeedContentPr
         <FeedWall
           items={items}
           viewer={viewer}
+          memberCount={group.memberCount}
           hasMore={query.hasNextPage}
           loadingMore={query.isFetchingNextPage}
           // Any fetch in flight (a whole refetch too) holds auto-load, so a next page never

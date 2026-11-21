@@ -14,6 +14,7 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
+import type { CreateChallengeResult } from '@/domain/challenge'
 import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest } from '@/domain/feed'
 import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
@@ -766,6 +767,10 @@ export function createFakeBackend(
           fullPrunedAt: null,
           countedPosition: result.counted ? result.doneCount : null,
           target: result.counted ? result.target : null,
+          challengeId: null,
+          challengeStatus: null,
+          challengeClosesAt: null,
+          challengeUntil: new Date(Date.parse(at) + 86_400_000).toISOString(),
         },
         ...(friendsToday[input.groupId] ?? []).filter((item) => item.id !== input.id),
       ]
@@ -880,6 +885,57 @@ export function createFakeBackend(
         paths.map((path) => [path, `${FAKE_PHOTO_ORIGIN}/avatars/${path}?token=t`]),
       ),
     ),
+    // The server's rules in short: a group of two rules Fake at once (the check-in leaves the feed
+    // and Friends today, a ruling sticky arrives); 3+ opens a 24 h challenge on the check-in.
+    createChallenge: vi.fn(async (checkinId: string): Promise<CreateChallengeResult> => {
+      const groupId = Object.keys(feed).find((id) =>
+        (feed[id] ?? []).some((item) => item.type === 'checkin' && item.id === checkinId),
+      )
+      const group = groups.find((g) => g.id === groupId)
+      const item = (feed[groupId ?? ''] ?? []).find(
+        (entry): entry is FeedCheckin => entry.type === 'checkin' && entry.id === checkinId,
+      )
+      if (!groupId || !group || !item) throw new BackendError('not_member')
+      if (group.memberCount < 2) throw new BackendError('group_waiting')
+      if (item.authorId === user?.id) throw new BackendError('own_checkin')
+      if (item.challengeId !== null) throw new BackendError('already_challenged')
+      const challengeId = `challenge-${checkinId}`
+      const closesAt = new Date(Date.now() + 86_400_000).toISOString()
+      if (group.memberCount === 2) {
+        const at = new Date().toISOString()
+        feed[groupId] = [
+          ...(feed[groupId] ?? []).filter((entry) => entry.id !== checkinId),
+          {
+            type: 'ruling',
+            id: `ruling-${checkinId}`,
+            groupId,
+            sortAt: at,
+            challengeId,
+            checkinId,
+            challengerId: user?.id ?? null,
+            challengerName: profile?.displayName ?? '',
+            ownerId: item.authorId,
+            ownerName: item.authorName,
+            title: item.taskName ?? item.activityName,
+            outcome: 'fake',
+            fakeCount: 1,
+            realCount: 0,
+            variant: 'two_person',
+          },
+        ]
+        friendsToday[groupId] = (friendsToday[groupId] ?? []).filter((e) => e.id !== checkinId)
+        return { challengeId, status: 'fake', closesAt }
+      }
+      const challenged = (entry: FeedCheckin): FeedCheckin =>
+        entry.id === checkinId
+          ? { ...entry, challengeId, challengeStatus: 'open', challengeClosesAt: closesAt }
+          : entry
+      feed[groupId] = (feed[groupId] ?? []).map((entry) =>
+        entry.type === 'checkin' ? challenged(entry) : entry,
+      )
+      friendsToday[groupId] = (friendsToday[groupId] ?? []).map(challenged)
+      return { challengeId, status: 'open', closesAt }
+    }),
   }
 }
 

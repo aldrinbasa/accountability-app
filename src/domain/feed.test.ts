@@ -42,6 +42,10 @@ function checkin(overrides: Partial<FeedCheckin> = {}): FeedCheckin {
     fullPrunedAt: null,
     countedPosition: 3,
     target: 3,
+    challengeId: null,
+    challengeStatus: null,
+    challengeClosesAt: null,
+    challengeUntil: null,
     ...overrides,
   }
 }

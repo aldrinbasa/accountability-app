@@ -57,6 +57,13 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+/** The minis' photo buttons (not their challenge Overflows). */
+function photoButtons(section: HTMLElement): HTMLElement[] {
+  return within(section)
+    .getAllByRole('button')
+    .filter((button) => button.getAttribute('data-component') !== 'overflow-button')
+}
+
 function renderToday(options: Parameters<typeof createFakeBackend>[1] = {}) {
   const backend = createFakeBackend(undefined, options)
   renderRoutes(['/today'], backend)
@@ -72,7 +79,7 @@ describe('Friends today', () => {
       name: 'Friends today · 3 posted',
     })
     const section = heading.closest('section') as HTMLElement
-    const minis = within(section).getAllByRole('button')
+    const minis = photoButtons(section)
     expect(minis.map((mini) => mini.getAttribute('aria-label'))).toEqual([
       "Marco's Gym check-in, 09:59, caption: squat rack",
       'Your Paint check-in, 08:59',
@@ -83,9 +90,9 @@ describe('Friends today', () => {
       'You · Paint',
       'Lena · Essay draft',
     ])
-    expect(minis[0]).toHaveClass('-rotate-3', 'w-[104px]')
-    expect(minis[1]).toHaveClass('rotate-[2.5deg]')
-    expect(minis[2]).toHaveClass('-rotate-[1.5deg]')
+    expect(minis[0]?.parentElement).toHaveClass('-rotate-3', 'w-[104px]')
+    expect(minis[1]?.parentElement).toHaveClass('rotate-[2.5deg]')
+    expect(minis[2]?.parentElement).toHaveClass('-rotate-[1.5deg]')
     expect(within(minis[1] as HTMLElement).getByText('You · Paint')).toHaveClass('type-hand-sm')
 
     // The 360 rendition only.
@@ -167,14 +174,14 @@ describe('Friends today', () => {
       name: 'Friends today · 2 posted',
     })
     const section = heading.closest('section') as HTMLElement
-    const [local, marco] = within(section).getAllByRole('button')
+    const [local, marco] = photoButtons(section)
     expect(local).toHaveAttribute('data-component', 'post-moment')
     expect(local).toHaveAccessibleName('Your Gym check-in, caption: first one')
     expect(local).toHaveAttribute('aria-disabled', 'true')
     expect(local).toHaveTextContent('You · Gym')
     expect(local?.querySelector('img')).toHaveAttribute('src', 'blob:local-photo')
-    expect(local).toHaveClass('-rotate-3')
-    expect(marco).toHaveClass('rotate-[2.5deg]')
+    expect(local?.parentElement).toHaveClass('-rotate-3')
+    expect(marco?.parentElement).toHaveClass('rotate-[2.5deg]')
     // Not tappable: no viewer opens.
     await userEvent.setup().click(local as HTMLElement)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -238,7 +245,7 @@ describe('Friends today', () => {
     const marco = await screen.findByRole('button', { name: /^Marco's Gym check-in/ })
     const section = marco.closest('section') as HTMLElement
     await waitFor(() => expect(section.querySelector('[data-mini="local"]')).toBeNull())
-    expect(within(section).getAllByRole('button')).toHaveLength(1)
+    expect(photoButtons(section)).toHaveLength(1)
     expect(
       within(section).getByRole('heading', { level: 2, name: 'Friends today · 1 posted' }),
     ).toBeInTheDocument()

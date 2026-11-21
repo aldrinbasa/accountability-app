@@ -6,6 +6,8 @@ export interface PolaroidProps {
   photo?: ReactNode
   /** The caption in `hand-lg`; the row keeps its height when empty. */
   caption?: string | null
+  /** An Overflow button in the caption row, right of the caption, never on the photo. */
+  captionAction?: ReactNode
   /** Optional meta line under the caption, `meta` `obj-muted`. */
   meta?: ReactNode
   /** DESIGN.md alternating tilt: left -2.2deg, right 2deg. */
@@ -16,10 +18,17 @@ export interface PolaroidProps {
 /**
  * Polaroid (DESIGN.md `polaroid`): a white `pola` frame with a 2px `obj-ink` border, 10px padding
  * (none at the bottom), a square-cornered 4:3 photo, a tape strip on top, the caption below in
- * `hand-lg` `obj-ink` and an optional `meta` line. A paper object: it keeps its light look in dark
+ * `hand-lg` `obj-ink` (with an optional Overflow right of it) and an optional `meta` line. A paper object: it keeps its light look in dark
  * mode and everything on it uses `obj-*` tokens.
  */
-export function Polaroid({ photo, caption, meta, tilt = 'left', className }: PolaroidProps) {
+export function Polaroid({
+  photo,
+  caption,
+  captionAction,
+  meta,
+  tilt = 'left',
+  className,
+}: PolaroidProps) {
   return (
     <figure
       className={cn(
@@ -40,8 +49,20 @@ export function Polaroid({ photo, caption, meta, tilt = 'left', className }: Pol
       <div className="relative aspect-[4/3] w-full overflow-hidden rounded-photo bg-linear-to-br from-ph1 to-ph2">
         {photo}
       </div>
-      <figcaption className="min-h-[calc(var(--text-hand-lg)*var(--text-hand-lg--line-height)+var(--spacing-4))] py-2 break-words type-hand-lg">
-        {caption}
+      <figcaption
+        className={cn(
+          'min-h-[calc(var(--text-hand-lg)*var(--text-hand-lg--line-height)+var(--spacing-4))] break-words type-hand-lg',
+          captionAction ? 'flex items-start gap-1' : 'py-2',
+        )}
+      >
+        {captionAction ? (
+          <>
+            <span className="min-w-0 flex-1 py-2">{caption}</span>
+            <span className="-mr-2 shrink-0">{captionAction}</span>
+          </>
+        ) : (
+          caption
+        )}
       </figcaption>
       {meta ? <p className="-mt-1 pb-2 type-meta text-obj-muted">{meta}</p> : null}
     </figure>

@@ -16,6 +16,7 @@ import { NextPagePlaceholder } from '@/features/feed/feed-skeleton'
 import { PhotoViewer } from '@/features/feed/photo-viewer'
 import { WinnerSticky } from '@/features/feed/winner-sticky'
 import { GoalSticky } from '@/features/feed/goal-sticky'
+import { RulingSticky } from '@/features/feed/ruling-sticky'
 
 /** The next page starts loading this far before the end of the wall comes into view. */
 const LOAD_AHEAD = '600px'
@@ -45,6 +46,8 @@ function useNearEnd(enabled: boolean, onNearEnd: () => void) {
 export interface FeedWallProps {
   items: readonly FeedItem[]
   viewer: FeedViewer
+  /** Current members of the group: 2 or more offers Challenge on others' check-ins (Story 5.1). */
+  memberCount?: number
   /** Older pages remain. */
   hasMore: boolean
   /** An older page is loading (one polaroid placeholder at the end). */
@@ -60,14 +63,15 @@ export interface FeedWallProps {
 }
 
 /**
- * The scrapbook wall, newest first: one Polaroid per row (alternating -2.2 / 2 deg) with event and
- * miss stickies (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
+ * The scrapbook wall, newest first: one Polaroid per row (alternating -2.2 / 2 deg) with event,
+ * miss, winner, goal and ruling stickies (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
  * items skip layout and paint while off screen (`content-visibility: auto`). Nearing the end loads the
  * next page. Tapping a photo opens the Photo viewer; closing it returns focus to that photo.
  */
 export function FeedWall({
   items,
   viewer,
+  memberCount = 0,
   hasMore,
   loadingMore,
   fetching = false,
@@ -100,6 +104,7 @@ export function FeedWall({
                 <FeedPolaroid
                   item={item}
                   viewer={viewer}
+                  memberCount={memberCount}
                   tilt={tilt}
                   eager={eager}
                   articleRef={item.id === anchorId ? anchorRef : undefined}
@@ -121,6 +126,8 @@ export function FeedWall({
                 <WinnerSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               ) : item.type === 'goal' ? (
                 <GoalSticky item={item} tilt={tilt} />
+              ) : item.type === 'ruling' ? (
+                <RulingSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               ) : (
                 <EventSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               )}

@@ -1,7 +1,6 @@
 import {
   isAuthApiError,
   isAuthRetryableFetchError,
-  type PostgrestError,
   type Session,
   type User,
 } from '@supabase/supabase-js'
@@ -28,7 +27,7 @@ import {
   type PostCheckinInput,
   type PostCheckinResult,
 } from '@/domain/checkin'
-import { BackendError, isRpcErrorCode } from '@/domain/error-codes'
+import { BackendError } from '@/domain/error-codes'
 import {
   isGoalPeriod,
   type FeedGoal,
@@ -38,11 +37,13 @@ import {
   type GroupGoal,
 } from '@/domain/goal'
 import {
+  isChallengeStatus,
   isFeedEventKind,
   type FeedCheckin,
   type FeedCursor,
   type FeedItem,
   type FeedMiss,
+  type FeedRuling,
   type FeedWinner,
   type FeedRows,
   type FeedRowsRequest,
@@ -72,6 +73,8 @@ import type { WinnerPodiumMember, WinnerWeek } from '@/domain/winner'
 import type { BackendPort } from '@/ports/backend-port'
 import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
+import { challengeAdapter } from '@/adapters/supabase/challenges'
+import { toBackendError } from '@/adapters/supabase/rpc-error'
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key]
@@ -764,7 +767,7 @@ type FeedItemRow = Tables<'feed_items'>
 
 /** The view's columns, in its order. */
 const FEED_COLUMNS =
-  'group_id, item_kind, item_id, sort_at, actor_id, actor_name, actor_avatar_path, subject_id, subject_name, commitment_id, commitment_kind, activity_name, preset_key, task_name, captured_at, received_at, is_late, is_extra, caption, full_pruned_at, counted_position, target, payload, miss_count'
+  'group_id, item_kind, item_id, sort_at, actor_id, actor_name, actor_avatar_path, subject_id, subject_name, commitment_id, commitment_kind, activity_name, preset_key, task_name, captured_at, received_at, is_late, is_extra, caption, full_pruned_at, counted_position, target, payload, miss_count, challenge_id, challenge_status, challenge_closes_at, challenge_until'
 
 /** A string field of an event's `payload`, else null. */
 function payloadString(payload: FeedItemRow['payload'], key: string): string | null {
@@ -839,6 +842,48 @@ function toFeedMiss(
 }
 
 /**
+ * A ruling row (Story 5.1): challenger (actor) and owner (subject) with their live names (else the
+ * payload's), the live title (task name, else activity), and the payload's outcome, counts and
+ * variant; null when the payload is malformed.
+ */
+function toFeedRuling(
+  row: FeedItemRow,
+  id: string,
+  groupId: string,
+  sortAt: string,
+): FeedRuling | null {
+  const payload = row.payload
+  if (!isRecord(payload)) return null
+  const challengeId = payloadString(payload, 'challenge_id')
+  const checkinId = payloadString(payload, 'checkin_id')
+  const outcome = payloadString(payload, 'outcome')
+  const variant = payloadString(payload, 'variant')
+  const fakeCount = payload.fake_count
+  const realCount = payload.real_count
+  if (challengeId === null || checkinId === null) return null
+  if (outcome !== 'fake' && outcome !== 'real') return null
+  if (variant !== 'two_person' && variant !== 'lone' && variant !== 'normal') return null
+  if (typeof fakeCount !== 'number' || typeof realCount !== 'number') return null
+  return {
+    type: 'ruling',
+    id,
+    groupId,
+    sortAt,
+    challengeId,
+    checkinId,
+    challengerId: row.actor_id,
+    challengerName: row.actor_name ?? '',
+    ownerId: row.subject_id,
+    ownerName: row.subject_name ?? '',
+    title: row.task_name ?? row.activity_name ?? payloadString(payload, 'activity_name') ?? '',
+    outcome,
+    fakeCount,
+    realCount,
+    variant,
+  }
+}
+
+/**
  * One `feed_items` row as a domain item, or null for a kind the app does not render or a row
  * missing what every item needs.
  */
@@ -868,11 +913,16 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
       fullPrunedAt: row.full_pruned_at,
       countedPosition: row.counted_position,
       target: row.target,
+      challengeId: row.challenge_id,
+      challengeStatus: isChallengeStatus(row.challenge_status) ? row.challenge_status : null,
+      challengeClosesAt: row.challenge_closes_at,
+      challengeUntil: row.challenge_until,
     }
   }
   if (kind === 'miss') return toFeedMiss(row, id, groupId, sortAt)
   if (kind === 'weekly_winner') return toFeedWinner(row, id, groupId, sortAt)
   if (kind === 'goal_result') return toFeedGoal(row, id, groupId, sortAt)
+  if (kind === 'ruling') return toFeedRuling(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -972,19 +1022,6 @@ export function toStorageBackendError(error: unknown): BackendError {
   return new BackendError('unknown', message)
 }
 
-/**
- * Maps a PostgREST response error onto a `BackendError`. A request that never got a response comes
- * back with HTTP status 0 (supabase-js turns the fetch failure into an error); an RPC exception whose
- * message is a known AD-14 code becomes that code, keeping the exception's DETAIL (`details`).
- */
-function toBackendError(error: PostgrestError, status: number): BackendError {
-  if (status === 0) return new BackendError('network', error.message)
-  if (isRpcErrorCode(error.message)) {
-    return new BackendError(error.message, error.message, error.details || null)
-  }
-  return new BackendError('unknown', error.message)
-}
-
 /** The session's user id for a data read, or a `BackendError` (never a silent empty result). */
 async function sessionUserId(read: string): Promise<string> {
   const { data, error } = await supabase.auth.getSession()
@@ -1078,6 +1115,8 @@ async function signPaths(
  * (2.4), Today (2.5), My plan (2.6), check-ins (3.2), avatars (3.6).
  */
 export const supabaseBackendAdapter: BackendPort = {
+  ...challengeAdapter,
+
   async getSession() {
     const { data, error } = await supabase.auth.getSession()
     if (error) throw toAuthError(error)

@@ -1610,6 +1610,10 @@ function feedRow(overrides: Partial<Tables<'feed_items'>> = {}): Tables<'feed_it
     target: 3,
     payload: null,
     miss_count: null,
+    challenge_id: null,
+    challenge_status: null,
+    challenge_closes_at: null,
+    challenge_until: '2026-11-21T07:12:30.123456+00:00',
     ...overrides,
   }
 }
@@ -2026,6 +2030,86 @@ describe('feed mapping', () => {
       }),
     ).toBeNull()
     expect(toFeedItem({ ...winner, payload: null })).toBeNull()
+  })
+
+  it("maps a check-in's challenge columns (Story 5.1); an unknown status reads as none", () => {
+    expect(toFeedItem(feedRow())).toMatchObject({
+      challengeId: null,
+      challengeStatus: null,
+      challengeClosesAt: null,
+      challengeUntil: '2026-11-21T07:12:30.123456+00:00',
+    })
+    const open = feedRow({
+      challenge_id: 'ch-1',
+      challenge_status: 'open',
+      challenge_closes_at: '2026-11-21T07:00:00+00:00',
+    })
+    expect(toFeedItem(open)).toMatchObject({
+      challengeId: 'ch-1',
+      challengeStatus: 'open',
+      challengeClosesAt: '2026-11-21T07:00:00+00:00',
+    })
+    expect(toFeedItem({ ...open, challenge_status: 'weird' })).toMatchObject({
+      challengeStatus: null,
+    })
+  })
+
+  it('maps a ruling from the live names and title and its payload; a malformed one is dropped', () => {
+    const ruling = feedRow({
+      item_kind: 'ruling',
+      item_id: 'r-1',
+      sort_at: '2026-11-20T09:00:00+00:00',
+      actor_id: 'u-3',
+      actor_name: 'Lena',
+      subject_id: 'u-4',
+      subject_name: 'Dev',
+      commitment_id: 'cm-2',
+      activity_name: 'Study',
+      task_name: null,
+      captured_at: null,
+      received_at: null,
+      is_late: null,
+      is_extra: null,
+      caption: null,
+      counted_position: null,
+      target: null,
+      challenge_until: null,
+      payload: {
+        challenge_id: 'ch-1',
+        checkin_id: 'c-9',
+        outcome: 'fake',
+        fake_count: 1,
+        real_count: 0,
+        variant: 'two_person',
+        actor_name: 'Lena',
+        subject_name: 'Dev',
+      },
+    })
+    expect(toFeedItem(ruling)).toEqual({
+      type: 'ruling',
+      id: 'r-1',
+      groupId: 'g-1',
+      sortAt: '2026-11-20T09:00:00+00:00',
+      challengeId: 'ch-1',
+      checkinId: 'c-9',
+      challengerId: 'u-3',
+      challengerName: 'Lena',
+      ownerId: 'u-4',
+      ownerName: 'Dev',
+      title: 'Study',
+      outcome: 'fake',
+      fakeCount: 1,
+      realCount: 0,
+      variant: 'two_person',
+    })
+    expect(toFeedItem({ ...ruling, task_name: 'Tax forms' })).toMatchObject({ title: 'Tax forms' })
+    expect(
+      toFeedItem({ ...ruling, payload: { ...(ruling.payload as object), outcome: 'maybe' } }),
+    ).toBeNull()
+    expect(
+      toFeedItem({ ...ruling, payload: { ...(ruling.payload as object), variant: 'other' } }),
+    ).toBeNull()
+    expect(toFeedItem({ ...ruling, payload: null })).toBeNull()
   })
 
   it('quotes the timestamp in the keyset filter', () => {
