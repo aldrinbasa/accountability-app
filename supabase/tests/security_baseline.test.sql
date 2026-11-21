@@ -7,7 +7,8 @@
 -- commitment_is_active and plan_preview); Story 3.6 adds avatar_path_owner (the avatars Storage
 -- policies); Story 5.1 adds checkin_removed, checkin_lock_at and checkin_challenge_until (called by session_status,
 -- counted_checkins and the feed_items view); Story 5.2 adds challenge_others_at_open and challenge_voter_eligible
--- (the feed_items challenge rows). Nothing else in private is executable by a client role.
+-- (the feed_items challenge rows); Story 5.3 adds ruling_can_overturn (the feed_items ruling rows). Nothing else
+-- in private is executable by a client role.
 begin;
 select plan(20);
 
@@ -22,7 +23,7 @@ select is(
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
   array['avatar_path_owner', 'can_read_checkin_photo', 'can_upload_checkin_photo',
         'challenge_others_at_open', 'challenge_voter_eligible', 'checkin_challenge_until', 'checkin_lock_at', 'checkin_removed', 'commitment_is_active', 'counted_checkins', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
-        'member_time_zone', 'membership_is_current', 'prorated_target', 'session_status',
+        'member_time_zone', 'membership_is_current', 'prorated_target', 'ruling_can_overturn', 'session_status',
         'shares_group', 'week_start_of']::text[],
   'authenticated can execute only the RLS, view, Storage policy and plan_preview helpers in private'
 );
