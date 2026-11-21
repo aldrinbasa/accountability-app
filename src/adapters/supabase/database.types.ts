@@ -671,7 +671,7 @@ isOneToOne: false
       } },
 "get_group_goal":
 { Args: { "p_group_id": string }; Returns: {
-              "contributions": Json,"last_result": Json,"live_average": number,"member_count": number,"month_average": number,"month_weeks": Json,"period": string,"target_pct": number,"week_start": string
+              "contributions": Json,"last_result": Json,"live_average": number,"member_count": number,"month_average": number,"month_value_now": number,"month_weeks": Json,"period": string,"target_pct": number,"week_start": string
             }[]
                            },
 "get_group_week":
