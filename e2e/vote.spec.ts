@@ -70,7 +70,7 @@ test('a member votes on a challenge, undoes it and votes again', async ({ page, 
     'aria-pressed',
     'true',
   )
-  await expect(cy.getByText('Voted Real')).toBeVisible()
+  await expect(cy.getByText('Voted Real', { exact: true })).toBeVisible()
   await cy.getByRole('button', { name: 'Undo' }).click()
   await expect(card.getByRole('button', { name: 'Vote Real' })).toHaveAttribute(
     'aria-pressed',
@@ -114,7 +114,8 @@ test('a member votes on a challenge, undoes it and votes again', async ({ page, 
 
   await cy.reload()
   await expect(
-    card.getByText("Ruled Fake · Ada's Grocery run removed. 2 Fake, 0 Real."),
+    // .first(): the card's polite status may hold the same line (a ruling seen arriving).
+    card.getByText("Ruled Fake · Ada's Grocery run removed. 2 Fake, 0 Real.").first(),
   ).toBeVisible({
     timeout: 15_000,
   })
