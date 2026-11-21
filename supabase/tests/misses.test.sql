@@ -57,10 +57,9 @@ select ok(
 );
 select is(
   (select a.attname::text from pg_catalog.pg_attribute a
-   where a.attrelid = 'public.feed_items'::regclass and a.attnum > 0 and not a.attisdropped
-   order by a.attnum desc limit 1),
+   where a.attrelid = 'public.feed_items'::regclass and a.attnum = 24 and not a.attisdropped),
   'miss_count',
-  'feed_items gains miss_count as its last column'
+  'feed_items gains miss_count right after the 3.4 columns (5.1 appends after it)'
 );
 select ok(
   exists (select 1 from pg_catalog.pg_indexes i

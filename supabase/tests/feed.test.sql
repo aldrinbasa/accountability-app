@@ -39,8 +39,9 @@ select is(
   array['group_id', 'item_kind', 'item_id', 'sort_at', 'actor_id', 'actor_name', 'actor_avatar_path',
         'subject_id', 'subject_name', 'commitment_id', 'commitment_kind', 'activity_name',
         'preset_key', 'task_name', 'captured_at', 'received_at', 'is_late', 'is_extra', 'caption',
-        'full_pruned_at', 'counted_position', 'target', 'payload', 'miss_count']::text[],
-  'feed_items has the story''s columns in order'
+        'full_pruned_at', 'counted_position', 'target', 'payload', 'miss_count', 'challenge_id',
+        'challenge_status', 'challenge_closes_at', 'challenge_until']::text[],
+  'feed_items has the story''s columns in order (3.5 and 5.1 append theirs)'
 );
 select ok(
   (select bool_and(p.prosecdef and 'search_path=""' = any (p.proconfig)) from pg_catalog.pg_proc p
