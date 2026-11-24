@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import type {
   FreezeOption,
   FreezeRequest,
@@ -8,13 +8,9 @@ import type {
 } from '@/domain/freeze'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
-import { boardGroupKey, groupWeekKey } from '@/data/board'
-import { feedKey } from '@/data/feed'
-import { groupGoalKey } from '@/data/goal'
-import { memberProfileGroupKey } from '@/data/member-profile'
-import { planKey, todayKey } from '@/data/plan'
+import { todayKey } from '@/data/plan'
 import { retryOnline } from '@/data/query-client'
-import { streaksKey } from '@/data/streaks'
+import { useInvalidateVoteOutcomeViews } from '@/data/vote-outcome'
 
 /**
  * `['today', groupId, 'freeze']`: the caller's freeze options and requests. Under Today's prefix, so
@@ -85,26 +81,11 @@ export function useMyFreezes(groupId: string) {
 }
 
 /**
- * Everything a freeze request (or its solo approval) can change in a group: Today and the freeze
- * reads under it, My plan, the Feed (a removed miss), the board and its week, streaks, profiles and
- * the group goal. Server actions never queue (AD-12): this runs after the server answered.
+ * Everything a freeze request (or its solo approval, or its outcome) can change in a group: the
+ * shared vote-outcome list (`@/data/vote-outcome`), the same one a challenge ruling refreshes.
  */
 export function useInvalidateFreezeViews(groupId: string): () => void {
-  const queryClient = useQueryClient()
-  return () => {
-    for (const queryKey of [
-      todayKey(groupId),
-      planKey(groupId),
-      feedKey(groupId),
-      boardGroupKey(groupId),
-      groupWeekKey(groupId),
-      streaksKey(groupId),
-      memberProfileGroupKey(groupId),
-      groupGoalKey(groupId),
-    ]) {
-      void queryClient.invalidateQueries({ queryKey })
-    }
-  }
+  return useInvalidateVoteOutcomeViews(groupId)
 }
 
 /**

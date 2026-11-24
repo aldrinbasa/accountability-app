@@ -1,15 +1,7 @@
 import { execFileSync } from 'node:child_process'
-import type { Page } from '@playwright/test'
 import { expect, test } from './support/fixtures'
 import { createFirstGroup, readInviteCode, signUp, tab } from './support/members'
-import { addTaskToday } from './support/plan'
-
-/** Today's row of a habit or task, found by its title. */
-function dueRow(page: Page, title: string) {
-  return page.locator('[data-component="due-row"]', {
-    has: page.getByRole('heading', { level: 3, name: title, exact: true }),
-  })
-}
+import { addTaskToday, dueRow } from './support/plan'
 
 /**
  * Story 5.5 against the local stack, in a group of three: Ben asks to freeze his task due today.

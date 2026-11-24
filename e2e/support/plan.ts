@@ -1,4 +1,11 @@
-import { expect, type Page } from '@playwright/test'
+import { expect, type Locator, type Page } from '@playwright/test'
+
+/** Today's row of a habit or task, found by its title. */
+export function dueRow(page: Page, title: string): Locator {
+  return page.locator('[data-component="due-row"]', {
+    has: page.getByRole('heading', { level: 3, name: title, exact: true }),
+  })
+}
 
 /** A task due today, added from Today's "+ Add". */
 export async function addTaskToday(page: Page, name: string): Promise<void> {

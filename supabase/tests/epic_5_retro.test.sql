@@ -13,7 +13,7 @@
 -- test_overrides so tests.freeze_time moves their clock.
 begin;
 set local timezone = 'UTC';
-select plan(22);
+select plan(23);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -240,6 +240,15 @@ select is(
    where e.kind = 'freeze_result' and e.payload ->> 'freeze_request_id' = current_setting('test.r1')),
   1, 'the freeze_result event itself stays in the log'
 );
+
+select tests.authenticate_as('bob');
+select throws_ok(
+  format('select * from public.request_freeze(%L, ''again'', %L, null)',
+         current_setting('test.gym'), pg_temp.sid('gym', 1)),
+  'P0001', 'session_done',
+  'after the overturn the session is done: a new freeze request is refused'
+);
+reset role;
 
 -- ===== Pending freeze, then overturn (Gym Wed) =====
 select tests.freeze_time('2026-11-18 07:00:00+00');

@@ -6,7 +6,7 @@ import { feedKey } from '@/data/feed'
 import { groupGoalKey } from '@/data/goal'
 import { MY_GROUPS_KEY } from '@/data/groups'
 import { memberProfileGroupKey } from '@/data/member-profile'
-import { todayKey } from '@/data/plan'
+import { planKey, todayKey } from '@/data/plan'
 import { streaksKey } from '@/data/streaks'
 import {
   createFakeBackend,
@@ -32,6 +32,7 @@ describe('challenge data (Story 5.1)', () => {
       memberProfileGroupKey(TEST_GROUP.id),
       groupGoalKey(TEST_GROUP.id),
       MY_GROUPS_KEY,
+      planKey(TEST_GROUP.id),
     ]
     for (const key of keys) queryClient.setQueryData(key, [])
 
@@ -74,13 +75,18 @@ describe('challenge data (Story 5.1)', () => {
     const queryClient = createTestQueryClient()
     const wrapper = ({ children }: { children: ReactNode }) =>
       withBackend(backend, children, undefined, queryClient)
+    // Epic 5 retro: the shared vote-outcome list, so My plan refetches too (an overturn cancels
+    // any freeze on the check-in's session).
     const keys = [
       todayKey(TEST_GROUP.id),
+      planKey(TEST_GROUP.id),
       feedKey(TEST_GROUP.id),
       boardGroupKey(TEST_GROUP.id),
+      groupWeekKey(TEST_GROUP.id),
       streaksKey(TEST_GROUP.id),
       memberProfileGroupKey(TEST_GROUP.id),
       groupGoalKey(TEST_GROUP.id),
+      MY_GROUPS_KEY,
     ]
     for (const key of keys) queryClient.setQueryData(key, [])
 

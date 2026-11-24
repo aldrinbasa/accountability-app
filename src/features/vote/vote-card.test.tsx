@@ -4,6 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BackendError } from '@/domain/error-codes'
 import type { FeedItem, FeedViewer } from '@/domain/feed'
 import { UNDO_WINDOW_MS, type FeedVote, type VoteTally } from '@/domain/vote'
+import { boardGroupKey, groupWeekKey } from '@/data/board'
+import { groupGoalKey } from '@/data/goal'
+import { MY_GROUPS_KEY } from '@/data/groups'
+import { memberProfileGroupKey } from '@/data/member-profile'
+import { planKey, todayKey } from '@/data/plan'
+import { streaksKey } from '@/data/streaks'
 import { dismissToast } from '@/ui/toast'
 import { Toaster } from '@/ui/toaster'
 import { VoteCard } from '@/features/vote/vote-card'
@@ -307,6 +313,62 @@ describe('Vote card (Story 5.2)', () => {
     expect(
       within(card()).getByRole('button', { name: "View Dev's Study check-in photo" }),
     ).toBeInTheDocument()
+  })
+
+  it('a ruling that arrives on screen refetches Today, My plan, the board, streaks, profiles and the goal, once (Epic 5 retro)', async () => {
+    const { feed, queryClient } = await renderFeed([VOTE])
+    await findCard()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    feed[TEST_GROUP.id] = [
+      { ...VOTE, status: 'fake', fakeCount: 2, realCount: 1, variant: 'normal' } as FeedVote,
+    ]
+    await act(() => queryClient.refetchQueries())
+    await waitFor(() => expect(card()).toHaveAttribute('data-vote-state', 'closed'))
+    const keys = [
+      todayKey(TEST_GROUP.id),
+      planKey(TEST_GROUP.id),
+      boardGroupKey(TEST_GROUP.id),
+      groupWeekKey(TEST_GROUP.id),
+      streaksKey(TEST_GROUP.id),
+      memberProfileGroupKey(TEST_GROUP.id),
+      groupGoalKey(TEST_GROUP.id),
+      MY_GROUPS_KEY,
+    ]
+    for (const queryKey of keys) {
+      expect(invalidate, JSON.stringify(queryKey)).toHaveBeenCalledWith({ queryKey })
+    }
+    // The Feed refetch it triggers brings the same ruling: nothing runs again.
+    await act(() => queryClient.refetchQueries())
+    const todayCalls = invalidate.mock.calls.filter(
+      ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(todayKey(TEST_GROUP.id)),
+    )
+    expect(todayCalls).toHaveLength(1)
+  })
+
+  it('a decided challenge without a ruling line still refetches the views, and announces nothing', async () => {
+    const { feed, queryClient } = await renderFeed([VOTE])
+    await findCard()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    feed[TEST_GROUP.id] = [
+      { ...VOTE, status: 'fake', fakeCount: null, realCount: null } as FeedVote,
+    ]
+    await act(() => queryClient.refetchQueries())
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: planKey(TEST_GROUP.id) }),
+    )
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: todayKey(TEST_GROUP.id) })
+    expect(within(card()).getByRole('status')).toBeEmptyDOMElement()
+  })
+
+  it('a cancelled challenge refetches nothing and announces nothing', async () => {
+    const { feed, queryClient } = await renderFeed([VOTE])
+    await findCard()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    feed[TEST_GROUP.id] = [{ ...VOTE, status: 'cancelled', cancelReason: 'left' } as FeedVote]
+    await act(() => queryClient.refetchQueries())
+    await waitFor(() => expect(card()).toHaveAttribute('data-vote-state', 'cancelled'))
+    expect(within(card()).getByRole('status')).toBeEmptyDOMElement()
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: todayKey(TEST_GROUP.id) })
   })
 
   it('a deep link scrolls to and focuses the Vote card', async () => {

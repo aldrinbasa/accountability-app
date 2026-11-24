@@ -18,6 +18,7 @@ export const FREEZE_VOTE_COPY = {
   voteDeny: 'Vote: deny',
   requester: 'Your request · waiting on the group',
   cancelled: 'Cancelled',
+  cancelledOverturned: 'Cancelled · the check-in counts again',
   resultKicker: 'FREEZE',
   yourRequest: 'Your request',
   missRemoved: 'Miss removed.',
@@ -66,9 +67,12 @@ export interface FeedFreezeVote extends FreezeSubject {
   closesAt: string
   /** Only one other member could vote when it opened (a 2-member group). */
   twoPerson: boolean
-  /** Why it was cancelled (Story 5.6): the requester's end reason, `left` | `removed` | `account_deleted`. */
+  /**
+   * Why it was cancelled: the requester's end reason, `left` | `removed` | `account_deleted` (Story
+   * 5.6), or `overturned` when an admin overturn restored its session's check-in (Epic 5 retro).
+   */
   cancelReason: string | null
-  /** Story 5.6: the requester who left, cancelling it. */
+  /** Story 5.6: the requester who left, cancelling it (the admin on an overturn). */
   cancelledById: string | null
   /** The reader's own ballot (readable only by its voter). */
   myChoice: FreezeChoice | null
@@ -254,10 +258,14 @@ export function freezeResultWho(item: FeedFreezeResult, viewerId: string): strin
     : `${item.requesterName}'s request`
 }
 
-/** The cancelled request's line (Story 5.6): "Cancelled · Dev left the group". */
+/**
+ * The cancelled request's line (Story 5.6): "Cancelled · Dev left the group"; after an overturn
+ * "Cancelled · the check-in counts again".
+ */
 export function freezeCancelledLine(
   vote: Pick<FeedFreezeVote, 'cancelReason' | 'cancelledById' | 'requesterId' | 'requesterName'>,
 ): string {
+  if (vote.cancelReason === 'overturned') return FREEZE_VOTE_COPY.cancelledOverturned
   const name =
     vote.cancelledById !== null && vote.cancelledById === vote.requesterId
       ? vote.requesterName

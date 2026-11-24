@@ -1,14 +1,11 @@
-import { useEffect, useRef, useState, type Ref } from 'react'
+import type { Ref } from 'react'
 import { Check, SealQuestion } from '@phosphor-icons/react'
-import { backendErrorCode } from '@/domain/error-codes'
+import { isOverturned } from '@/domain/challenge'
 import type { FeedCheckin, FeedViewer } from '@/domain/feed'
 import {
-  castFailure,
   choiceButtonLabel,
   choiceLabel,
   tallyLine,
-  UNDO_WINDOW_MS,
-  undoFailure,
   VOTE_COPY,
   voteCancelledLine,
   voteCardState,
@@ -25,15 +22,14 @@ import {
   type FeedVote,
   type VoteChoice,
 } from '@/domain/vote'
-import { isOffline } from '@/data/connectivity'
-import { useCastVote, useRefetchFeed, useUndoVote, useVoteTallies } from '@/data/vote'
+import { useVoteTallies } from '@/data/vote'
 import { Button } from '@/ui/button'
 import { Icon } from '@/ui/icon'
 import { InlineRetry } from '@/ui/inline-retry'
 import { cn } from '@/ui/lib/utils'
 import { StickyNote } from '@/ui/sticky-note'
-import { showToast } from '@/ui/toast'
 import { CheckinPhoto } from '@/features/feed/checkin-photo'
+import { useVoteActions } from '@/features/vote/use-vote-actions'
 
 const CHOICES: readonly VoteChoice[] = ['fake', 'real']
 
@@ -55,92 +51,30 @@ export interface VoteCardProps {
  * (challenger, owner, joined later, past the deadline) show a status line instead of buttons; a
  * closed card shows the ruling line (the overturned line once an admin overturned a Fake ruling,
  * with its thumbnail back), a cancelled one a struck kicker. The card's own polite status
- * announces "Vote undone." and a ruling that arrives while it is on screen, once each.
+ * announces "Vote undone." and a ruling that arrives while it is on screen, once each; that ruling
+ * also refetches the views it changes (`useVoteActions`, shared with the freeze card).
  */
 export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCardProps) {
-  const cast = useCastVote(item.groupId)
-  const undo = useUndoVote(item.groupId, 'challenge')
-  const refetchFeed = useRefetchFeed(item.groupId)
   const tallies = useVoteTallies(item.groupId)
   const tally = tallies.data?.find((entry) => entry.targetId === item.id) ?? null
-  const [failedChoice, setFailedChoice] = useState<VoteChoice | null>(null)
-  const [announcement, setAnnouncement] = useState('')
-  const seenStatus = useRef(item.status)
 
   const state = voteCardState(item, viewer)
   const kicker = voteKicker(item, viewer.now)
   const ruling = voteRulingLine(item, viewer.userId)
   // Story 5.3: an overturned Fake ruling reads "Overturned by Jo · Dev's Study is back." instead.
   const closedLine = voteOverturnLine(item, viewer.userId) ?? ruling
-  const toastId = `vote-${item.id}`
-
-  // A ruling that arrives while the card is mounted is read once.
-  useEffect(() => {
-    const before = seenStatus.current
-    seenStatus.current = item.status
-    if (before !== 'open' || (item.status !== 'fake' && item.status !== 'real')) return
-    if (ruling) setAnnouncement(ruling)
-  }, [item.status, ruling])
-
-  function sendUndo(castAt: number) {
-    if (isOffline()) {
-      showToast(VOTE_COPY.undoOffline, { variant: 'error', id: toastId })
-      return
-    }
-    // mutateAsync, not mutate's per-call callbacks: the toast's Undo can outlive the card (the
-    // member left the Feed), and a failure must still say so.
-    void (async () => {
-      try {
-        await undo.mutateAsync(item.id)
-        setAnnouncement(VOTE_COPY.undone)
-      } catch (error) {
-        const failure = undoFailure(backendErrorCode(error), isOffline())
-        if (failure.kind === 'refused') refetchFeed()
-        const windowOpen = Date.now() < castAt + UNDO_WINDOW_MS
-        showToast(failure.text, {
-          variant: 'error',
-          id: toastId,
-          action:
-            failure.kind === 'failed' && windowOpen
-              ? { label: VOTE_COPY.retry, onClick: () => sendUndo(castAt) }
-              : undefined,
-        })
-      }
-    })()
-  }
-
-  function sendVote(choice: VoteChoice) {
-    if (cast.isPending) return
-    setFailedChoice(null)
-    if (isOffline()) {
-      showToast(VOTE_COPY.offline, { variant: 'error', id: toastId })
-      return
-    }
-    cast.mutate(
-      { voteId: item.id, choice },
-      {
-        onSuccess: () => {
-          setAnnouncement('')
-          const castAt = Date.now()
-          showToast(votedToast(choice), {
-            id: toastId,
-            action: { label: VOTE_COPY.undo, onClick: () => sendUndo(castAt) },
-          })
-        },
-        onError: (error) => {
-          const failure = castFailure(backendErrorCode(error), isOffline())
-          if (failure.kind === 'offline') {
-            showToast(VOTE_COPY.offline, { variant: 'error', id: toastId })
-          } else if (failure.kind === 'failed') {
-            setFailedChoice(choice)
-          } else {
-            showToast(failure.text, { variant: 'error', id: toastId })
-            refetchFeed()
-          }
-        },
-      },
-    )
-  }
+  const decided = item.status === 'fake' || item.status === 'real'
+  const outcomeKey = decided ? `${item.status}${isOverturned(item) ? ':overturned' : ''}` : null
+  const { sendVote, failedChoice, busyChoice, announcement } = useVoteActions<VoteChoice>({
+    groupId: item.groupId,
+    kind: 'challenge',
+    voteId: item.id,
+    votedToast,
+    // A ruling (or an overturn) that arrives while the card is mounted is read once, and Today,
+    // My plan, the board, streaks, profiles and the goal refetch (points and streaks move).
+    outcomeKey,
+    outcome: decided ? closedLine : null,
+  })
 
   const showQuestion =
     state.kind === 'open' ||
@@ -230,7 +164,7 @@ export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCa
                     selected={selected}
                     aria-label={choiceButtonLabel(choice)}
                     aria-disabled={state.kind === 'voted' || undefined}
-                    busy={cast.isPending && cast.variables?.choice === choice}
+                    busy={busyChoice === choice}
                     onClick={() => {
                       if (state.kind === 'open') sendVote(choice)
                     }}

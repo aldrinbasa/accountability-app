@@ -57,6 +57,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Node tooling outside the app bundle and the layer map (the local pgTAP runner).
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { ecmaVersion: 2022, globals: { ...globals.node } },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2022,

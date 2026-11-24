@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { BackendError } from '@/domain/error-codes'
 import type { FeedItem } from '@/domain/feed'
 import type { VoteTally } from '@/domain/vote'
-import { todayKey } from '@/data/plan'
+import { planKey, todayKey } from '@/data/plan'
 import { dismissToast } from '@/ui/toast'
 import { Toaster } from '@/ui/toaster'
 import { createFakeBackend, renderRoutes, TEST_GROUP, TEST_USER } from '@/test/fake-backend'
@@ -193,6 +193,32 @@ describe('freeze Vote card (Story 5.5)', () => {
       ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(todayKey(TEST_GROUP.id)),
     )
     expect(todayCalls).toHaveLength(1)
+  })
+
+  it('an approved freeze cancelled by an overturn refetches the views once and says so (Epic 5 retro)', async () => {
+    const approved = { ...FREEZE, status: 'approved' as const, canVote: false }
+    const { feed, queryClient } = await renderFeed([approved])
+    await findCard()
+    expect(at(FREEZE.id)).toHaveAttribute('data-vote-state', 'closed')
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    feed[TEST_GROUP.id] = [
+      { ...approved, status: 'cancelled', cancelReason: 'overturned', cancelledById: 'user-1' },
+    ]
+    await act(() => queryClient.refetchQueries())
+    await waitFor(() =>
+      expect(within(at(FREEZE.id)).getByRole('status')).toHaveTextContent(
+        'Cancelled · the check-in counts again',
+      ),
+    )
+    expect(at(FREEZE.id)).toHaveAttribute('data-vote-state', 'cancelled')
+    for (const queryKey of [todayKey(TEST_GROUP.id), planKey(TEST_GROUP.id)]) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey })
+    }
+    await act(() => queryClient.refetchQueries())
+    const planCalls = invalidate.mock.calls.filter(
+      ([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(planKey(TEST_GROUP.id)),
+    )
+    expect(planCalls).toHaveLength(1)
   })
 
   it('a deep link scrolls to and focuses the freeze Vote card', async () => {

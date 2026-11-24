@@ -6,7 +6,7 @@ import type { FeedItem, FeedRuling } from '@/domain/feed'
 import { dismissToast } from '@/ui/toast'
 import { Toaster } from '@/ui/toaster'
 import { createFakeBackend, renderRoutes, TEST_GROUP, TEST_USER } from '@/test/fake-backend'
-import { feedVote } from '@/test/feed-items'
+import { feedFreezeResult, feedFreezeVote, feedVote } from '@/test/feed-items'
 import { waitForGroupInUrl } from '@/test/router'
 
 // Friday 20 Nov 2026, 11:00 in Manila; the week locks Monday 00:00 Manila (Sun 23:59).
@@ -46,10 +46,18 @@ function setOnline(online: boolean) {
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => online })
 }
 
-async function renderFeed(items: FeedItem[], groupZone = TEST_GROUP.timeZone) {
+async function renderFeed(
+  items: FeedItem[],
+  groupZone = TEST_GROUP.timeZone,
+  sessions: {
+    checkinSessions?: Record<string, string>
+    freezeSessions?: Record<string, string>
+  } = {},
+) {
   const backend = createFakeBackend(undefined, {
     groups: [{ ...TEST_GROUP, timeZone: groupZone }],
     feed: { [TEST_GROUP.id]: items },
+    ...sessions,
   })
   render(<Toaster />)
   const result = renderRoutes(['/feed'], backend)
@@ -98,6 +106,33 @@ describe('Admin overturn on the ruling sticky (Story 5.3)', () => {
     // The refetched row (named by the server) keeps the same line and no button.
     expect(within(node).getByRole('heading', { level: 2, name: OVERTURNED })).toBeInTheDocument()
     expect(within(node).queryByRole('button', { name: BUTTON })).toBeNull()
+  })
+
+  it('an overturn cancels the approved freeze on the session: "the check-in counts again", its result gone (Epic 5 retro)', async () => {
+    const freeze = feedFreezeVote({ status: 'approved', canVote: false })
+    const result = feedFreezeResult()
+    const { backend } = await renderFeed([result, freeze, ruling()], TEST_GROUP.timeZone, {
+      checkinSessions: { 'checkin-dev': 'session-sat' },
+      freezeSessions: { [freeze.id]: 'session-sat' },
+    })
+    const user = userEvent.setup()
+    const node = await findSticky()
+    const card = document.querySelector<HTMLElement>(`[data-feed-item="${freeze.id}"]`)
+    if (!card) throw new Error('no freeze card')
+    expect(document.querySelector(`[data-feed-item="${result.id}"]`)).not.toBeNull()
+    await user.click(within(node).getByRole('button', { name: BUTTON }))
+
+    expect(backend.overturnRuling).toHaveBeenCalledWith('ch-1')
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-feed-item="${freeze.id}"]`)?.textContent ?? '',
+      ).toContain('Cancelled · the check-in counts again'),
+    )
+    expect(document.querySelector(`[data-feed-item="${freeze.id}"]`)).toHaveAttribute(
+      'data-vote-state',
+      'cancelled',
+    )
+    expect(document.querySelector(`[data-feed-item="${result.id}"]`)).toBeNull()
   })
 
   it('names the group zone when the admin is elsewhere', async () => {

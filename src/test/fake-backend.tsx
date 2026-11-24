@@ -401,6 +401,13 @@ export function createFakeBackend(
     freezeOptions?: Record<string, FreezeOption[]>
     /** `my_freeze_requests` per group id (default none); a request adds to it. */
     freezeRequests?: Record<string, FreezeRequest[]>
+    /**
+     * A check-in's session by check-in id: an overturn cancels the pending or approved freezes on
+     * it (Epic 5 retro), found by `freezeRequests` and `freezeSessions`.
+     */
+    checkinSessions?: Record<string, string>
+    /** A freeze request's session by request id, for requests on the wall only (not the caller's). */
+    freezeSessions?: Record<string, string>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -1070,6 +1077,42 @@ export function createFakeBackend(
           : item,
       )
       patchVote(challengeId, by)
+      // Epic 5 retro: the session's pending or approved freezes are cancelled (`overturned`, by
+      // the admin): out of `my_freeze_requests`, the wall's card cancelled, its result sticky gone.
+      const sessionId = options.checkinSessions?.[ruling.checkinId]
+      if (sessionId !== undefined) {
+        // Only pending or approved requests are cancelled; a denied one (and its result) stays.
+        const cancelled = new Set<string>()
+        for (const [id, session] of Object.entries(options.freezeSessions ?? {})) {
+          const vote = findVote(id)
+          if (
+            session === sessionId &&
+            vote?.type === 'freezeVote' &&
+            (vote.status === 'pending' || vote.status === 'approved')
+          ) {
+            cancelled.add(id)
+          }
+        }
+        for (const [groupId, list] of Object.entries(freezeRequests)) {
+          // `my_freeze_requests` lists only pending and approved requests.
+          for (const request of list) {
+            if (request.sessionId === sessionId) cancelled.add(request.id)
+          }
+          freezeRequests[groupId] = list.filter((request) => request.sessionId !== sessionId)
+        }
+        for (const id of cancelled) {
+          const vote = findVote(id)
+          if (vote?.type !== 'freezeVote') continue
+          patchVote(id, {
+            status: 'cancelled',
+            cancelReason: 'overturned',
+            cancelledById: user?.id ?? null,
+          })
+        }
+        feed[group.id] = (feed[group.id] ?? []).filter(
+          (item) => item.type !== 'freezeResult' || !cancelled.has(item.freezeRequestId),
+        )
+      }
       return { overturnId: `overturn-${challengeId}`, createdAt }
     }),
     // The server's rules in short (no 6 s window: undo always succeeds unless the vote closed).

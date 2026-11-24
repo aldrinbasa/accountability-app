@@ -1,15 +1,9 @@
 import { useMemo } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import type { CreateChallengeResult, OverturnResult } from '@/domain/challenge'
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
-import { boardGroupKey, groupWeekKey } from '@/data/board'
-import { feedKey } from '@/data/feed'
-import { groupGoalKey } from '@/data/goal'
-import { MY_GROUPS_KEY } from '@/data/groups'
-import { memberProfileGroupKey } from '@/data/member-profile'
-import { todayKey } from '@/data/plan'
-import { streaksKey } from '@/data/streaks'
+import { useInvalidateVoteOutcomeViews } from '@/data/vote-outcome'
 
 export interface ChallengeRepository {
   create(checkinId: string): Promise<CreateChallengeResult>
@@ -25,27 +19,11 @@ export function createChallengeRepository(backend: BackendPort): ChallengeReposi
 }
 
 /**
- * Everything a challenge (or a ruling it caused) can change in a group: Today, the Feed (wall,
- * anchored pages and Friends today), the board and its week, streaks, profiles, the group goal, and
- * the groups list (its member count picks the 2-person or 3+ copy and hides Challenge when alone).
- * Server actions never queue (AD-12): this runs after the server answered.
+ * Everything a challenge (or a ruling it caused, or an overturn) can change in a group: the shared
+ * vote-outcome list (`@/data/vote-outcome`), the same one a freeze outcome refreshes.
  */
 export function useInvalidateChallengeViews(groupId: string): () => void {
-  const queryClient = useQueryClient()
-  return () => {
-    for (const queryKey of [
-      todayKey(groupId),
-      feedKey(groupId),
-      boardGroupKey(groupId),
-      groupWeekKey(groupId),
-      streaksKey(groupId),
-      memberProfileGroupKey(groupId),
-      groupGoalKey(groupId),
-      MY_GROUPS_KEY,
-    ]) {
-      void queryClient.invalidateQueries({ queryKey })
-    }
-  }
+  return useInvalidateVoteOutcomeViews(groupId)
 }
 
 /**
@@ -66,7 +44,8 @@ export function useCreateChallenge(groupId: string) {
 /**
  * `overturn_ruling` for a Fake ruling of the group (Story 5.3), the admin only. Never queued:
  * offline is the caller's toast. On success refetches the group's views (the check-in counts again,
- * so the Feed, Today, the board, streaks, profiles and the goal move).
+ * and the server cancels any freeze on its session, so the Feed, Today, My plan, the board,
+ * streaks, profiles and the goal move).
  */
 export function useOverturnRuling(groupId: string) {
   const { backend } = useBackendContext('useOverturnRuling')

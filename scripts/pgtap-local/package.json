@@ -1,0 +1,10 @@
+{
+  "name": "proofy-pgtap-local",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runs supabase/tests pgTAP files against an in-process PGlite database (no Docker). Local only; CI uses supabase test db.",
+  "type": "module",
+  "dependencies": {
+    "@electric-sql/pglite": "0.3.14"
+  }
+}

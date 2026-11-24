@@ -159,4 +159,16 @@ describe('cancelled freeze requests (Story 5.6)', () => {
     ).toBe('Cancelled · Dev left the group')
     expect(freezeCancelledLine(feedFreezeVote({ status: 'cancelled' }))).toBe('Cancelled')
   })
+
+  it('after an admin overturn of its session check-in: "the check-in counts again" (Epic 5 retro)', () => {
+    expect(
+      freezeCancelledLine(
+        feedFreezeVote({
+          status: 'cancelled',
+          cancelReason: 'overturned',
+          cancelledById: 'user-1',
+        }),
+      ),
+    ).toBe('Cancelled · the check-in counts again')
+  })
 })
