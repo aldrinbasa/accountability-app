@@ -164,8 +164,11 @@ test('an overturn cancels the freeze on the ruled session', async ({ page, newPh
     "Overturned by you · Ben's Grocery run is back.",
   )
   const card = page.locator('article[data-kind="freeze-vote"]')
+  // The visible line (the card's polite status also announces it once, off screen).
   await expect(
-    card.getByText('Cancelled · the check-in counts again', { exact: true }),
+    card.locator('p:not([role="status"])', {
+      hasText: /^Cancelled · the check-in counts again$/,
+    }),
   ).toBeVisible({ timeout: 15_000 })
   await expect(card).toHaveAttribute('data-vote-state', 'cancelled')
   await expect(result).toHaveCount(0)
