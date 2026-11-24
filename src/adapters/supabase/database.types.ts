@@ -612,6 +612,12 @@ isOneToOne: false
       referencedRelation: "challenges"
       referencedColumns: ["id"]
     },{
+      foreignKeyName: "votes_freeze_request_id_fkey"
+      columns: ["freeze_request_id"]
+isOneToOne: false
+      referencedRelation: "freeze_requests"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "votes_group_id_fkey"
       columns: ["group_id"]
 isOneToOne: false
