@@ -7,6 +7,7 @@ import {
   type FeedViewer,
 } from '@/domain/feed'
 import { FEED_COPY } from '@/domain/feed'
+import { useFreezeOptions } from '@/data/freeze'
 import { InlineRetry } from '@/ui/inline-retry'
 import { cn } from '@/ui/lib/utils'
 import { EventSticky } from '@/features/feed/event-sticky'
@@ -87,6 +88,12 @@ export function FeedWall({
   const [open, setOpen] = useState<FeedCheckin | null>(null)
   const opener = useRef<HTMLElement | null>(null)
   const sentinel = useNearEnd(hasMore && !loadingMore && !fetching && !loadMoreFailed, onLoadMore)
+  // Story 5.4: one `my_freeze_options` read per wall (only with an own miss on it), shared by every
+  // own miss sticky, so scrolling stickies in and out never refetches it.
+  const ownMissGroup = items.find(
+    (item) => item.type === 'miss' && item.actorId !== null && item.actorId === viewer.userId,
+  )?.groupId
+  const freezeOptions = useFreezeOptions(ownMissGroup ?? '', ownMissGroup !== undefined).data
 
   let polaroids = 0
   let stickies = 0
@@ -141,7 +148,13 @@ export function FeedWall({
           return (
             <li key={item.id} className={className}>
               {item.type === 'miss' ? (
-                <MissSticky item={item} viewer={viewer} tilt={tilt} />
+                <MissSticky
+                  item={item}
+                  viewer={viewer}
+                  tilt={tilt}
+                  memberCount={memberCount}
+                  freezeOptions={freezeOptions}
+                />
               ) : item.type === 'winner' ? (
                 <WinnerSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               ) : item.type === 'goal' ? (

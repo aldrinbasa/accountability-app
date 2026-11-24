@@ -46,6 +46,15 @@ export const ERROR_COPY = {
   already_overturned: "That ruling's already overturned.",
   // Raised from Epic 5 (freezes); the outbox already treats it as final (Story 3.3).
   session_frozen: 'That session is already frozen.',
+  // Story 5.4 (freeze requests). `week_locked` and `not_member` keep their copy above; the freeze
+  // flow shows its own line for `week_locked` (src/domain/freeze.ts).
+  reason_required: 'Add a reason so the group knows why.',
+  invalid_freeze: "That can't be frozen. Pick another session.",
+  freeze_window_closed: "That session can't be frozen anymore.",
+  session_done: "That session's already done, so there's nothing to freeze.",
+  freeze_pending: 'There is already a freeze request on that session.',
+  fake_ruling_miss: "The group said that check-in doesn't count, so this miss can't be frozen.",
+  target_met: "That week's target is already met, so there's nothing to freeze.",
 } as const
 
 export type RpcErrorCode = keyof typeof ERROR_COPY

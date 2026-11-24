@@ -1966,6 +1966,8 @@ describe('feed mapping', () => {
         schedule_type: 'times_per_week',
         tease: 'couch_wins',
         missed_on: '2026-11-22',
+        session_ids: ['s-1', 's-2', 7],
+        week_start: '2026-11-16',
         count: 3,
         activity_name: 'Old name',
       },
@@ -1983,6 +1985,8 @@ describe('feed mapping', () => {
       missCount: 2,
       tease: 'couch_wins',
       missedOn: '2026-11-22',
+      sessionIds: ['s-1', 's-2'],
+      weekStart: '2026-11-16',
     })
     expect(toFeedItem({ ...miss, task_name: 'Tax forms' })).toMatchObject({ title: 'Tax forms' })
     expect(
@@ -1991,7 +1995,14 @@ describe('feed mapping', () => {
         activity_name: null,
         payload: { schedule_type: 'fixed_days', activity_name: 'Paint' },
       }),
-    ).toMatchObject({ title: 'Paint', scheduleType: 'fixed_days', tease: null, missedOn: null })
+    ).toMatchObject({
+      title: 'Paint',
+      scheduleType: 'fixed_days',
+      tease: null,
+      missedOn: null,
+      sessionIds: [],
+      weekStart: null,
+    })
     // Nothing left missed: not rendered.
     expect(toFeedItem({ ...miss, miss_count: 0 })).toBeNull()
   })

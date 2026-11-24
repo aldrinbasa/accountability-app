@@ -64,6 +64,8 @@ export function feedMiss(overrides: Partial<FeedMiss> = {}): FeedMiss {
     missCount: 1,
     tease: 'couch_wins',
     missedOn: '2026-11-19',
+    sessionIds: ['session-paint-thu'],
+    weekStart: '2026-11-16',
     ...overrides,
   }
 }

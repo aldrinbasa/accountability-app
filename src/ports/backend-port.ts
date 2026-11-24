@@ -11,6 +11,12 @@ import type {
   PostCheckinResult,
 } from '@/domain/checkin'
 import type { FeedCheckin, FeedItem, FeedRows, FeedRowsRequest } from '@/domain/feed'
+import type {
+  FreezeOption,
+  FreezeRequest,
+  RequestFreezeInput,
+  RequestFreezeResult,
+} from '@/domain/freeze'
 import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { GroupMember, Invite, InvitePreview, MyGroupsSnapshot } from '@/domain/groups'
 import type {
@@ -307,4 +313,22 @@ export interface BackendPort {
    * already counted). Rejects with `not_member`.
    */
   listVoteTallies(groupId: string): Promise<VoteTally[]>
+
+  /**
+   * `my_freeze_options` (Story 5.4): what the caller may freeze now in the group, every window
+   * computed by the server (AD-11). Rejects with `not_member`.
+   */
+  listFreezeOptions(groupId: string): Promise<FreezeOption[]>
+  /**
+   * `my_freeze_requests`: the caller's pending and approved freeze requests in the group's unlocked
+   * weeks. Rejects with `not_member`.
+   */
+  listMyFreezeRequests(groupId: string): Promise<FreezeRequest[]>
+  /**
+   * `request_freeze`: asks the group to freeze one of the caller's sessions (a day) or one session
+   * of a times-per-week week; with 1 current member it is approved at once. Rejects with
+   * `not_member`, `reason_required`, `invalid_freeze`, `week_locked`, `session_done`,
+   * `session_frozen`, `freeze_pending`, `fake_ruling_miss`, `freeze_window_closed` or `target_met`.
+   */
+  requestFreeze(input: RequestFreezeInput): Promise<RequestFreezeResult>
 }

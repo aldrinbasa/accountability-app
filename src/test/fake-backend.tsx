@@ -15,6 +15,12 @@ import type {
 } from '@/domain/checkin'
 import { BackendError } from '@/domain/error-codes'
 import type { CreateChallengeResult, OverturnResult } from '@/domain/challenge'
+import type {
+  FreezeOption,
+  FreezeRequest,
+  RequestFreezeInput,
+  RequestFreezeResult,
+} from '@/domain/freeze'
 import type { CastVoteResult, FeedVote, VoteChoice, VoteTally } from '@/domain/vote'
 import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest, FeedRuling } from '@/domain/feed'
 import type { GoalPeriod, GroupGoal } from '@/domain/goal'
@@ -390,6 +396,10 @@ export function createFakeBackend(
      * `TEST_PLAN_PREVIEW`; never the real clock, so results don't depend on the test run's date.
      */
     now?: string
+    /** `my_freeze_options` per group id (default none); a request removes its option. */
+    freezeOptions?: Record<string, FreezeOption[]>
+    /** `my_freeze_requests` per group id (default none); a request adds to it. */
+    freezeRequests?: Record<string, FreezeRequest[]>
   } = {},
 ): FakeBackend {
   const listeners = new Set<(user: AuthUser | null) => void>()
@@ -458,6 +468,9 @@ export function createFakeBackend(
   const winnerWeeks: Record<string, WinnerWeek> = { ...options.winnerWeeks }
   const memberProfiles: Record<string, MemberProfile | null> = { ...options.memberProfiles }
   const goals: Record<string, GroupGoal> = { ...options.goals }
+  const freezeOptions: Record<string, FreezeOption[]> = { ...options.freezeOptions }
+  const freezeRequests: Record<string, FreezeRequest[]> = { ...options.freezeRequests }
+  let freezesMade = 0
   const invites: Record<string, InvitePreview> = options.invites ?? {
     [TEST_INVITE.code]: TEST_INVITE_PREVIEW,
   }
@@ -1085,6 +1098,57 @@ export function createFakeBackend(
             ]
           : [],
       )
+    }),
+    listFreezeOptions: vi.fn(async (groupId: string): Promise<FreezeOption[]> => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return [...(freezeOptions[groupId] ?? [])]
+    }),
+    listMyFreezeRequests: vi.fn(async (groupId: string): Promise<FreezeRequest[]> => {
+      if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')
+      return [...(freezeRequests[groupId] ?? [])]
+    }),
+    // The server's rules in short: the reason, an option it listed (else the window closed), and a
+    // group of one approves at once.
+    requestFreeze: vi.fn(async (input: RequestFreezeInput): Promise<RequestFreezeResult> => {
+      const entry = Object.entries(freezeOptions).find(([, list]) =>
+        list.some((o) => o.commitmentId === input.commitmentId),
+      )
+      const trimmed = input.reason.trim()
+      if (trimmed.length === 0 || trimmed.length > 80) throw new BackendError('reason_required')
+      if (!entry) throw new BackendError('freeze_window_closed')
+      const [groupId, list] = entry
+      const group = groups.find((g) => g.id === groupId)
+      if (!group) throw new BackendError('not_member')
+      const option = list.find((o) =>
+        input.sessionId !== null
+          ? o.kind === 'day' && o.sessionId === input.sessionId
+          : o.kind === 'week' &&
+            o.weekStart === input.weekStart &&
+            o.commitmentId === input.commitmentId,
+      )
+      if (!option) throw new BackendError('freeze_window_closed')
+      freezesMade += 1
+      const id = `freeze-${freezesMade}`
+      const sessionId = option.sessionId ?? `session-${option.commitmentId}-${option.weekStart}`
+      const status = group.memberCount <= 1 ? 'approved' : 'pending'
+      const closesAt = new Date(Date.now() + 86_400_000).toISOString()
+      freezeOptions[groupId] = list.filter((o) => o !== option)
+      freezeRequests[groupId] = [
+        ...(freezeRequests[groupId] ?? []),
+        {
+          id,
+          commitmentId: option.commitmentId,
+          sessionId,
+          kind: option.kind,
+          weekStart: option.weekStart,
+          status,
+          reason: trimmed,
+          closesAt,
+          startsAt: option.startsAt,
+          targetAfter: option.kind === 'week' ? option.targetAfter : null,
+        },
+      ]
+      return { freezeRequestId: id, status, closesAt, sessionId }
     }),
   }
 }

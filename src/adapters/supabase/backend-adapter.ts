@@ -75,6 +75,7 @@ import type { BackendPort } from '@/ports/backend-port'
 import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
 import { challengeAdapter } from '@/adapters/supabase/challenges'
+import { freezeAdapter } from '@/adapters/supabase/freezes'
 import { overturnAdapter } from '@/adapters/supabase/overturns'
 import { voteAdapter } from '@/adapters/supabase/votes'
 import { toBackendError } from '@/adapters/supabase/rpc-error'
@@ -779,6 +780,14 @@ function payloadString(payload: FeedItemRow['payload'], key: string): string | n
   return typeof value === 'string' ? value : null
 }
 
+/** The strings of a payload's array (`session_ids`); empty when it is missing or not an array. */
+function payloadStrings(payload: FeedItemRow['payload'], key: string): string[] {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return []
+  const value = payload[key]
+  if (!Array.isArray(value)) return []
+  return value.filter((entry): entry is string => typeof entry === 'string')
+}
+
 /**
  * A weekly winner row (Story 4.5): the payload's week, points and winners (names at the lock); null
  * when the payload is malformed or names nobody.
@@ -841,6 +850,8 @@ function toFeedMiss(
     missCount,
     tease: payloadString(row.payload, 'tease'),
     missedOn: payloadString(row.payload, 'missed_on'),
+    sessionIds: payloadStrings(row.payload, 'session_ids'),
+    weekStart: payloadString(row.payload, 'week_start'),
   }
 }
 
@@ -1182,6 +1193,7 @@ export const supabaseBackendAdapter: BackendPort = {
   ...challengeAdapter,
   ...overturnAdapter,
   ...voteAdapter,
+  ...freezeAdapter,
 
   async getSession() {
     const { data, error } = await supabase.auth.getSession()

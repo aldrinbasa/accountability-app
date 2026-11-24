@@ -4,6 +4,14 @@ import { GROUP_COPY } from '@/domain/groups'
 import { streakMeta, streaksByCommitment, type Streak } from '@/domain/streaks'
 import type { CameraTarget } from '@/domain/camera'
 import {
+  freezeOptionKey,
+  pendingMeta,
+  todayRowOption,
+  todayRowRequest,
+  type FreezeOption,
+  type FreezeRequest,
+} from '@/domain/freeze'
+import {
   itemsIn,
   itemTitle,
   leftThisWeek,
@@ -12,7 +20,9 @@ import {
   todayEmptyState,
   type TodayItem,
 } from '@/domain/today'
+import { useFreezeOptions, useMyFreezes } from '@/data/freeze'
 import { useToday } from '@/data/plan'
+import { useMemberTimeZone } from '@/data/profile'
 import { markStreakPopped, streakPopFor, usePostMoment, withPostMoment } from '@/data/post-moment'
 import { useStreaks } from '@/data/streaks'
 import { EmptyState } from '@/ui/empty-state'
@@ -22,6 +32,8 @@ import { AddPlanButton } from '@/features/plan/add-plan-button'
 import { DueRow } from '@/features/plan/due-row'
 import { usePlanSheet } from '@/features/plan/plan-sheet-context'
 import { RowActionsSheet } from '@/features/plan/row-actions-sheet'
+import { FreezeSheet } from '@/features/freeze/freeze-sheet'
+import { useMinuteClock } from '@/features/freeze/use-minute-clock'
 
 function Section({
   title,
@@ -53,6 +65,7 @@ function Rows({
   bumpId = null,
   streaks,
   popId = null,
+  freezeOf,
 }: {
   items: readonly TodayItem[]
   onMore: (item: TodayItem, button: HTMLButtonElement) => void
@@ -64,6 +77,8 @@ function Rows({
   streaks?: ReadonlyMap<string, Streak>
   /** The row whose streak plays the milestone pop. */
   popId?: string | null
+  /** A row's freeze state (Story 5.4): the pending line or the approved reason. */
+  freezeOf?: (item: TodayItem) => { meta: string | null; frozenReason: string | null }
 }) {
   return (
     <ul className="flex flex-col gap-2">
@@ -76,6 +91,8 @@ function Rows({
           bump={item.commitmentId === bumpId}
           streak={streaks ? streakMeta(streaks.get(item.commitmentId)) : null}
           streakPop={item.commitmentId === popId}
+          freezeMeta={freezeOf?.(item).meta ?? null}
+          frozenReason={freezeOf?.(item).frozenReason ?? null}
         />
       ))}
     </ul>
@@ -138,6 +155,17 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   const [actionsOpen, setActionsOpen] = useState(false)
   // Edit hands focus over to the Plan sheet, which returns it to the row's Overflow later.
   const handedOff = useRef(false)
+  // Story 5.4: what the member may freeze now and their pending / approved requests.
+  const freezeOptions = useFreezeOptions(groupId).data
+  const freezeRequests = useMyFreezes(groupId).data
+  const zone = useMemberTimeZone()
+  const now = useMinuteClock()
+  const [freeze, setFreeze] = useState<{
+    item: TodayItem
+    option: FreezeOption
+    opener: HTMLButtonElement
+  } | null>(null)
+  const [freezeOpen, setFreezeOpen] = useState(false)
 
   // The last post's counts on its row until Today refetches after it; then the server's alone.
   const data = query.data ? withPostMoment(query.data, moment, query.dataUpdatedAt) : undefined
@@ -207,6 +235,34 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
     openCamera({ mode: 'checkin', target: cameraTarget(groupId, item) }, button)
   }
 
+  function rowRequest(item: TodayItem): FreezeRequest | null {
+    if (!data || !freezeRequests) return null
+    return todayRowRequest(
+      item,
+      freezeRequests,
+      data.summary.memberToday,
+      data.summary.weekStart,
+      zone,
+    )
+  }
+
+  function freezeOf(item: TodayItem) {
+    const request = rowRequest(item)
+    if (!request) return { meta: null, frozenReason: null }
+    if (request.status === 'approved') {
+      return { meta: null, frozenReason: request.kind === 'day' ? request.reason : null }
+    }
+    return { meta: pendingMeta(request, now), frozenReason: null }
+  }
+
+  /** The Overflow's freezable option for a row, or null (no Request freeze). */
+  function rowOption(item: TodayItem): FreezeOption | null {
+    if (!freezeOptions) return null
+    return todayRowOption(item, freezeOptions, now)
+  }
+
+  const actionsOption = actions ? rowOption(actions.item) : null
+
   function openActions(item: TodayItem, opener: HTMLButtonElement) {
     handedOff.current = false
     setActions({ item, opener })
@@ -230,6 +286,7 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
             bumpId={bumpId}
             streaks={streaks}
             popId={popId}
+            freezeOf={freezeOf}
           />
         )}
       </Section>
@@ -242,6 +299,7 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
             bumpId={bumpId}
             streaks={streaks}
             popId={popId}
+            freezeOf={freezeOf}
           />
         </Section>
       ) : null}
@@ -271,6 +329,32 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
               actions.opener,
             )
           }}
+          onRequestFreeze={
+            actionsOption
+              ? () => {
+                  handedOff.current = true
+                  setActionsOpen(false)
+                  setFreeze({ item: actions.item, option: actionsOption, opener: actions.opener })
+                  setFreezeOpen(true)
+                }
+              : undefined
+          }
+        />
+      ) : null}
+      {freeze ? (
+        <FreezeSheet
+          open={freezeOpen}
+          onOpenChange={setFreezeOpen}
+          groupId={groupId}
+          title={itemTitle(freeze.item)}
+          options={[freeze.option]}
+          initialKey={freezeOptionKey(freeze.option)}
+          solo={waiting}
+          returnFocusTo={() =>
+            freeze.opener.isConnected
+              ? freeze.opener
+              : document.querySelector<HTMLElement>('[data-plan-add]')
+          }
         />
       ) : null}
     </>

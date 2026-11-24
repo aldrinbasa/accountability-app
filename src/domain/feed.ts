@@ -127,6 +127,10 @@ export interface FeedMiss {
   tease: string | null
   /** The member-local day the miss covers (`YYYY-MM-DD`), the last day of a times-per-week week. */
   missedOn: string | null
+  /** The event's sessions (the own miss sticky offers Request freeze for one in its window). */
+  sessionIds: string[]
+  /** The missed week's Monday, `YYYY-MM-DD` (times per week: the week to freeze). */
+  weekStart: string | null
 }
 
 /**

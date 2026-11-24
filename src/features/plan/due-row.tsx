@@ -1,7 +1,8 @@
 import { useRef } from 'react'
-import { Check, DotsThree } from '@phosphor-icons/react'
+import { Check, DotsThree, Snowflake } from '@phosphor-icons/react'
 import { CUSTOM_ACTIVITY_ICON, presetIcon } from '@/domain/activities'
 import { CAMERA_COPY, checkInLabel } from '@/domain/camera'
+import { frozenMeta } from '@/domain/freeze'
 import {
   itemTitle,
   overflowLabel,
@@ -32,6 +33,10 @@ import { ProgressRing } from '@/ui/progress-ring'
  * `streak` (Story 4.2) closes the meta line: "Fixed days · Mon Wed Fri · streak 6", "… · Done ·
  * streak 7", "… · back to 0". It is plain text inside the meta, so it is read with the row;
  * `streakPop` plays the milestone pop on it once (3, 10 or 25).
+ *
+ * Story 5.4: `freezeMeta` adds the pending freeze line under the meta ("Freeze vote · 21 h left",
+ * Check in stays). `frozenReason` marks an approved day freeze: the snowflake in the icon's place,
+ * "Frozen · flu, in bed" as the meta in `muted`, and no Check in.
  */
 export function DueRow({
   item,
@@ -40,6 +45,8 @@ export function DueRow({
   bump = false,
   streak = null,
   streakPop = false,
+  freezeMeta = null,
+  frozenReason = null,
 }: {
   item: TodayItem
   onMore?: (button: HTMLButtonElement) => void
@@ -48,12 +55,17 @@ export function DueRow({
   /** The streak part of the meta ("streak 6", "back to 0"), or null for none. */
   streak?: string | null
   streakPop?: boolean
+  /** A pending freeze's line ("Freeze vote · 21 h left"), or null. */
+  freezeMeta?: string | null
+  /** An approved day freeze's reason: the row reads frozen. Null when not frozen. */
+  frozenReason?: string | null
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
   const checkInRef = useRef<HTMLButtonElement>(null)
   const title = itemTitle(item)
   const icon = item.presetKey !== null ? presetIcon(item.presetKey) : CUSTOM_ACTIVITY_ICON
-  const done = rowDone(item)
+  const frozen = frozenReason !== null
+  const done = !frozen && rowDone(item)
   return (
     <li
       className={cn(
@@ -63,8 +75,13 @@ export function DueRow({
       data-component="due-row"
       data-commitment-id={item.commitmentId}
       data-done={done ? '' : undefined}
+      data-frozen={frozen ? '' : undefined}
     >
-      {showsRing(item) && item.target !== null ? (
+      {frozen ? (
+        <span className="grid size-icon-row shrink-0 place-items-center text-muted">
+          <Icon icon={Snowflake} size={44} />
+        </span>
+      ) : showsRing(item) && item.target !== null ? (
         <ProgressRing
           value={item.counted}
           target={item.target}
@@ -84,8 +101,8 @@ export function DueRow({
       <div className="min-w-0 flex-1">
         <h3 className="break-words type-title-sm">{title}</h3>
         <p className="break-words type-meta text-muted">
-          {scheduleMeta(item)}
-          {streak ? (
+          {frozen ? frozenMeta(frozenReason) : scheduleMeta(item)}
+          {streak && !frozen ? (
             <>
               {' · '}
               <span
@@ -97,6 +114,11 @@ export function DueRow({
             </>
           ) : null}
         </p>
+        {freezeMeta && !frozen ? (
+          <p className="break-words type-meta text-muted" data-freeze-meta="">
+            {freezeMeta}
+          </p>
+        ) : null}
       </div>
       {onMore ? (
         <button
@@ -121,7 +143,7 @@ export function DueRow({
         >
           <Check weight="bold" size={32} aria-hidden="true" focusable="false" />
         </span>
-      ) : onCheckIn ? (
+      ) : onCheckIn && !frozen ? (
         <Button
           ref={checkInRef}
           variant="primary"

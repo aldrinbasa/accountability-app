@@ -19,7 +19,7 @@
 -- search_path is pointed at test_overrides so tests.freeze_time moves their clock.
 begin;
 set local timezone = 'UTC';
-select plan(78);
+select plan(82);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -652,6 +652,45 @@ select is(
   '7|1',
   'solo: the frozen session is dropped from the score (planned - frozen)'
 );
+
+-- ===== Solo times per week: a check-in skips the approved-frozen row =====
+-- sam adds Yoga 2 times a week from week B; the week freeze is approved at once on slot 2. Tue's
+-- check-in takes slot 1; Wed's finds only the frozen row left, so it is an extra (no session).
+select pg_catalog.set_config('test.swim', pg_temp.add_plan('sam', 'g2', 'yoga', null, 2::smallint, '2026-11-16')::text, true);
+select private.tick_step_1_sessions();
+select pg_catalog.set_config('test.s1', '00000000-0000-4000-a000-0000000054e1', true);
+select pg_catalog.set_config('test.s2', '00000000-0000-4000-a000-0000000054e2', true);
+set local role service_role;
+insert into storage.objects (bucket_id, name, owner_id)
+select 'checkins', current_setting('test.g2') || '/' || current_setting('test.' || p.id) || '/' || s.size || '.webp',
+       tests.get_supabase_uid('sam')::text
+from (values ('s1'), ('s2')) p(id)
+cross join (values ('1080'), ('360')) s(size);
+reset role;
+select tests.authenticate_as('sam');
+select is(
+  (select r.status || '|' || (r.session_id = pg_temp.sid('swim', '2026-11-16', 2))::text
+   from public.request_freeze(current_setting('test.swim')::uuid, 'ear infection', null, '2026-11-16') r),
+  'approved|true',
+  'solo times per week: approved at once on the highest free slot'
+);
+select is(
+  (select (r.session_id = pg_temp.sid('swim', '2026-11-16', 1))::text
+   from public.post_checkin(current_setting('test.s1')::uuid, current_setting('test.swim')::uuid,
+     '2026-11-17 11:59:00+00', null) r),
+  'true',
+  'solo times per week: the check-in takes slot 1, not the frozen row'
+);
+select tests.freeze_time('2026-11-18 12:00:00+00');
+select is(
+  (select (r.session_id is null)::text || '|' || r.counted::text
+   from public.post_checkin(current_setting('test.s2')::uuid, current_setting('test.swim')::uuid,
+     '2026-11-18 11:59:00+00', null) r),
+  'true|false',
+  'solo times per week: only the frozen row left, the check-in is an extra'
+);
+select is(pg_temp.st('swim', '2026-11-16', 2), 'frozen',
+  'solo times per week: the frozen slot still reads frozen');
 
 select * from finish();
 rollback;

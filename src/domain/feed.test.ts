@@ -202,6 +202,8 @@ function miss(overrides: Partial<FeedMiss> = {}): FeedMiss {
     missCount: 1,
     tease: 'couch_wins',
     missedOn: '2026-11-19',
+    sessionIds: [],
+    weekStart: null,
     ...overrides,
   }
 }

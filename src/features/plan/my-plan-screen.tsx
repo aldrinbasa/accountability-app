@@ -1,10 +1,20 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
-import { ArrowLeft, CloudSlash, ListChecks, PencilSimple } from '@phosphor-icons/react'
+import { ArrowLeft, CloudSlash, ListChecks, PencilSimple, Snowflake } from '@phosphor-icons/react'
 import { CUSTOM_ACTIVITY_ICON, presetIcon } from '@/domain/activities'
-import { GROUP_COPY } from '@/domain/groups'
+import {
+  commitmentOptions,
+  freezeOptionKey,
+  pendingMeta,
+  planRowPending,
+  requestFreezeLabel,
+  type FreezeOption,
+  type FreezeRequest,
+} from '@/domain/freeze'
+import { GROUP_COPY, isWaiting } from '@/domain/groups'
 import { editLabel, MY_PLAN_COPY, myPlanIn, myPlanMeta, type MyPlanItem } from '@/domain/my-plan'
 import { itemTitle } from '@/domain/today'
+import { useFreezeOptions, useMyFreezes } from '@/data/freeze'
 import { useCommitment, useMyPlan } from '@/data/plan'
 import { EmptyState } from '@/ui/empty-state'
 import { Icon } from '@/ui/icon'
@@ -13,6 +23,8 @@ import { runAfterSheetClose } from '@/ui/sheet-history'
 import { Skeleton, SkeletonBar, SkeletonBlock } from '@/ui/skeleton'
 import { showToast } from '@/ui/toast'
 import { searchWithGroup, useFocusedGroup } from '@/features/group/use-focused-group'
+import { FreezeSheet } from '@/features/freeze/freeze-sheet'
+import { useMinuteClock } from '@/features/freeze/use-minute-clock'
 import { cameFromMe } from '@/features/me/pushed-from-me'
 import { usePlanSheet } from '@/features/plan/plan-sheet-context'
 import { PlanSheetHost } from '@/features/plan/plan-sheet-host'
@@ -84,7 +96,7 @@ export function MyPlanScreen() {
         >
           <div className="flex flex-col gap-stack">
             {heading}
-            <MyPlanSections groupId={group.id} />
+            <MyPlanSections groupId={group.id} solo={isWaiting(group)} />
           </div>
           {commitmentId ? (
             <DeepLinkEdit
@@ -175,10 +187,25 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-/** A My plan row: the activity icon, the title, the state meta line and Edit when allowed. */
-function PlanRow({ item }: { item: MyPlanItem }) {
+/**
+ * A My plan row: the activity icon, the title, the state meta line and Edit when allowed. Story 5.4:
+ * a snowflake button "Request freeze for Study" while the server lists something of it as freezable,
+ * and a pending request's line ("Freeze vote · 21 h left").
+ */
+function PlanRow({
+  item,
+  pending,
+  now,
+  onRequestFreeze,
+}: {
+  item: MyPlanItem
+  pending: FreezeRequest | null
+  now: Date
+  onRequestFreeze?: (button: HTMLButtonElement) => void
+}) {
   const { openPlanSheet } = usePlanSheet()
   const editRef = useRef<HTMLButtonElement>(null)
+  const freezeRef = useRef<HTMLButtonElement>(null)
   const title = itemTitle(item)
   const icon = item.presetKey !== null ? presetIcon(item.presetKey) : CUSTOM_ACTIVITY_ICON
   return (
@@ -194,7 +221,23 @@ function PlanRow({ item }: { item: MyPlanItem }) {
       <div className="min-w-0 flex-1">
         <h3 className="break-words type-title-sm">{title}</h3>
         <p className="break-words type-meta text-muted">{myPlanMeta(item)}</p>
+        {pending ? (
+          <p className="break-words type-meta text-muted" data-freeze-meta="">
+            {pendingMeta(pending, now)}
+          </p>
+        ) : null}
       </div>
+      {onRequestFreeze ? (
+        <IconButton
+          ref={freezeRef}
+          icon={Snowflake}
+          label={requestFreezeLabel(title)}
+          aria-haspopup="dialog"
+          onClick={() => {
+            if (freezeRef.current) onRequestFreeze(freezeRef.current)
+          }}
+        />
+      ) : null}
       {item.canEdit ? (
         <IconButton
           ref={editRef}
@@ -213,12 +256,37 @@ function PlanRow({ item }: { item: MyPlanItem }) {
   )
 }
 
-function Rows({ items }: { items: readonly MyPlanItem[] }) {
+function Rows({
+  items,
+  options = [],
+  requests = [],
+  now,
+  onRequestFreeze,
+}: {
+  items: readonly MyPlanItem[]
+  options?: readonly FreezeOption[]
+  requests?: readonly FreezeRequest[]
+  now: Date
+  onRequestFreeze?: (item: MyPlanItem, options: FreezeOption[], button: HTMLButtonElement) => void
+}) {
   return (
     <ul className="flex flex-col gap-2">
-      {items.map((item) => (
-        <PlanRow key={item.commitmentId} item={item} />
-      ))}
+      {items.map((item) => {
+        const own = commitmentOptions(item.commitmentId, options, now)
+        return (
+          <PlanRow
+            key={item.commitmentId}
+            item={item}
+            now={now}
+            pending={planRowPending(item.commitmentId, requests)}
+            onRequestFreeze={
+              onRequestFreeze && own.length > 0
+                ? (button) => onRequestFreeze(item, own, button)
+                : undefined
+            }
+          />
+        )
+      })}
     </ul>
   )
 }
@@ -239,10 +307,25 @@ function MyPlanSkeleton() {
   )
 }
 
+/** The Sheet's pre-pick from My plan: this week for times per week, else the first session. */
+function initialFreezeKey(options: readonly FreezeOption[]): string | null {
+  const option = options.find((o) => o.kind === 'week' && o.which === 'this') ?? options[0]
+  return option ? freezeOptionKey(option) : null
+}
+
 /** Current, then Past (only when it has rows), in the server's order. */
-function MyPlanSections({ groupId }: { groupId: string }) {
+function MyPlanSections({ groupId, solo }: { groupId: string; solo: boolean }) {
   const query = useMyPlan(groupId)
   const items = query.data
+  const freezeOptions = useFreezeOptions(groupId).data
+  const freezeRequests = useMyFreezes(groupId).data
+  const now = useMinuteClock()
+  const [freeze, setFreeze] = useState<{
+    item: MyPlanItem
+    options: FreezeOption[]
+    opener: HTMLButtonElement
+  } | null>(null)
+  const [freezeOpen, setFreezeOpen] = useState(false)
   if (!items) {
     if (query.isError) {
       return (
@@ -264,15 +347,41 @@ function MyPlanSections({ groupId }: { groupId: string }) {
     <>
       <Section title={MY_PLAN_COPY.current}>
         {current.length > 0 ? (
-          <Rows items={current} />
+          <Rows
+            items={current}
+            options={freezeOptions}
+            requests={freezeRequests}
+            now={now}
+            onRequestFreeze={(item, options, opener) => {
+              setFreeze({ item, options, opener })
+              setFreezeOpen(true)
+            }}
+          />
         ) : (
           <EmptyState icon={ListChecks} line={MY_PLAN_COPY.emptyLine} />
         )}
       </Section>
       {past.length > 0 ? (
         <Section title={MY_PLAN_COPY.past}>
-          <Rows items={past} />
+          <Rows items={past} now={now} />
         </Section>
+      ) : null}
+      {freeze ? (
+        <FreezeSheet
+          open={freezeOpen}
+          onOpenChange={setFreezeOpen}
+          groupId={groupId}
+          title={itemTitle(freeze.item)}
+          options={freeze.options}
+          initialKey={initialFreezeKey(freeze.options)}
+          solo={solo}
+          // After a request the snowflake is gone with its option: focus the My plan h1 instead.
+          returnFocusTo={() =>
+            freeze.opener.isConnected
+              ? freeze.opener
+              : document.querySelector<HTMLElement>('main h1')
+          }
+        />
       ) : null}
     </>
   )
