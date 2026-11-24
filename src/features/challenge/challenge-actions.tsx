@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Gavel } from '@phosphor-icons/react'
+import { SealQuestion } from '@phosphor-icons/react'
 import {
   CHALLENGE_COPY,
   canChallenge,
@@ -104,7 +104,7 @@ export function ChallengeActions({ item, viewer, memberCount, className }: Chall
               setConfirmOpen(true)
             }}
           >
-            <Icon icon={Gavel} size={24} />
+            <Icon icon={SealQuestion} size={24} />
             {CHALLENGE_COPY.challenge}
           </Button>
         </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Gavel } from '@phosphor-icons/react'
+import { SealQuestion } from '@phosphor-icons/react'
 import {
   canShowOverturn,
   CHALLENGE_COPY,
@@ -21,7 +21,7 @@ import { StickyNote } from '@/ui/sticky-note'
 import { showToast } from '@/ui/toast'
 
 /**
- * A ruling (Story 5.1): a lavender `sticky-note-vote` whose kicker names it in words ("gavel
+ * A ruling (Story 5.1): a lavender `sticky-note-vote` whose kicker names it in words ("question seal
  * RESULT"), so color is not the only signal, and whose line is its h2 ("Didn't count · Dev's
  * Study · Lena questioned it.").
  *
@@ -93,7 +93,7 @@ export function RulingSticky({
     <article className="px-[10px]" data-feed-item={item.id} data-kind="ruling">
       <StickyNote tilt={tilt} tone="vote" className="mx-auto w-fit max-w-full">
         <p className="mb-2 flex flex-wrap items-center gap-1.5 type-label text-obj-ink">
-          <Icon icon={Gavel} size={20} />
+          <Icon icon={SealQuestion} size={20} />
           <span>{CHALLENGE_COPY.rulingKicker}</span>
         </p>
         <h2 className="type-hand-md">{line}</h2>

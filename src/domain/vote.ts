@@ -9,14 +9,29 @@ import { feedTitle, type ChallengeStatus, type FeedCheckin, type FeedRuling } fr
  * server sent onto the Vote card's state and words it.
  */
 
-/** What a vote is on. Story 5.5 adds `freeze`. */
-export type VoteKind = 'challenge'
+/** What a vote is on: a challenge (Story 5.2) or a freeze request (Story 5.5). */
+export type VoteKind = 'challenge' | 'freeze'
 
 /** A challenge ballot. */
 export type VoteChoice = 'fake' | 'real'
 
+/** A freeze ballot (Story 5.5). */
+export type FreezeChoice = 'approve' | 'deny'
+
+/** Any ballot `cast_vote` takes: a challenge's or a freeze's. */
+export type AnyVoteChoice = VoteChoice | FreezeChoice
+
 export function isVoteChoice(value: unknown): value is VoteChoice {
   return value === 'fake' || value === 'real'
+}
+
+export function isFreezeChoice(value: unknown): value is FreezeChoice {
+  return value === 'approve' || value === 'deny'
+}
+
+/** The kind a ballot belongs to. */
+export function choiceKind(choice: AnyVoteChoice): VoteKind {
+  return isFreezeChoice(choice) ? 'freeze' : 'challenge'
 }
 
 /** The toast shows Undo this long (the server accepts it until `cast_at + 6 s`). */
@@ -91,7 +106,7 @@ export interface FeedVote {
   overturnedByName: string | null
 }
 
-/** `vote_tallies`: one open vote's "N of M voted" (the challenger counts in both). */
+/** `vote_tallies`: one open vote's "N of M voted" (a challenger counts in both; a requester never). */
 export interface VoteTally {
   targetKind: VoteKind
   targetId: string

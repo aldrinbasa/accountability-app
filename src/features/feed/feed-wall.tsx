@@ -18,6 +18,8 @@ import { PhotoViewer } from '@/features/feed/photo-viewer'
 import { WinnerSticky } from '@/features/feed/winner-sticky'
 import { GoalSticky } from '@/features/feed/goal-sticky'
 import { RulingSticky } from '@/features/feed/ruling-sticky'
+import { FreezeResultSticky } from '@/features/feed/freeze-result-sticky'
+import { FreezeVoteCard } from '@/features/vote/freeze-vote-card'
 import { VoteCard } from '@/features/vote/vote-card'
 
 /** The next page starts loading this far before the end of the wall comes into view. */
@@ -68,7 +70,7 @@ export interface FeedWallProps {
 
 /**
  * The scrapbook wall, newest first: one Polaroid per row (alternating -2.2 / 2 deg) with event,
- * miss, winner, goal and ruling stickies and Vote cards (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
+ * miss, winner, goal, ruling and freeze result stickies and Vote cards (challenge and freeze) (±1.5 deg, alternating across both) between them, 22px apart. The first 2 photos load eagerly. From item 50 on,
  * items skip layout and paint while off screen (`content-visibility: auto`). Nearing the end loads the
  * next page. Tapping a photo opens the Photo viewer; closing it returns focus to that photo.
  */
@@ -145,6 +147,18 @@ export function FeedWall({
               </li>
             )
           }
+          if (item.type === 'freezeVote') {
+            return (
+              <li key={item.id} className={className}>
+                <FreezeVoteCard
+                  item={item}
+                  viewer={viewer}
+                  tilt={tilt}
+                  articleRef={item.id === anchorId ? anchorRef : undefined}
+                />
+              </li>
+            )
+          }
           return (
             <li key={item.id} className={className}>
               {item.type === 'miss' ? (
@@ -166,6 +180,8 @@ export function FeedWall({
                   groupZone={groupZone ?? viewer.zone}
                   tilt={tilt}
                 />
+              ) : item.type === 'freezeResult' ? (
+                <FreezeResultSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               ) : (
                 <EventSticky item={item} viewerId={viewer.userId} tilt={tilt} />
               )}

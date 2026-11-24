@@ -1,4 +1,5 @@
 import { formatLateLabel, type LateLabel } from '@/domain/checkin'
+import type { FeedFreezeResult, FeedFreezeVote } from '@/domain/freeze-vote'
 import type { FeedGoal } from '@/domain/goal'
 import type { FeedVote } from '@/domain/vote'
 import { beatLine, joinNames } from '@/domain/winner'
@@ -185,9 +186,20 @@ export interface FeedRuling {
 }
 
 export type FeedItem =
-  FeedCheckin | FeedEvent | FeedMiss | FeedWinner | FeedGoal | FeedRuling | FeedVote
+  | FeedCheckin
+  | FeedEvent
+  | FeedMiss
+  | FeedWinner
+  | FeedGoal
+  | FeedRuling
+  | FeedVote
+  | FeedFreezeVote
+  | FeedFreezeResult
 
-/** What a Feed deep link anchors on: a check-in (`/feed/c/{id}`) or a Vote card (`/feed/v/{id}`). */
+/**
+ * What a Feed deep link anchors on: a check-in (`/feed/c/{id}`) or a Vote card (`/feed/v/{id}`, a
+ * challenge's or a freeze request's).
+ */
 export type FeedAnchorKind = 'checkin' | 'vote'
 
 /** One keyset read: older than `before`, or newer than `after` (never both), at most `limit` rows. */

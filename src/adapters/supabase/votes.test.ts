@@ -61,6 +61,23 @@ describe('vote RPCs (Story 5.2)', () => {
     expect(await codeOf(adapter.castVote('challenge', 'ch-1', 'fake'))).toBe('unknown')
   })
 
+  it('cast_vote and undo_vote send a freeze kind and choice (Story 5.5)', async () => {
+    rpc.mockResolvedValueOnce({
+      data: [{ vote_id: 'v-2', cast_at: '2026-11-20T10:00:00+00:00' }],
+      error: null,
+      status: 200,
+    })
+    await adapter.castVote('freeze', 'fr-1', 'deny')
+    expect(rpc).toHaveBeenLastCalledWith('cast_vote', {
+      p_kind: 'freeze',
+      p_id: 'fr-1',
+      p_choice: 'deny',
+    })
+    rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
+    await adapter.undoVote('freeze', 'fr-1')
+    expect(rpc).toHaveBeenLastCalledWith('undo_vote', { p_kind: 'freeze', p_id: 'fr-1' })
+  })
+
   it('undo_vote sends kind and id and maps its refusals', async () => {
     rpc.mockResolvedValueOnce({ data: null, error: null, status: 204 })
     await adapter.undoVote('challenge', 'ch-1')
@@ -71,17 +88,19 @@ describe('vote RPCs (Story 5.2)', () => {
     }
   })
 
-  it('vote_tallies maps challenge rows and drops unknown kinds', async () => {
+  it('vote_tallies maps challenge and freeze rows and drops unknown kinds', async () => {
     rpc.mockResolvedValueOnce({
       data: [
         { target_kind: 'challenge', target_id: 'ch-1', voted_count: 2, eligible_count: 4 },
         { target_kind: 'freeze', target_id: 'fr-1', voted_count: 1, eligible_count: 3 },
+        { target_kind: 'poll', target_id: 'x-1', voted_count: 0, eligible_count: 3 },
       ],
       error: null,
       status: 200,
     })
     expect(await adapter.listVoteTallies('g-1')).toEqual([
       { targetKind: 'challenge', targetId: 'ch-1', votedCount: 2, eligibleCount: 4 },
+      { targetKind: 'freeze', targetId: 'fr-1', votedCount: 1, eligibleCount: 3 },
     ])
     expect(rpc).toHaveBeenLastCalledWith('vote_tallies', { p_group_id: 'g-1' })
     expect(toVoteTallies(null)).toEqual([])

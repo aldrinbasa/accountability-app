@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { FeedItem, FeedPage } from '@/domain/feed'
+import type { FeedFreezeVote } from '@/domain/freeze-vote'
 import {
   BALLOT_FINAL_MS,
+  choiceKind,
+  type AnyVoteChoice,
   type CastVoteResult,
-  type FeedVote,
-  type VoteChoice,
+  type VoteKind,
   type VoteTally,
 } from '@/domain/vote'
 import type { BackendPort } from '@/ports/backend-port'
@@ -22,16 +24,17 @@ export function voteTalliesKey(groupId: string) {
 }
 
 export interface VoteRepository {
-  cast(challengeId: string, choice: VoteChoice): Promise<CastVoteResult>
-  undo(challengeId: string): Promise<void>
+  /** A ballot on a challenge (`fake` | `real`) or a freeze request (`approve` | `deny`). */
+  cast(voteId: string, choice: AnyVoteChoice): Promise<CastVoteResult>
+  undo(kind: VoteKind, voteId: string): Promise<void>
   tallies(groupId: string): Promise<VoteTally[]>
 }
 
 /** Vote reads and writes over `BackendPort` (AD-2: feature hook → repository → adapter). */
 export function createVoteRepository(backend: BackendPort): VoteRepository {
   return {
-    cast: (challengeId, choice) => backend.castVote('challenge', challengeId, choice),
-    undo: (challengeId) => backend.undoVote('challenge', challengeId),
+    cast: (voteId, choice) => backend.castVote(choiceKind(choice), voteId, choice),
+    undo: (kind, voteId) => backend.undoVote(kind, voteId),
     tallies: (groupId) => backend.listVoteTallies(groupId),
   }
 }
@@ -65,13 +68,13 @@ function isFeedPages(data: unknown): data is { pages: FeedPage[] } {
 
 /**
  * Writes the reader's own ballot into every cached Feed page of the group (wall and anchored
- * pages), so the card shows it before the next refetch.
+ * pages), so the card shows it before the next refetch: a challenge's or a freeze request's card.
  */
 export function patchFeedVote(
   queryClient: QueryClient,
   groupId: string,
   voteId: string,
-  patch: Pick<FeedVote, 'myChoice' | 'myCastAt'>,
+  patch: { myChoice: AnyVoteChoice | null; myCastAt: string | null },
 ): void {
   queryClient.setQueriesData({ queryKey: feedKey(groupId) }, (data: unknown) => {
     if (!isFeedPages(data)) return data
@@ -79,12 +82,34 @@ export function patchFeedVote(
       ...data,
       pages: data.pages.map((page) => ({
         ...page,
-        items: page.items.map((item): FeedItem =>
-          item.type === 'vote' && item.id === voteId ? { ...item, ...patch } : item,
-        ),
+        items: page.items.map((item): FeedItem => patchItem(item, voteId, patch)),
       })),
     }
   })
+}
+
+type FeedVoteChoice = Extract<FeedItem, { type: 'vote' }>['myChoice']
+type FreezeVoteChoice = FeedFreezeVote['myChoice']
+
+function patchItem(
+  item: FeedItem,
+  voteId: string,
+  patch: { myChoice: AnyVoteChoice | null; myCastAt: string | null },
+): FeedItem {
+  if (item.id !== voteId) return item
+  if (
+    item.type === 'vote' &&
+    (patch.myChoice === null || choiceKind(patch.myChoice) === 'challenge')
+  ) {
+    return { ...item, myChoice: patch.myChoice as FeedVoteChoice, myCastAt: patch.myCastAt }
+  }
+  if (
+    item.type === 'freezeVote' &&
+    (patch.myChoice === null || choiceKind(patch.myChoice) === 'freeze')
+  ) {
+    return { ...item, myChoice: patch.myChoice as FreezeVoteChoice, myCastAt: patch.myCastAt }
+  }
+  return item
 }
 
 /** Moves the cached tally of one vote by `by` (the reader's own ballot), until the refetch. */
@@ -99,7 +124,7 @@ function shiftTally(queryClient: QueryClient, groupId: string, voteId: string, b
 }
 
 /**
- * `cast_vote` on a challenge of the group (Story 5.2). Never queued (AD-12): offline is the
+ * `cast_vote` on a challenge (Story 5.2) or a freeze request (Story 5.5) of the group. Never queued (AD-12): offline is the
  * caller's error toast. On success it writes the ballot into the cached Feed pages and tally, then
  * refetches the tallies now and once the ballot is final at the server (6 s).
  */
@@ -107,7 +132,7 @@ export function useCastVote(groupId: string) {
   const repository = useVoteRepository('useCastVote')
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ voteId, choice }: { voteId: string; choice: VoteChoice }) =>
+    mutationFn: ({ voteId, choice }: { voteId: string; choice: AnyVoteChoice }) =>
       repository.cast(voteId, choice),
     onSuccess: (result, { voteId, choice }) => {
       patchFeedVote(queryClient, groupId, voteId, { myChoice: choice, myCastAt: result.castAt })
@@ -121,14 +146,14 @@ export function useCastVote(groupId: string) {
 }
 
 /**
- * `undo_vote` on a challenge of the group: clears the cached ballot and tally, then refetches the
- * tallies.
+ * `undo_vote` on a challenge or freeze request of the group: clears the cached ballot and tally,
+ * then refetches the tallies.
  */
-export function useUndoVote(groupId: string) {
+export function useUndoVote(groupId: string, kind: VoteKind) {
   const repository = useVoteRepository('useUndoVote')
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (voteId: string) => repository.undo(voteId),
+    mutationFn: (voteId: string) => repository.undo(kind, voteId),
     onSuccess: (_result, voteId) => {
       patchFeedVote(queryClient, groupId, voteId, { myChoice: null, myCastAt: null })
       shiftTally(queryClient, groupId, voteId, -1)

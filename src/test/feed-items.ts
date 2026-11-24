@@ -1,4 +1,5 @@
 import type { FeedCheckin, FeedEvent, FeedMiss } from '@/domain/feed'
+import type { FeedFreezeResult, FeedFreezeVote } from '@/domain/freeze-vote'
 import type { FeedVote } from '@/domain/vote'
 
 /** A check-in on `group-1`'s wall: Priya's Gym, 2 of 3, on time (override per test). */
@@ -104,6 +105,59 @@ export function feedVote(overrides: Partial<FeedVote> = {}): FeedVote {
     canVote: true,
     overturnedById: null,
     overturnedByName: null,
+    ...overrides,
+  }
+}
+
+/**
+ * A pending freeze request on `group-1`'s wall (Story 5.5): Dev (user-4) wants Study on Sat (21
+ * Nov) frozen, "flu, in bed", 18 h 59 min left at 2026-11-20 03:00 UTC; the reader may vote
+ * (override per test).
+ */
+export function feedFreezeVote(overrides: Partial<FeedFreezeVote> = {}): FeedFreezeVote {
+  return {
+    type: 'freezeVote',
+    id: '00000000-0000-4000-c000-000000000001',
+    groupId: 'group-1',
+    sortAt: '2026-11-20T01:59:00.000000+00:00',
+    requesterId: 'user-4',
+    requesterName: 'Dev',
+    commitmentId: 'commitment-study',
+    title: 'Study',
+    scheduleType: 'fixed_days',
+    sessionDay: '2026-11-21',
+    which: 'this',
+    weekTarget: 6,
+    status: 'pending',
+    reason: 'flu, in bed',
+    closesAt: '2026-11-20T21:59:00.000Z',
+    twoPerson: false,
+    cancelReason: null,
+    myChoice: null,
+    myCastAt: null,
+    canVote: true,
+    ...overrides,
+  }
+}
+
+/** A closed freeze on `group-1`'s wall (Story 5.5): Dev's Study on Sat, approved (override per test). */
+export function feedFreezeResult(overrides: Partial<FeedFreezeResult> = {}): FeedFreezeResult {
+  return {
+    type: 'freezeResult',
+    id: 'event-freeze-1',
+    groupId: 'group-1',
+    sortAt: '2026-11-20T02:30:00.000000+00:00',
+    requesterId: 'user-4',
+    requesterName: 'Dev',
+    freezeRequestId: '00000000-0000-4000-c000-000000000001',
+    outcome: 'approved',
+    reason: 'flu, in bed',
+    missRemoved: false,
+    title: 'Study',
+    scheduleType: 'fixed_days',
+    sessionDay: '2026-11-21',
+    which: 'this',
+    weekTarget: 6,
     ...overrides,
   }
 }

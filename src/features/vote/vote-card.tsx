@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type Ref } from 'react'
-import { Check, Gavel } from '@phosphor-icons/react'
+import { Check, SealQuestion } from '@phosphor-icons/react'
 import { backendErrorCode } from '@/domain/error-codes'
 import type { FeedCheckin, FeedViewer } from '@/domain/feed'
 import {
@@ -58,7 +58,7 @@ export interface VoteCardProps {
  */
 export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCardProps) {
   const cast = useCastVote(item.groupId)
-  const undo = useUndoVote(item.groupId)
+  const undo = useUndoVote(item.groupId, 'challenge')
   const refetchFeed = useRefetchFeed(item.groupId)
   const tallies = useVoteTallies(item.groupId)
   const tally = tallies.data?.find((entry) => entry.targetId === item.id) ?? null
@@ -175,7 +175,7 @@ export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCa
       <h2 className="sr-only">{voteHeading(item, viewer.userId)}</h2>
       <StickyNote tilt={tilt} tone="vote" className="mx-auto w-full">
         <p className="mb-2 flex flex-wrap items-center gap-1.5 type-label text-obj-ink">
-          <Icon icon={Gavel} size={20} />
+          <Icon icon={SealQuestion} size={20} />
           <span aria-hidden="true" className={cn(state.kind === 'cancelled' && 'line-through')}>
             {kicker.text}
           </span>

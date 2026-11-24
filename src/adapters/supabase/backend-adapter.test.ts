@@ -21,6 +21,7 @@ const db = vi.hoisted(() => {
   const query = {
     select: vi.fn(),
     eq: vi.fn(),
+    in: vi.fn(),
     is: vi.fn(),
     order: vi.fn(),
     or: vi.fn(),
@@ -32,6 +33,7 @@ const db = vi.hoisted(() => {
   query.update.mockReturnValue(query)
   query.or.mockReturnValue(query)
   query.eq.mockReturnValue(query)
+  query.in.mockReturnValue(query)
   query.is.mockReturnValue(query)
   return { query, from: vi.fn(() => query), rpc: vi.fn() }
 })
@@ -2584,7 +2586,8 @@ describe('feed reads', () => {
     })
     db.query.maybeSingle.mockResolvedValueOnce({ data: row, error: null, status: 200 })
     expect(await adapter.getFeedVote('g-1', 'ch-1')).toMatchObject({ type: 'vote', id: 'ch-1' })
-    expect(db.query.eq).toHaveBeenCalledWith('item_kind', 'challenge')
+    // Story 5.5: a freeze request's card anchors the same way.
+    expect(db.query.in).toHaveBeenCalledWith('item_kind', ['challenge', 'freeze'])
     expect(db.query.eq).toHaveBeenCalledWith('item_id', 'ch-1')
 
     db.query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 })

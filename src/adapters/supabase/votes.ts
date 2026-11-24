@@ -6,7 +6,7 @@ import type { Database } from '@/adapters/supabase/database.types'
 import { toBackendError } from '@/adapters/supabase/rpc-error'
 
 /**
- * The vote RPCs (Story 5.2), in their own module (Epic 4 retro A9: split the adapter by area).
+ * The vote RPCs (Stories 5.2, 5.5: challenges and freeze requests), in their own module (Epic 4 retro A9: split the adapter by area).
  * Spread into `supabaseBackendAdapter`.
  */
 
@@ -22,13 +22,13 @@ export function toCastVoteResult(rows: readonly CastVoteRow[] | null): CastVoteR
   return { voteId: row.vote_id, castAt: row.cast_at }
 }
 
-/** `vote_tallies` rows as tallies; kinds the app does not know yet are dropped. */
+/** `vote_tallies` rows as tallies; kinds the app does not know are dropped. */
 export function toVoteTallies(rows: readonly VoteTallyRow[] | null): VoteTally[] {
   return (rows ?? []).flatMap((row): VoteTally[] =>
-    row.target_kind === 'challenge'
+    row.target_kind === 'challenge' || row.target_kind === 'freeze'
       ? [
           {
-            targetKind: 'challenge',
+            targetKind: row.target_kind,
             targetId: row.target_id,
             votedCount: row.voted_count,
             eligibleCount: row.eligible_count,

@@ -4,6 +4,7 @@ import { GROUP_COPY } from '@/domain/groups'
 import { streakMeta, streaksByCommitment, type Streak } from '@/domain/streaks'
 import type { CameraTarget } from '@/domain/camera'
 import {
+  approvedWeekFreezes,
   freezeOptionKey,
   pendingMeta,
   todayRowOption,
@@ -77,24 +78,35 @@ function Rows({
   streaks?: ReadonlyMap<string, Streak>
   /** The row whose streak plays the milestone pop. */
   popId?: string | null
-  /** A row's freeze state (Story 5.4): the pending line or the approved reason. */
-  freezeOf?: (item: TodayItem) => { meta: string | null; frozenReason: string | null }
+  /**
+   * A row's freeze state: the pending line or the approved day reason (Story 5.4), and the week's
+   * approved freezes for a times-per-week row (Story 5.5).
+   */
+  freezeOf?: (item: TodayItem) => {
+    meta: string | null
+    frozenReason: string | null
+    weekFrozen: number
+  }
 }) {
   return (
     <ul className="flex flex-col gap-2">
-      {items.map((item) => (
-        <DueRow
-          key={item.commitmentId}
-          item={item}
-          onMore={(button) => onMore(item, button)}
-          onCheckIn={onCheckIn ? (button) => onCheckIn(item, button) : undefined}
-          bump={item.commitmentId === bumpId}
-          streak={streaks ? streakMeta(streaks.get(item.commitmentId)) : null}
-          streakPop={item.commitmentId === popId}
-          freezeMeta={freezeOf?.(item).meta ?? null}
-          frozenReason={freezeOf?.(item).frozenReason ?? null}
-        />
-      ))}
+      {items.map((item) => {
+        const freeze = freezeOf?.(item)
+        return (
+          <DueRow
+            key={item.commitmentId}
+            item={item}
+            onMore={(button) => onMore(item, button)}
+            onCheckIn={onCheckIn ? (button) => onCheckIn(item, button) : undefined}
+            bump={item.commitmentId === bumpId}
+            streak={streaks ? streakMeta(streaks.get(item.commitmentId)) : null}
+            streakPop={item.commitmentId === popId}
+            freezeMeta={freeze?.meta ?? null}
+            frozenReason={freeze?.frozenReason ?? null}
+            weekFrozen={freeze?.weekFrozen ?? 0}
+          />
+        )
+      })}
     </ul>
   )
 }
@@ -247,12 +259,18 @@ export function TodaySections({ groupId, waiting }: { groupId: string; waiting: 
   }
 
   function freezeOf(item: TodayItem) {
+    const weekFrozen =
+      data && freezeRequests ? approvedWeekFreezes(item, freezeRequests, data.summary.weekStart) : 0
     const request = rowRequest(item)
-    if (!request) return { meta: null, frozenReason: null }
+    if (!request) return { meta: null, frozenReason: null, weekFrozen }
     if (request.status === 'approved') {
-      return { meta: null, frozenReason: request.kind === 'day' ? request.reason : null }
+      return {
+        meta: null,
+        frozenReason: request.kind === 'day' ? request.reason : null,
+        weekFrozen,
+      }
     }
-    return { meta: pendingMeta(request, now), frozenReason: null }
+    return { meta: pendingMeta(request, now), frozenReason: null, weekFrozen }
   }
 
   /** The Overflow's freezable option for a row, or null (no Request freeze). */

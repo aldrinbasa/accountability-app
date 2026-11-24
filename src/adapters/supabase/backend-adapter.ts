@@ -76,6 +76,7 @@ import { supabase, supabaseUrl } from '@/adapters/supabase/client'
 import type { Database, Tables } from '@/adapters/supabase/database.types'
 import { challengeAdapter } from '@/adapters/supabase/challenges'
 import { freezeAdapter } from '@/adapters/supabase/freezes'
+import { toFeedFreezeResult, toFeedFreezeVote } from '@/adapters/supabase/freeze-feed'
 import { overturnAdapter } from '@/adapters/supabase/overturns'
 import { voteAdapter } from '@/adapters/supabase/votes'
 import { toBackendError } from '@/adapters/supabase/rpc-error'
@@ -998,6 +999,8 @@ export function toFeedItem(row: FeedItemRow): FeedItem | null {
   if (kind === 'goal_result') return toFeedGoal(row, id, groupId, sortAt)
   if (kind === 'ruling') return toFeedRuling(row, id, groupId, sortAt)
   if (kind === 'challenge') return toFeedVote(row, id, groupId, sortAt)
+  if (kind === 'freeze') return toFeedFreezeVote(row, id, groupId, sortAt)
+  if (kind === 'freeze_result') return toFeedFreezeResult(row, id, groupId, sortAt)
   if (!isFeedEventKind(kind)) return null
   return {
     type: 'event',
@@ -1638,7 +1641,7 @@ export const supabaseBackendAdapter: BackendPort = {
       .from('feed_items')
       .select(FEED_COLUMNS)
       .eq('group_id', groupId)
-      .eq('item_kind', 'challenge')
+      .in('item_kind', ['challenge', 'freeze'])
       .eq('item_id', voteId)
       .maybeSingle()
     if (error) throw toBackendError(error, status)

@@ -159,7 +159,7 @@ export function rowDone(item: TodayItem): boolean {
  * that starts next week "4 times per week · starts Mon 23 Nov". A done row adds "· Done"; times per
  * week adds "· counted today" or, at its target, "· target met".
  */
-export function scheduleMeta(item: TodayItem): string {
+export function scheduleMeta(item: TodayItem, frozen = 0): string {
   const done = rowDone(item) ? ` · ${TODAY_COPY.done}` : ''
   if (item.kind === 'task') {
     const base = item.deadline
@@ -175,9 +175,13 @@ export function scheduleMeta(item: TodayItem): string {
     return item.startsOn ? `${schedule} · starts ${formatShortDate(item.startsOn)}` : schedule
   }
   if (item.scheduleType === 'times_per_week' && item.target !== null) {
-    if (item.targetMet) return `${schedule} · ${TODAY_COPY.targetMet}`
+    // Story 5.5: an approved freeze lowered this week's target: "2 times this week · 1 frozen".
+    const head = frozen > 0 ? frozenWeekText(item.target, frozen) : schedule
+    // Every session of the week frozen: nothing to go and nothing met.
+    if (frozen > 0 && item.target === 0) return head
+    if (item.targetMet) return `${head} · ${TODAY_COPY.targetMet}`
     const toGo = Math.max(0, item.target - item.counted)
-    const parts = [schedule]
+    const parts = [head]
     if (toGo > 0) parts.push(`${toGo} to go`)
     if (item.countedToday) parts.push(TODAY_COPY.countedToday)
     return parts.join(' · ')
@@ -195,9 +199,18 @@ export function showsRing(item: TodayItem): boolean {
   )
 }
 
-/** The Progress ring's accessible name: "Gym, 0 of 3 this week". */
-export function ringLabel(activity: string, counted: number, target: number): string {
-  return `${activity}, ${counted} of ${target} this week`
+/**
+ * The Progress ring's accessible name: "Gym, 0 of 3 this week" ("Gym, 1 of 2 this week, 1 frozen"
+ * with approved freezes, Story 5.5).
+ */
+export function ringLabel(activity: string, counted: number, target: number, frozen = 0): string {
+  const base = `${activity}, ${counted} of ${target} this week`
+  return frozen > 0 ? `${base}, ${frozen} frozen` : base
+}
+
+/** A times-per-week week with approved freezes: "2 times this week · 1 frozen" (Story 5.5). */
+export function frozenWeekText(target: number, frozen: number): string {
+  return `${target} ${target === 1 ? 'time' : 'times'} this week · ${frozen} frozen`
 }
 
 /** The Overflow button's name: "More actions for Grocery run". */

@@ -1,6 +1,8 @@
 import { errorCopy } from '@/domain/error-codes'
 import {
+  approvedPlanLine,
   approvedToast,
+  approvedWeekFreezes,
   commitmentOptions,
   dayLine,
   effectLine,
@@ -12,6 +14,7 @@ import {
   missOptions,
   noScoreLine,
   pendingMeta,
+  planRowApproved,
   planRowPending,
   reasonCounter,
   requestFreezeLabel,
@@ -283,5 +286,39 @@ describe('freezeFailure', () => {
     )
     expect(freezeFailure('unknown')).toEqual({ kind: 'failed' })
     expect(freezeFailure('vote_closed')).toEqual({ kind: 'failed' })
+  })
+})
+
+describe('approved freezes (Story 5.5)', () => {
+  it('counts the approved week freezes of a times-per-week row in its week only', () => {
+    const approved = request({
+      id: 'f-2',
+      commitmentId: 'c-gym',
+      kind: 'week',
+      status: 'approved',
+      reason: 'knee',
+    })
+    const requests = [
+      approved,
+      { ...approved, id: 'f-3' },
+      { ...approved, id: 'f-4', status: 'pending' as const },
+      { ...approved, id: 'f-5', weekStart: '2026-11-09' },
+    ]
+    expect(approvedWeekFreezes(GYM, requests, '2026-11-16')).toBe(2)
+    expect(approvedWeekFreezes(STUDY, requests, '2026-11-16')).toBe(0)
+    expect(
+      approvedWeekFreezes({ ...GYM, section: 'starts_next_week' }, requests, '2026-11-16'),
+    ).toBe(0)
+  })
+
+  it('My plan lines: the approved requests of a commitment, earliest first', () => {
+    const sat = request({ status: 'approved', reason: 'flu, in bed' })
+    const fri = request({ id: 'f-0', status: 'approved', startsAt: '2026-11-19T16:00:00Z' })
+    const pending = request({ id: 'f-9' })
+    expect(planRowApproved('c-study', [sat, pending, fri]).map((r) => r.id)).toEqual(['f-0', 'f-1'])
+    expect(approvedPlanLine(sat, 'Asia/Manila')).toBe('Frozen · Sat · flu, in bed')
+    expect(approvedPlanLine({ ...sat, kind: 'week', reason: 'flu' }, 'Asia/Manila')).toBe(
+      'Frozen · one session · flu',
+    )
   })
 })

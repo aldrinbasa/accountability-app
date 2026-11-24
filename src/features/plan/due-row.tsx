@@ -37,6 +37,10 @@ import { ProgressRing } from '@/ui/progress-ring'
  * Story 5.4: `freezeMeta` adds the pending freeze line under the meta ("Freeze vote · 21 h left",
  * Check in stays). `frozenReason` marks an approved day freeze: the snowflake in the icon's place,
  * "Frozen · flu, in bed" as the meta in `muted`, and no Check in.
+ *
+ * Story 5.5: `weekFrozen` (times per week) is how many sessions of the week an approved freeze took
+ * off: the ring keeps the server's lowered target ("1/2") and names them ("Gym, 1 of 2 this week,
+ * 1 frozen"), a snowflake leads the meta, which reads "2 times this week · 1 frozen".
  */
 export function DueRow({
   item,
@@ -47,6 +51,7 @@ export function DueRow({
   streakPop = false,
   freezeMeta = null,
   frozenReason = null,
+  weekFrozen = 0,
 }: {
   item: TodayItem
   onMore?: (button: HTMLButtonElement) => void
@@ -59,6 +64,8 @@ export function DueRow({
   freezeMeta?: string | null
   /** An approved day freeze's reason: the row reads frozen. Null when not frozen. */
   frozenReason?: string | null
+  /** Times per week: sessions of this week taken off by approved freezes. */
+  weekFrozen?: number
 }) {
   const moreRef = useRef<HTMLButtonElement>(null)
   const checkInRef = useRef<HTMLButtonElement>(null)
@@ -85,7 +92,7 @@ export function DueRow({
         <ProgressRing
           value={item.counted}
           target={item.target}
-          label={ringLabel(item.activityName, item.counted, item.target)}
+          label={ringLabel(item.activityName, item.counted, item.target, weekFrozen)}
           className={bump ? 'animate-count-bump' : undefined}
         />
       ) : (
@@ -101,7 +108,17 @@ export function DueRow({
       <div className="min-w-0 flex-1">
         <h3 className="break-words type-title-sm">{title}</h3>
         <p className="break-words type-meta text-muted">
-          {frozen ? frozenMeta(frozenReason) : scheduleMeta(item)}
+          {weekFrozen > 0 && !frozen ? (
+            <Snowflake
+              size={16}
+              weight="bold"
+              aria-hidden="true"
+              focusable="false"
+              className="mr-1 inline-block align-[-2px]"
+              data-icon="week-frozen"
+            />
+          ) : null}
+          {frozen ? frozenMeta(frozenReason) : scheduleMeta(item, weekFrozen)}
           {streak && !frozen ? (
             <>
               {' · '}

@@ -21,7 +21,8 @@ import type {
   RequestFreezeInput,
   RequestFreezeResult,
 } from '@/domain/freeze'
-import type { CastVoteResult, FeedVote, VoteChoice, VoteTally } from '@/domain/vote'
+import type { AnyVoteChoice, CastVoteResult, FeedVote, VoteKind, VoteTally } from '@/domain/vote'
+import type { FeedFreezeVote } from '@/domain/freeze-vote'
 import type { FeedCheckin, FeedCursor, FeedItem, FeedRowsRequest, FeedRuling } from '@/domain/feed'
 import type { GoalPeriod, GroupGoal } from '@/domain/goal'
 import type { EndedMembership, GroupMember, Invite, InvitePreview, MyGroup } from '@/domain/groups'
@@ -441,21 +442,26 @@ export function createFakeBackend(
   const voteTallies: Record<string, VoteTally[]> | undefined = options.voteTallies
     ? { ...options.voteTallies }
     : undefined
-  const findVote = (id: string): FeedVote | undefined => {
+  const findVote = (id: string): FeedVote | FeedFreezeVote | undefined => {
     for (const items of Object.values(feed)) {
-      const found = items.find((item): item is FeedVote => item.type === 'vote' && item.id === id)
+      const found = items.find(
+        (item): item is FeedVote | FeedFreezeVote =>
+          (item.type === 'vote' || item.type === 'freezeVote') && item.id === id,
+      )
       if (found) return found
     }
     return undefined
   }
-  const patchVote = (id: string, patch: Partial<FeedVote>) => {
+  const patchVote = (id: string, patch: Partial<FeedVote> | Partial<FeedFreezeVote>) => {
     for (const [groupId, items] of Object.entries(feed)) {
       feed[groupId] = items.map((item) =>
-        item.type === 'vote' && item.id === id ? { ...item, ...patch } : item,
+        (item.type === 'vote' || item.type === 'freezeVote') && item.id === id
+          ? ({ ...item, ...patch } as FeedItem)
+          : item,
       )
     }
   }
-  const shiftTally = (vote: FeedVote, by: number) => {
+  const shiftTally = (vote: { groupId: string; id: string }, by: number) => {
     if (!voteTallies) return
     voteTallies[vote.groupId] = (voteTallies[vote.groupId] ?? []).map((tally) =>
       tally.targetId === vote.id ? { ...tally, votedCount: tally.votedCount + by } : tally,
@@ -911,7 +917,9 @@ export function createFakeBackend(
     getFeedVote: vi.fn(async (groupId: string, voteId: string) => {
       if (!groups.some((group) => group.id === groupId)) return null
       return (
-        (feed[groupId] ?? []).find((item) => item.type === 'vote' && item.id === voteId) ?? null
+        (feed[groupId] ?? []).find(
+          (item) => (item.type === 'vote' || item.type === 'freezeVote') && item.id === voteId,
+        ) ?? null
       )
     }),
     // RLS: a non-member gets nothing.
@@ -1054,30 +1062,34 @@ export function createFakeBackend(
     }),
     // The server's rules in short (no 6 s window: undo always succeeds unless the vote closed).
     castVote: vi.fn(
-      async (_kind: 'challenge', id: string, choice: VoteChoice): Promise<CastVoteResult> => {
+      async (_kind: VoteKind, id: string, choice: AnyVoteChoice): Promise<CastVoteResult> => {
         const vote = findVote(id)
         if (!vote || !groups.some((group) => group.id === vote.groupId)) {
           throw new BackendError('not_member')
         }
-        if (vote.status !== 'open' || Date.now() >= Date.parse(vote.closesAt)) {
+        const open = vote.type === 'vote' ? vote.status === 'open' : vote.status === 'pending'
+        if (!open || Date.now() >= Date.parse(vote.closesAt)) {
           throw new BackendError('vote_closed')
         }
-        if (!vote.canVote || vote.challengerId === user?.id || vote.ownerId === user?.id) {
-          throw new BackendError('not_eligible')
-        }
+        const locked =
+          vote.type === 'vote'
+            ? vote.challengerId === user?.id || vote.ownerId === user?.id
+            : vote.requesterId === user?.id
+        if (!vote.canVote || locked) throw new BackendError('not_eligible')
         if (vote.myChoice !== null) throw new BackendError('already_voted')
         const castAt = new Date().toISOString()
-        patchVote(id, { myChoice: choice, myCastAt: castAt })
+        patchVote(id, { myChoice: choice, myCastAt: castAt } as Partial<FeedVote>)
         shiftTally(vote, 1)
         return { voteId: `vote-${id}`, castAt }
       },
     ),
-    undoVote: vi.fn(async (_kind: 'challenge', id: string) => {
+    undoVote: vi.fn(async (_kind: VoteKind, id: string) => {
       const vote = findVote(id)
       if (!vote || !groups.some((group) => group.id === vote.groupId)) {
         throw new BackendError('not_member')
       }
-      if (vote.status !== 'open') throw new BackendError('vote_closed')
+      const open = vote.type === 'vote' ? vote.status === 'open' : vote.status === 'pending'
+      if (!open) throw new BackendError('vote_closed')
       if (vote.myChoice === null) return
       patchVote(id, { myChoice: null, myCastAt: null })
       shiftTally(vote, -1)
@@ -1086,18 +1098,29 @@ export function createFakeBackend(
       const group = groups.find((g) => g.id === groupId)
       if (!group) throw new BackendError('not_member')
       if (voteTallies) return [...(voteTallies[groupId] ?? [])]
-      return (feed[groupId] ?? []).flatMap((item): VoteTally[] =>
-        item.type === 'vote' && item.status === 'open'
-          ? [
-              {
-                targetKind: 'challenge',
-                targetId: item.id,
-                votedCount: 1 + (item.myChoice !== null ? 1 : 0),
-                eligibleCount: Math.max(1, group.memberCount - 1),
-              },
-            ]
-          : [],
-      )
+      return (feed[groupId] ?? []).flatMap((item): VoteTally[] => {
+        if (item.type === 'vote' && item.status === 'open') {
+          return [
+            {
+              targetKind: 'challenge',
+              targetId: item.id,
+              votedCount: 1 + (item.myChoice !== null ? 1 : 0),
+              eligibleCount: Math.max(1, group.memberCount - 1),
+            },
+          ]
+        }
+        if (item.type === 'freezeVote' && item.status === 'pending') {
+          return [
+            {
+              targetKind: 'freeze',
+              targetId: item.id,
+              votedCount: item.myChoice !== null ? 1 : 0,
+              eligibleCount: Math.max(1, group.memberCount - 1),
+            },
+          ]
+        }
+        return []
+      })
     }),
     listFreezeOptions: vi.fn(async (groupId: string): Promise<FreezeOption[]> => {
       if (!groups.some((group) => group.id === groupId)) throw new BackendError('not_member')

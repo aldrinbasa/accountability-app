@@ -71,7 +71,7 @@ describe('vote data (Story 5.2)', () => {
   it('cast writes the ballot into every Feed cache and the tally; undo clears it', async () => {
     const { backend, queryClient, wrapper } = setup()
     const { result } = renderHook(
-      () => ({ cast: useCastVote(TEST_GROUP.id), undo: useUndoVote(TEST_GROUP.id) }),
+      () => ({ cast: useCastVote(TEST_GROUP.id), undo: useUndoVote(TEST_GROUP.id, 'challenge') }),
       { wrapper },
     )
 

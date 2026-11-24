@@ -3,9 +3,11 @@ import { useLocation, useNavigate, useParams } from 'react-router'
 import { ArrowLeft, CloudSlash, ListChecks, PencilSimple, Snowflake } from '@phosphor-icons/react'
 import { CUSTOM_ACTIVITY_ICON, presetIcon } from '@/domain/activities'
 import {
+  approvedPlanLine,
   commitmentOptions,
   freezeOptionKey,
   pendingMeta,
+  planRowApproved,
   planRowPending,
   requestFreezeLabel,
   type FreezeOption,
@@ -16,6 +18,7 @@ import { editLabel, MY_PLAN_COPY, myPlanIn, myPlanMeta, type MyPlanItem } from '
 import { itemTitle } from '@/domain/today'
 import { useFreezeOptions, useMyFreezes } from '@/data/freeze'
 import { useCommitment, useMyPlan } from '@/data/plan'
+import { useMemberTimeZone } from '@/data/profile'
 import { EmptyState } from '@/ui/empty-state'
 import { Icon } from '@/ui/icon'
 import { IconButton } from '@/ui/icon-button'
@@ -190,16 +193,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 /**
  * A My plan row: the activity icon, the title, the state meta line and Edit when allowed. Story 5.4:
  * a snowflake button "Request freeze for Study" while the server lists something of it as freezable,
- * and a pending request's line ("Freeze vote · 21 h left").
+ * and a pending request's line ("Freeze vote · 21 h left"). Story 5.5: each approved freeze in an
+ * unlocked week as a line after a snowflake ("Frozen · Sat · flu, in bed").
  */
 function PlanRow({
   item,
   pending,
+  approved = [],
+  zone,
   now,
   onRequestFreeze,
 }: {
   item: MyPlanItem
   pending: FreezeRequest | null
+  approved?: readonly FreezeRequest[]
+  zone: string
   now: Date
   onRequestFreeze?: (button: HTMLButtonElement) => void
 }) {
@@ -221,6 +229,18 @@ function PlanRow({
       <div className="min-w-0 flex-1">
         <h3 className="break-words type-title-sm">{title}</h3>
         <p className="break-words type-meta text-muted">{myPlanMeta(item)}</p>
+        {approved.map((request) => (
+          <p key={request.id} className="break-words type-meta text-muted" data-freeze-approved="">
+            <Snowflake
+              size={16}
+              weight="bold"
+              aria-hidden="true"
+              focusable="false"
+              className="mr-1 inline-block align-[-2px]"
+            />
+            {approvedPlanLine(request, zone)}
+          </p>
+        ))}
         {pending ? (
           <p className="break-words type-meta text-muted" data-freeze-meta="">
             {pendingMeta(pending, now)}
@@ -260,12 +280,14 @@ function Rows({
   items,
   options = [],
   requests = [],
+  zone,
   now,
   onRequestFreeze,
 }: {
   items: readonly MyPlanItem[]
   options?: readonly FreezeOption[]
   requests?: readonly FreezeRequest[]
+  zone: string
   now: Date
   onRequestFreeze?: (item: MyPlanItem, options: FreezeOption[], button: HTMLButtonElement) => void
 }) {
@@ -278,7 +300,9 @@ function Rows({
             key={item.commitmentId}
             item={item}
             now={now}
+            zone={zone}
             pending={planRowPending(item.commitmentId, requests)}
+            approved={planRowApproved(item.commitmentId, requests)}
             onRequestFreeze={
               onRequestFreeze && own.length > 0
                 ? (button) => onRequestFreeze(item, own, button)
@@ -320,6 +344,7 @@ function MyPlanSections({ groupId, solo }: { groupId: string; solo: boolean }) {
   const freezeOptions = useFreezeOptions(groupId).data
   const freezeRequests = useMyFreezes(groupId).data
   const now = useMinuteClock()
+  const zone = useMemberTimeZone()
   const [freeze, setFreeze] = useState<{
     item: MyPlanItem
     options: FreezeOption[]
@@ -351,6 +376,7 @@ function MyPlanSections({ groupId, solo }: { groupId: string; solo: boolean }) {
             items={current}
             options={freezeOptions}
             requests={freezeRequests}
+            zone={zone}
             now={now}
             onRequestFreeze={(item, options, opener) => {
               setFreeze({ item, options, opener })
@@ -363,7 +389,7 @@ function MyPlanSections({ groupId, solo }: { groupId: string; solo: boolean }) {
       </Section>
       {past.length > 0 ? (
         <Section title={MY_PLAN_COPY.past}>
-          <Rows items={past} now={now} />
+          <Rows items={past} zone={zone} now={now} />
         </Section>
       ) : null}
       {freeze ? (

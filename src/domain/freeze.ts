@@ -210,13 +210,55 @@ export function todayRowRequest(
   const own = requests.filter((r) => r.commitmentId === item.commitmentId)
   let matches: FreezeRequest[]
   if (isTimesPerWeek(item)) {
-    // An approved week freeze lowers the ring (Story 5.5); here only the pending vote shows.
+    // An approved week freeze lowers the ring (approvedWeekFreezes); here only the pending vote.
     matches = own.filter((r) => r.kind === 'week' && r.weekStart === weekStart)
     return matches.find((r) => r.status === 'pending') ?? null
   }
   if (item.kind === 'task') matches = own
   else matches = own.filter((r) => localDate(r.startsAt, zone) === memberToday)
   return matches.find((r) => r.status === 'approved') ?? matches[0] ?? null
+}
+
+/**
+ * How many sessions of a times-per-week row's week are frozen (its approved week requests, Story
+ * 5.5): the server already lowered the row's target by as many. 0 for other rows.
+ */
+export function approvedWeekFreezes(
+  item: Pick<TodayItem, 'commitmentId' | 'kind' | 'scheduleType' | 'section'>,
+  requests: readonly FreezeRequest[],
+  weekStart: string,
+): number {
+  if (item.section === 'starts_next_week' || !isTimesPerWeek(item)) return 0
+  return requests.filter(
+    (r) =>
+      r.commitmentId === item.commitmentId &&
+      r.kind === 'week' &&
+      r.status === 'approved' &&
+      r.weekStart === weekStart,
+  ).length
+}
+
+/** The approved requests a My plan row shows (Story 5.5), earliest session first. */
+export function planRowApproved(
+  commitmentId: string,
+  requests: readonly FreezeRequest[],
+): FreezeRequest[] {
+  return requests
+    .filter((r) => r.commitmentId === commitmentId && r.status === 'approved')
+    .sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt))
+}
+
+/**
+ * A My plan row's approved freeze: a day "Frozen · Sat · flu, in bed" (the session's member-local
+ * weekday), a times-per-week week "Frozen · one session · flu".
+ */
+export function approvedPlanLine(
+  request: Pick<FreezeRequest, 'kind' | 'reason' | 'startsAt'>,
+  zone: string,
+): string {
+  if (request.kind === 'week') return `${FREEZE_COPY.frozen} · one session · ${request.reason}`
+  const day = sessionDay(request.startsAt, zone)
+  return day ? `${FREEZE_COPY.frozen} · ${day} · ${request.reason}` : frozenMeta(request.reason)
 }
 
 /** The pending request a My plan row shows: the one closing first. Null when none. */

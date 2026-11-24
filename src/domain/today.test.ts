@@ -78,6 +78,14 @@ describe('Today formatters', () => {
     expect(scheduleMeta(TIMES)).toBe('3 times per week · 3 to go')
     expect(scheduleMeta({ ...TIMES, counted: 2 })).toBe('3 times per week · 1 to go')
     expect(scheduleMeta({ ...TIMES, counted: 3 })).toBe('3 times per week')
+    // Story 5.5: an approved freeze lowered the target to 2.
+    expect(scheduleMeta({ ...TIMES, target: 2, counted: 1 }, 1)).toBe(
+      '2 times this week · 1 frozen · 1 to go',
+    )
+    expect(ringLabel('Gym', 1, 2, 1)).toBe('Gym, 1 of 2 this week, 1 frozen')
+    expect(scheduleMeta({ ...TIMES, target: 0, counted: 0, targetMet: true }, 1)).toBe(
+      '0 times this week · 1 frozen',
+    )
     expect(scheduleMeta({ ...TIMES, target: 1 })).toBe('1 time per week · 1 to go')
     expect(scheduleMeta(TASK)).toBe('Task · by Sun')
     expect(scheduleMeta({ ...TASK, deadline: '2026-11-20' })).toBe('Task · by Fri')
