@@ -77,17 +77,23 @@ isOneToOne: false
                   ]
                 },"challenges": {
                   Row: {
-                    "cancel_reason": string | null,"challenger_id": string,"checkin_id": string,"closed_at": string | null,"closes_at": string,"created_at": string,"early_close_at": string | null,"fake_count": number | null,"group_id": string,"id": string,"opened_at": string,"real_count": number | null,"status": string,"subject_user_id": string,"updated_at": string
+                    "cancel_reason": string | null,"cancelled_by": string | null,"challenger_id": string,"checkin_id": string,"closed_at": string | null,"closes_at": string,"created_at": string,"early_close_at": string | null,"fake_count": number | null,"group_id": string,"id": string,"opened_at": string,"real_count": number | null,"status": string,"subject_user_id": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "cancel_reason"?: string | null,"challenger_id": string,"checkin_id": string,"closed_at"?: string | null,"closes_at": string,"created_at"?: string,"early_close_at"?: string | null,"fake_count"?: number | null,"group_id": string,"id"?: string,"opened_at": string,"real_count"?: number | null,"status"?: string,"subject_user_id": string,"updated_at"?: string
+                    "cancel_reason"?: string | null,"cancelled_by"?: string | null,"challenger_id": string,"checkin_id": string,"closed_at"?: string | null,"closes_at": string,"created_at"?: string,"early_close_at"?: string | null,"fake_count"?: number | null,"group_id": string,"id"?: string,"opened_at": string,"real_count"?: number | null,"status"?: string,"subject_user_id": string,"updated_at"?: string
                   }
                   Update: {
-                    "cancel_reason"?: string | null,"challenger_id"?: string,"checkin_id"?: string,"closed_at"?: string | null,"closes_at"?: string,"created_at"?: string,"early_close_at"?: string | null,"fake_count"?: number | null,"group_id"?: string,"id"?: string,"opened_at"?: string,"real_count"?: number | null,"status"?: string,"subject_user_id"?: string,"updated_at"?: string
+                    "cancel_reason"?: string | null,"cancelled_by"?: string | null,"challenger_id"?: string,"checkin_id"?: string,"closed_at"?: string | null,"closes_at"?: string,"created_at"?: string,"early_close_at"?: string | null,"fake_count"?: number | null,"group_id"?: string,"id"?: string,"opened_at"?: string,"real_count"?: number | null,"status"?: string,"subject_user_id"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "challenges_cancelled_by_fkey"
+      columns: ["cancelled_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "challenges_challenger_id_fkey"
       columns: ["challenger_id"]
 isOneToOne: false
@@ -255,17 +261,23 @@ isOneToOne: false
                   ]
                 },"freeze_requests": {
                   Row: {
-                    "cancel_reason": string | null,"closed_at": string | null,"closes_at": string,"commitment_id": string,"created_at": string,"early_close_at": string | null,"group_id": string,"id": string,"opened_at": string,"reason": string,"requester_id": string,"session_id": string,"status": string,"updated_at": string,"week_start": string
+                    "cancel_reason": string | null,"cancelled_by": string | null,"closed_at": string | null,"closes_at": string,"commitment_id": string,"created_at": string,"early_close_at": string | null,"group_id": string,"id": string,"opened_at": string,"reason": string,"requester_id": string,"session_id": string,"status": string,"updated_at": string,"week_start": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "cancel_reason"?: string | null,"closed_at"?: string | null,"closes_at": string,"commitment_id": string,"created_at"?: string,"early_close_at"?: string | null,"group_id": string,"id"?: string,"opened_at": string,"reason": string,"requester_id": string,"session_id": string,"status"?: string,"updated_at"?: string,"week_start": string
+                    "cancel_reason"?: string | null,"cancelled_by"?: string | null,"closed_at"?: string | null,"closes_at": string,"commitment_id": string,"created_at"?: string,"early_close_at"?: string | null,"group_id": string,"id"?: string,"opened_at": string,"reason": string,"requester_id": string,"session_id": string,"status"?: string,"updated_at"?: string,"week_start": string
                   }
                   Update: {
-                    "cancel_reason"?: string | null,"closed_at"?: string | null,"closes_at"?: string,"commitment_id"?: string,"created_at"?: string,"early_close_at"?: string | null,"group_id"?: string,"id"?: string,"opened_at"?: string,"reason"?: string,"requester_id"?: string,"session_id"?: string,"status"?: string,"updated_at"?: string,"week_start"?: string
+                    "cancel_reason"?: string | null,"cancelled_by"?: string | null,"closed_at"?: string | null,"closes_at"?: string,"commitment_id"?: string,"created_at"?: string,"early_close_at"?: string | null,"group_id"?: string,"id"?: string,"opened_at"?: string,"reason"?: string,"requester_id"?: string,"session_id"?: string,"status"?: string,"updated_at"?: string,"week_start"?: string
                   }
                   Relationships: [
                     {
+      foreignKeyName: "freeze_requests_cancelled_by_fkey"
+      columns: ["cancelled_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
       foreignKeyName: "freeze_requests_commitment_id_fkey"
       columns: ["commitment_id"]
 isOneToOne: false
