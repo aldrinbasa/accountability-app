@@ -58,7 +58,10 @@ function card(): HTMLElement {
 }
 
 async function findCard(): Promise<HTMLElement> {
-  await screen.findByRole('heading', { level: 2, name: "Challenge vote on Dev's Study check-in" })
+  await screen.findByRole('heading', {
+    level: 2,
+    name: "Vote on whether Dev's Study check-in counts",
+  })
   return card()
 }
 
@@ -77,16 +80,16 @@ describe('Vote card (Story 5.2)', () => {
     const node = await findCard()
     expect(node).toHaveAttribute('data-vote-state', 'open')
     expect(node.querySelector('[data-component="sticky-note"]')).toHaveClass('bg-vote')
-    expect(within(node).getByText('CHALLENGE · 18 H LEFT')).toBeInTheDocument()
-    expect(within(node).getByText('Challenge, 18 hours left')).toHaveClass('sr-only')
+    expect(within(node).getByText('QUESTION · 18 H LEFT')).toBeInTheDocument()
+    expect(within(node).getByText('Question, 18 hours left')).toHaveClass('sr-only')
     expect(
       within(node).getByRole('button', { name: "View Dev's Study check-in photo" }),
     ).toBeInTheDocument()
-    expect(node).toHaveTextContent("Lena challenged Dev's Study check-in.")
-    expect(within(node).getByRole('heading', { level: 3, name: 'Fake or Real?' })).toBeVisible()
-    expect(node).toHaveTextContent("If nobody else votes, it's ruled Fake.")
-    const fake = within(node).getByRole('button', { name: 'Vote Fake' })
-    const real = within(node).getByRole('button', { name: 'Vote Real' })
+    expect(node).toHaveTextContent("Lena questioned Dev's Study check-in.")
+    expect(within(node).getByRole('heading', { level: 3, name: 'Does this count?' })).toBeVisible()
+    expect(node).toHaveTextContent("If nobody else votes, it doesn't count.")
+    const fake = within(node).getByRole('button', { name: "Vote: doesn't count" })
+    const real = within(node).getByRole('button', { name: 'Vote: counts' })
     expect(fake).toHaveAttribute('aria-pressed', 'false')
     expect(real).toHaveAttribute('aria-pressed', 'false')
     expect(fake).toHaveClass('flex-1')
@@ -94,32 +97,32 @@ describe('Vote card (Story 5.2)', () => {
     expect(await within(node).findByText('2 of 4 voted')).toBeInTheDocument()
   })
 
-  it('one tap votes: selected button, "You voted Real · 3 of 4 voted", toast with Undo; Undo restores', async () => {
+  it('one tap votes: selected button, "You said it counts · 3 of 4 voted", toast with Undo; Undo restores', async () => {
     const { backend } = await renderFeed([VOTE])
     const user = userEvent.setup()
     const node = await findCard()
     await within(node).findByText('2 of 4 voted')
-    await user.click(within(node).getByRole('button', { name: 'Vote Real' }))
+    await user.click(within(node).getByRole('button', { name: 'Vote: counts' }))
 
     expect(backend.castVote).toHaveBeenCalledWith('challenge', VOTE.id, 'real')
-    expect(await within(node).findByText('You voted Real · 3 of 4 voted')).toBeInTheDocument()
-    expect(within(node).getByRole('button', { name: 'Vote Real' })).toHaveAttribute(
+    expect(await within(node).findByText('You said it counts · 3 of 4 voted')).toBeInTheDocument()
+    expect(within(node).getByRole('button', { name: 'Vote: counts' })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    expect(within(node).getByRole('button', { name: 'Vote Fake' })).toHaveAttribute(
+    expect(within(node).getByRole('button', { name: "Vote: doesn't count" })).toHaveAttribute(
       'aria-pressed',
       'false',
     )
     // Inert once voted: a second tap sends nothing.
-    await user.click(within(node).getByRole('button', { name: 'Vote Fake' }))
+    await user.click(within(node).getByRole('button', { name: "Vote: doesn't count" }))
     expect(backend.castVote).toHaveBeenCalledTimes(1)
-    expect(await screen.findByText('Voted Real')).toBeInTheDocument()
+    expect(await screen.findByText('You said it counts')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(backend.undoVote).toHaveBeenCalledWith('challenge', VOTE.id)
     await waitFor(() =>
-      expect(within(node).getByRole('button', { name: 'Vote Real' })).toHaveAttribute(
+      expect(within(node).getByRole('button', { name: 'Vote: counts' })).toHaveAttribute(
         'aria-pressed',
         'false',
       ),
@@ -159,31 +162,33 @@ describe('Vote card (Story 5.2)', () => {
     await waitFor(() => expect(at('v-cancelled')).toBeInTheDocument())
 
     const challenger = at('v-challenger')
-    expect(challenger).toHaveTextContent("You challenged Dev's Study check-in.")
-    expect(challenger).toHaveTextContent('You challenged · counts as Fake')
+    expect(challenger).toHaveTextContent("You questioned Dev's Study check-in.")
+    expect(challenger).toHaveTextContent("You flagged it · your vote: doesn't count")
     expect(await within(challenger).findByText('2 of 4 voted')).toBeInTheDocument()
-    expect(within(challenger).queryByRole('button', { name: /^Vote / })).toBeNull()
+    expect(within(challenger).queryByRole('button', { name: /^Vote: / })).toBeNull()
 
     const owner = at('v-owner')
-    expect(owner).toHaveTextContent('Lena challenged your Study check-in.')
-    expect(owner).toHaveTextContent('CHALLENGE · 18 H LEFT')
+    expect(owner).toHaveTextContent('Lena questioned your Study check-in.')
+    expect(owner).toHaveTextContent('QUESTION · 18 H LEFT')
     expect(within(owner).queryByRole('heading', { level: 3 })).toBeNull()
-    expect(within(owner).queryByRole('button', { name: /^Vote / })).toBeNull()
+    expect(within(owner).queryByRole('button', { name: /^Vote: / })).toBeNull()
     expect(within(owner).getByText('2 of 4 voted')).toBeInTheDocument()
 
     expect(at('v-late')).toHaveTextContent('You joined after this vote opened.')
-    expect(within(at('v-late')).queryByRole('button', { name: /^Vote / })).toBeNull()
+    expect(within(at('v-late')).queryByRole('button', { name: /^Vote: / })).toBeNull()
 
-    expect(at('v-closing')).toHaveTextContent("Voting's closed. The ruling is on its way.")
-    expect(within(at('v-closing')).getByText('CHALLENGE')).toBeInTheDocument()
+    expect(at('v-closing')).toHaveTextContent("Voting's closed. The result is on its way.")
+    expect(within(at('v-closing')).getByText('QUESTION')).toBeInTheDocument()
 
     const fake = at('v-fake')
-    expect(fake).toHaveTextContent("Ruled Fake · Dev's Study removed. 3 Fake, 1 Real.")
+    expect(fake).toHaveTextContent(
+      "Didn't count · Dev's Study · 3 said it doesn't count, 1 said it counts.",
+    )
     expect(within(fake).queryByRole('button')).toBeNull()
     expect(fake).not.toHaveTextContent(/voted/)
 
     const cancelled = at('v-cancelled')
-    expect(within(cancelled).getByText('CHALLENGE')).toHaveClass('line-through')
+    expect(within(cancelled).getByText('QUESTION')).toHaveClass('line-through')
     expect(cancelled).toHaveTextContent('Cancelled')
   })
 
@@ -192,7 +197,7 @@ describe('Vote card (Story 5.2)', () => {
     const user = userEvent.setup()
     const node = await findCard()
     setOnline(false)
-    await user.click(within(node).getByRole('button', { name: 'Vote Fake' }))
+    await user.click(within(node).getByRole('button', { name: "Vote: doesn't count" }))
     expect(await screen.findByText("You're offline. Votes need a signal.")).toBeInTheDocument()
     expect(backend.castVote).not.toHaveBeenCalled()
     expect(node).toHaveAttribute('data-vote-state', 'open')
@@ -203,14 +208,14 @@ describe('Vote card (Story 5.2)', () => {
     vi.mocked(backend.castVote).mockRejectedValueOnce(new BackendError('unknown'))
     const user = userEvent.setup()
     const node = await findCard()
-    await user.click(within(node).getByRole('button', { name: 'Vote Fake' }))
+    await user.click(within(node).getByRole('button', { name: "Vote: doesn't count" }))
     const alert = await within(node).findByRole('alert')
     expect(alert).toHaveTextContent("Couldn't send your vote. Check your signal and tap Retry.")
     expect(node).toHaveAttribute('data-vote-state', 'open')
     await user.click(within(alert).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(backend.castVote).toHaveBeenCalledTimes(2))
     expect(backend.castVote).toHaveBeenLastCalledWith('challenge', VOTE.id, 'fake')
-    expect(await within(node).findByText(/^You voted Fake/)).toBeInTheDocument()
+    expect(await within(node).findByText(/^You said it doesn't count/)).toBeInTheDocument()
     expect(within(node).queryByRole('alert')).toBeNull()
   })
 
@@ -220,7 +225,7 @@ describe('Vote card (Story 5.2)', () => {
     const user = userEvent.setup()
     const node = await findCard()
     const reads = vi.mocked(backend.listFeed).mock.calls.length
-    await user.click(within(node).getByRole('button', { name: 'Vote Real' }))
+    await user.click(within(node).getByRole('button', { name: 'Vote: counts' }))
     expect(await screen.findByText("That vote's already wrapped up.")).toBeInTheDocument()
     await waitFor(() =>
       expect(vi.mocked(backend.listFeed).mock.calls.length).toBeGreaterThan(reads),
@@ -231,8 +236,8 @@ describe('Vote card (Story 5.2)', () => {
     const { backend } = await renderFeed([VOTE])
     const user = userEvent.setup()
     const node = await findCard()
-    await user.click(within(node).getByRole('button', { name: 'Vote Fake' }))
-    await screen.findByText('Voted Fake')
+    await user.click(within(node).getByRole('button', { name: "Vote: doesn't count" }))
+    await screen.findByText("You said it doesn't count")
     vi.mocked(backend.undoVote).mockRejectedValueOnce(new BackendError('undo_expired'))
     const reads = vi.mocked(backend.listFeed).mock.calls.length
     await user.click(screen.getByRole('button', { name: 'Undo' }))
@@ -247,8 +252,8 @@ describe('Vote card (Story 5.2)', () => {
     const { backend } = await renderFeed([VOTE])
     const user = userEvent.setup()
     const node = await findCard()
-    await user.click(within(node).getByRole('button', { name: 'Vote Fake' }))
-    await screen.findByText('Voted Fake')
+    await user.click(within(node).getByRole('button', { name: "Vote: doesn't count" }))
+    await screen.findByText("You said it doesn't count")
     vi.mocked(backend.undoVote).mockRejectedValueOnce(new BackendError('unknown'))
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(await screen.findByText("Couldn't undo your vote. Tap Retry.")).toBeInTheDocument()
@@ -256,8 +261,8 @@ describe('Vote card (Story 5.2)', () => {
     await waitFor(() => expect(backend.undoVote).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(node).toHaveAttribute('data-vote-state', 'open'))
 
-    await user.click(within(node).getByRole('button', { name: 'Vote Real' }))
-    await screen.findByText('Voted Real')
+    await user.click(within(node).getByRole('button', { name: 'Vote: counts' }))
+    await screen.findByText('You said it counts')
     setOnline(false)
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(await screen.findByText("Couldn't undo. You're offline.")).toBeInTheDocument()
@@ -283,10 +288,12 @@ describe('Vote card (Story 5.2)', () => {
     await act(() => queryClient.refetchQueries())
     await waitFor(() =>
       expect(within(card()).getByRole('status')).toHaveTextContent(
-        "Ruled Real · Dev's Study stands. 1 Fake, 2 Real.",
+        "Counts · the group backed it · Dev's Study · 2 said it counts, 1 said it doesn't.",
       ),
     )
-    expect(card()).toHaveTextContent("Ruled Real · Dev's Study stands. 1 Fake, 2 Real.")
+    expect(card()).toHaveTextContent(
+      "Counts · the group backed it · Dev's Study · 2 said it counts, 1 said it doesn't.",
+    )
     // Still on Real for a closed Real ruling: the thumbnail stays.
     expect(
       within(card()).getByRole('button', { name: "View Dev's Study check-in photo" }),
@@ -325,19 +332,19 @@ describe('Vote card Undo timing', () => {
     vi.useRealTimers()
   })
 
-  it('shows "Voted Fake" with Undo for 5 s, then the vote stands', async () => {
+  it('shows the "You said it" toast with Undo for 5 s, then the vote stands', async () => {
     const backend = createFakeBackend(undefined, {
       feed: { [TEST_GROUP.id]: [VOTE] },
       voteTallies: { [TEST_GROUP.id]: [TALLY] },
     })
     render(<Toaster />)
     render(withBackend(backend, <VoteCard item={VOTE} viewer={viewer} tilt="left" />))
-    fireEvent.click(screen.getByRole('button', { name: 'Vote Fake' }))
+    fireEvent.click(screen.getByRole('button', { name: "Vote: doesn't count" }))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(backend.castVote).toHaveBeenCalledWith('challenge', VOTE.id, 'fake')
-    expect(screen.getByText('Voted Fake')).toBeInTheDocument()
+    expect(screen.getByText("You said it doesn't count")).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
 
     await act(async () => {
@@ -350,7 +357,7 @@ describe('Vote card Undo timing', () => {
         await vi.advanceTimersByTimeAsync(500)
       })
     }
-    expect(screen.queryByText('Voted Fake')).not.toBeInTheDocument()
+    expect(screen.queryByText("You said it doesn't count")).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
     expect(backend.undoVote).not.toHaveBeenCalled()
   })
@@ -369,7 +376,7 @@ describe('Vote card Undo timing', () => {
     )
     render(<Toaster />)
     render(withBackend(backend, <VoteCard item={VOTE} viewer={viewer} tilt="left" />))
-    fireEvent.click(screen.getByRole('button', { name: 'Vote Fake' }))
+    fireEvent.click(screen.getByRole('button', { name: "Vote: doesn't count" }))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4_900)
     })

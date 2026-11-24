@@ -96,7 +96,7 @@ describe('remove a member', () => {
     const sheet = await screen.findByRole('dialog', { name: 'Remove Sam?' })
     expect(
       within(sheet).getByText(
-        'Their open challenges and freeze requests are cancelled and they leave the leaderboard.',
+        'Their open votes and freeze requests are cancelled and they leave the leaderboard.',
       ),
     ).toBeInTheDocument()
     await user.click(within(sheet).getByRole('button', { name: 'Remove' }))

@@ -13,7 +13,7 @@ import { waitForGroupInUrl } from '@/test/router'
 const NOW = new Date('2026-11-20T03:00:00Z')
 const LOCK = '2026-11-22T16:00:00.000Z'
 const BUTTON = 'Overturn (admin) until Sun 23:59'
-const RULED = "Ruled Fake · Dev's Study removed. 2 Fake, 1 Real."
+const RULED = "Didn't count · Dev's Study · 2 said it doesn't count, 1 said it counts."
 const OVERTURNED = "Overturned by you · Dev's Study is back."
 
 function ruling(overrides: Partial<FeedRuling> = {}): FeedRuling {
@@ -160,7 +160,7 @@ describe('Admin overturn on the ruling sticky (Story 5.3)', () => {
     const node = await findSticky()
     await user.click(within(node).getByRole('button', { name: BUTTON }))
     const alert = await within(node).findByRole('alert')
-    expect(alert).toHaveTextContent("Couldn't overturn the ruling. Tap Retry.")
+    expect(alert).toHaveTextContent("Couldn't overturn it. Tap Retry.")
     await user.click(within(alert).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(backend.overturnRuling).toHaveBeenCalledTimes(2))
     expect(
@@ -177,7 +177,7 @@ describe('Admin overturn on the ruling sticky (Story 5.3)', () => {
     const reads = vi.mocked(backend.listFeed).mock.calls.length
     await user.click(within(node).getByRole('button', { name: BUTTON }))
     expect(
-      await screen.findByText('This week has locked. The ruling is final.'),
+      await screen.findByText('This week has locked. The result is final.'),
     ).toBeInTheDocument()
     await waitFor(() =>
       expect(vi.mocked(backend.listFeed).mock.calls.length).toBeGreaterThan(reads),
@@ -195,11 +195,14 @@ describe('Admin overturn on the ruling sticky (Story 5.3)', () => {
       overturnedByName: 'Jo',
     })
     await renderFeed([vote])
-    await screen.findByRole('heading', { level: 2, name: "Challenge vote on Dev's Study check-in" })
+    await screen.findByRole('heading', {
+      level: 2,
+      name: "Vote on whether Dev's Study check-in counts",
+    })
     const card = document.querySelector<HTMLElement>(`[data-feed-item="${vote.id}"]`)
     if (!card) throw new Error('no vote card')
     expect(card).toHaveTextContent(OVERTURNED)
-    expect(card).not.toHaveTextContent('Ruled Fake')
+    expect(card).not.toHaveTextContent("Didn't count")
     expect(
       within(card).getByRole('button', { name: "View Dev's Study check-in photo" }),
     ).toBeInTheDocument()

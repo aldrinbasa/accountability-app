@@ -204,7 +204,7 @@ describe('leave, remove and admin handover', () => {
   it('remove and notice copy', () => {
     expect(removeTitle('Sam')).toBe('Remove Sam?')
     expect(REMOVE_BODY).toBe(
-      'Their open challenges and freeze requests are cancelled and they leave the leaderboard.',
+      'Their open votes and freeze requests are cancelled and they leave the leaderboard.',
     )
     expect(removeLabel('Sam')).toBe('Remove Sam')
     expect(notInGroupText('Sunday Reset')).toBe("You're not in Sunday Reset anymore.")

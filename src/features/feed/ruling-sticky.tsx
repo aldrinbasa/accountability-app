@@ -22,8 +22,8 @@ import { showToast } from '@/ui/toast'
 
 /**
  * A ruling (Story 5.1): a lavender `sticky-note-vote` whose kicker names it in words ("gavel
- * RULING"), so color is not the only signal, and whose line is its h2 ("Ruled Fake · Lena
- * challenged · Dev's Study removed.").
+ * RESULT"), so color is not the only signal, and whose line is its h2 ("Didn't count · Dev's
+ * Study · Lena questioned it.").
  *
  * Story 5.3: on a Fake ruling the server lets the reader overturn (`canOverturn`, the group's admin)
  * and before `overturnUntil`, a button-on-object "Overturn (admin) until Wed 23:59" (the lock in the

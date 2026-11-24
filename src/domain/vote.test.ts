@@ -1,5 +1,8 @@
 import {
   castFailure,
+  choiceButtonLabel,
+  choiceLabel,
+  choiceSaid,
   isVoteChoice,
   tallyLine,
   undoFailure,
@@ -60,43 +63,53 @@ describe('voteKicker', () => {
   it('uses the 5.1 time rule: hours floor, then minutes at least 1', () => {
     const at = (ms: number) => feedVote({ closesAt: new Date(NOW.getTime() + ms).toISOString() })
     expect(voteKicker(at(18 * 3_600_000 + 59 * 60_000), NOW)).toEqual({
-      text: 'CHALLENGE · 18 H LEFT',
-      spoken: 'Challenge, 18 hours left',
+      text: 'QUESTION · 18 H LEFT',
+      spoken: 'Question, 18 hours left',
     })
     expect(voteKicker(at(3_600_000), NOW)).toEqual({
-      text: 'CHALLENGE · 1 H LEFT',
-      spoken: 'Challenge, 1 hour left',
+      text: 'QUESTION · 1 H LEFT',
+      spoken: 'Question, 1 hour left',
     })
-    expect(voteKicker(at(3_599_999), NOW).text).toBe('CHALLENGE · 59 MIN LEFT')
+    expect(voteKicker(at(3_599_999), NOW).text).toBe('QUESTION · 59 MIN LEFT')
     expect(voteKicker(at(10_000), NOW)).toEqual({
-      text: 'CHALLENGE · 1 MIN LEFT',
-      spoken: 'Challenge, 1 minute left',
+      text: 'QUESTION · 1 MIN LEFT',
+      spoken: 'Question, 1 minute left',
     })
-    expect(voteKicker(at(0), NOW).text).toBe('CHALLENGE')
-    expect(voteKicker({ ...at(5_000_000), status: 'real' }, NOW).text).toBe('CHALLENGE')
+    expect(voteKicker(at(0), NOW).text).toBe('QUESTION')
+    expect(voteKicker({ ...at(5_000_000), status: 'real' }, NOW).text).toBe('QUESTION')
   })
 })
 
 describe('Vote card copy', () => {
   it('who line, heading and thumbnail with the "You" rule', () => {
     const vote = feedVote()
-    expect(voteWhoLine(vote, 'user-9')).toBe("Lena challenged Dev's Study check-in.")
-    expect(voteWhoLine(vote, vote.challengerId!)).toBe("You challenged Dev's Study check-in.")
-    expect(voteWhoLine(vote, vote.ownerId!)).toBe('Lena challenged your Study check-in.')
-    expect(voteHeading(vote, 'user-9')).toBe("Challenge vote on Dev's Study check-in")
+    expect(voteWhoLine(vote, 'user-9')).toBe("Lena questioned Dev's Study check-in.")
+    expect(voteWhoLine(vote, vote.challengerId!)).toBe("You questioned Dev's Study check-in.")
+    expect(voteWhoLine(vote, vote.ownerId!)).toBe('Lena questioned your Study check-in.')
+    expect(voteHeading(vote, 'user-9')).toBe("Vote on whether Dev's Study check-in counts")
     expect(voteThumbnailLabel(vote, 'user-9')).toBe("View Dev's Study check-in photo")
     expect(voteWhoLine({ ...vote, taskName: 'Groceries' }, 'user-9')).toBe(
-      "Lena challenged Dev's Groceries check-in.",
+      "Lena questioned Dev's Groceries check-in.",
     )
   })
 
   it('tally, voted line and toast', () => {
     expect(tallyLine({ votedCount: 3, eligibleCount: 4 })).toBe('3 of 4 voted')
     expect(votedLine('real', { votedCount: 3, eligibleCount: 4 })).toBe(
-      'You voted Real · 3 of 4 voted',
+      'You said it counts · 3 of 4 voted',
     )
-    expect(votedLine('fake', null)).toBe('You voted Fake')
-    expect(votedToast('fake')).toBe('Voted Fake')
+    expect(votedLine('fake', null)).toBe("You said it doesn't count")
+    expect(votedToast('fake')).toBe("You said it doesn't count")
+    expect(votedToast('real')).toBe('You said it counts')
+    expect(choiceSaid('real')).toBe('You said it counts')
+    expect(choiceSaid('fake')).toBe("You said it doesn't count")
+  })
+
+  it('words the buttons Doesn’t count | Counts, never Fake or Real', () => {
+    expect(choiceLabel('fake')).toBe("Doesn't count")
+    expect(choiceLabel('real')).toBe('Counts')
+    expect(choiceButtonLabel('fake')).toBe("Vote: doesn't count")
+    expect(choiceButtonLabel('real')).toBe('Vote: counts')
     expect(isVoteChoice('real')).toBe(true)
     expect(isVoteChoice('approve')).toBe(false)
   })
@@ -104,14 +117,14 @@ describe('Vote card copy', () => {
   it('the closed ruling line comes from 5.1', () => {
     const closed = feedVote({ status: 'fake', fakeCount: 3, realCount: 1, variant: 'normal' })
     expect(voteRulingLine(closed, 'user-9')).toBe(
-      "Ruled Fake · Dev's Study removed. 3 Fake, 1 Real.",
+      "Didn't count · Dev's Study · 3 said it doesn't count, 1 said it counts.",
     )
     expect(
       voteRulingLine({ ...closed, status: 'real', fakeCount: 2, realCount: 2 }, 'user-9'),
-    ).toBe("Ruled Real · Dev's Study stands. 2 Fake, 2 Real.")
+    ).toBe("Counts · a tie keeps it · Dev's Study · 2 said it counts, 2 said it doesn't.")
     expect(
       voteRulingLine({ ...closed, fakeCount: 1, realCount: 0, variant: 'lone' }, 'user-9'),
-    ).toBe("Ruled Fake · nobody else voted · Dev's Study removed.")
+    ).toBe("Didn't count · Dev's Study · nobody else voted.")
     expect(voteRulingLine(feedVote(), 'user-9')).toBeNull()
     expect(voteShowsThumbnail(closed)).toBe(false)
     expect(voteShowsThumbnail(feedVote())).toBe(true)

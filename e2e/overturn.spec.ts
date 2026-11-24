@@ -27,21 +27,21 @@ test('the admin overturns a Fake ruling and the check-in counts again', async ({
   await checkIn(ben, 'Grocery run')
   await expect(ben.getByRole('button', { name: 'Check in Grocery run' })).toHaveCount(0)
 
-  // Ada: the Overflow on Ben's polaroid → Challenge → Rule it Fake (two members).
+  // Ada: the Overflow on Ben's polaroid → Question it → Don't count it (two members).
   await page.reload()
   await tab(page, 'Feed').click()
   const overflow = page.getByRole('button', { name: "More actions for Ben's Grocery run check-in" })
   await expect(overflow).toBeVisible({ timeout: 15_000 })
   await overflow.click()
   const actions = page.getByRole('dialog', { name: "Ben's Grocery run check-in" })
-  await actions.getByRole('button', { name: 'Challenge' }).click()
-  const confirm = page.getByRole('dialog', { name: "Challenge Ben's Grocery run?" })
-  await confirm.getByRole('button', { name: 'Rule it Fake' }).click()
+  await actions.getByRole('button', { name: 'Question it', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: "Question Ben's Grocery run?" })
+  await confirm.getByRole('button', { name: "Don't count it", exact: true }).click()
   await expect(confirm).toBeHidden()
 
   const adaRuling = page.locator('article[data-kind="ruling"]')
   const adaLine = adaRuling.getByRole('heading', { level: 2 })
-  await expect(adaLine).toHaveText("Ruled Fake · You challenged · Ben's Grocery run removed.")
+  await expect(adaLine).toHaveText("Didn't count · Ben's Grocery run · You questioned it.")
   await expect(page.getByRole('heading', { level: 2, name: /^Ben · Grocery run/ })).toHaveCount(0)
 
   // The admin's button-on-object names the week's lock; one tap overturns.

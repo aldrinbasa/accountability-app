@@ -29,21 +29,21 @@ export const ERROR_COPY = {
   invalid_caption: 'Keep the caption to 80 characters.',
   invalid_goal: 'Pick a target from 50% to 100%, in steps of 5.',
   // Story 5.1 (challenges). `week_locked` keeps its check-in copy above; the challenge flow shows
-  // the "can't be challenged anymore" line for it (src/domain/challenge.ts).
-  own_checkin: "You can't challenge your own check-in.",
-  already_challenged: "That check-in can't be challenged anymore.",
-  challenge_expired: "That check-in can't be challenged anymore.",
-  group_waiting: 'Challenges need a second member in the group.',
+  // the "can't be questioned anymore" line for it (src/domain/challenge.ts).
+  own_checkin: "You can't question your own check-in.",
+  already_challenged: "That check-in can't be questioned anymore.",
+  challenge_expired: "That check-in can't be questioned anymore.",
+  group_waiting: 'Questioning a check-in needs a second member in the group.',
   // Story 5.2 (votes).
   vote_closed: "That vote's already wrapped up.",
   undo_expired: "That vote's already final.",
   not_eligible: "You can't vote on this one.",
   already_voted: 'You already voted on this one.',
-  invalid_vote: 'Pick Fake or Real.',
+  invalid_vote: "Pick Counts or Doesn't count.",
   // Story 5.3 (overturn). `not_admin` and `week_locked` keep their copy above; the overturn flow
   // shows its own lines for them (src/domain/challenge.ts).
-  not_fake_ruling: 'Only a Fake ruling can be overturned.',
-  already_overturned: "That ruling's already overturned.",
+  not_fake_ruling: "Only a check-in that didn't count can be overturned.",
+  already_overturned: 'That check-in already counts again.',
   // Raised from Epic 5 (freezes); the outbox already treats it as final (Story 3.3).
   session_frozen: 'That session is already frozen.',
   // Story 5.4 (freeze requests). `week_locked` and `not_member` keep their copy above; the freeze

@@ -13,7 +13,7 @@ describe('error-code table (AD-14)', () => {
     expect(errorCopy('undo_expired')).toBe("That vote's already final.")
     expect(errorCopy('not_eligible')).toBe("You can't vote on this one.")
     expect(errorCopy('already_voted')).toBe('You already voted on this one.')
-    expect(errorCopy('invalid_vote')).toBe('Pick Fake or Real.')
+    expect(errorCopy('invalid_vote')).toBe("Pick Counts or Doesn't count.")
   })
 
   it('maps the profile codes to copy', () => {

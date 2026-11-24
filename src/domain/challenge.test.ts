@@ -95,23 +95,23 @@ describe('challengeChip (time-left formatter)', () => {
   it('rounds hours down', () => {
     const closes = new Date(NOW.getTime() + 18 * 3_600_000 + 59 * 60_000).toISOString()
     expect(challengeChip(open(closes), NOW)).toEqual({
-      text: 'CHALLENGED · 18 H LEFT',
-      spoken: 'challenged, 18 hours left',
+      text: 'QUESTIONED · 18 H LEFT',
+      spoken: 'questioned, 18 hours left',
     })
   })
 
   it('says 1 hour in the singular', () => {
     const closes = new Date(NOW.getTime() + 3_600_000).toISOString()
-    expect(challengeChip(open(closes), NOW)?.spoken).toBe('challenged, 1 hour left')
+    expect(challengeChip(open(closes), NOW)?.spoken).toBe('questioned, 1 hour left')
   })
 
   it('shows minutes under 1 hour, at least 1', () => {
     const closes = new Date(NOW.getTime() + 59 * 60_000 + 59_000).toISOString()
-    expect(challengeChip(open(closes), NOW)?.text).toBe('CHALLENGED · 59 MIN LEFT')
+    expect(challengeChip(open(closes), NOW)?.text).toBe('QUESTIONED · 59 MIN LEFT')
     const soon = new Date(NOW.getTime() + 10_000).toISOString()
     expect(challengeChip(open(soon), NOW)).toEqual({
-      text: 'CHALLENGED · 1 MIN LEFT',
-      spoken: 'challenged, 1 minute left',
+      text: 'QUESTIONED · 1 MIN LEFT',
+      spoken: 'questioned, 1 minute left',
     })
   })
 
@@ -135,27 +135,27 @@ describe('challenge sheet copy', () => {
   const item = feedCheckin({ authorName: 'Dev', activityName: 'Study' })
 
   it('names the check-in by activity, or by task name', () => {
-    expect(challengeSheetTitle(item)).toBe("Challenge Dev's Study?")
+    expect(challengeSheetTitle(item)).toBe("Question Dev's Study?")
     expect(challengeOverflowLabel(item)).toBe("More actions for Dev's Study check-in")
     expect(challengeSheetTitle(feedCheckin({ authorName: 'Dev', taskName: 'Groceries' }))).toBe(
-      "Challenge Dev's Groceries?",
+      "Question Dev's Groceries?",
     )
   })
 
-  it('3+ members: the vote rules, the ritual line and Challenge', () => {
+  it('3+ members: the vote rules, the ritual line and Question it', () => {
     expect(challengeSheetBody(3)).toBe(
-      "Your challenge counts as a Fake vote. The group has 24 h. If nobody else votes, it's ruled Fake; a tie keeps it.",
+      "This casts your vote: doesn't count. The group has 24 h. If nobody else votes, it doesn't count; a tie keeps it.",
     )
     expect(challengeSheetMeta(3)).toBe("The photo's a ritual, not a court case.")
-    expect(challengeActionLabel(3)).toBe('Challenge')
+    expect(challengeActionLabel(3)).toBe('Question it')
   })
 
-  it('2 members: the at-once ruling and Rule it Fake', () => {
+  it("2 members: the at-once result and Don't count it", () => {
     expect(challengeSheetBody(2)).toBe(
-      "It's just the two of you, so this rules it Fake right away. No vote.",
+      "It's just the two of you, so it stops counting right away. No vote.",
     )
     expect(challengeSheetMeta(2)).toBeNull()
-    expect(challengeActionLabel(2)).toBe('Rule it Fake')
+    expect(challengeActionLabel(2)).toBe("Don't count it")
   })
 })
 
@@ -170,14 +170,16 @@ describe('challenge failures', () => {
     ] as const) {
       expect(challengeFailure(code)).toBe('gone')
     }
-    expect(challengeFailureText('gone')).toBe("That check-in can't be challenged anymore.")
+    expect(challengeFailureText('gone')).toBe("That check-in can't be questioned anymore.")
   })
 
   it('maps the other codes to their table copy', () => {
     expect(challengeFailure('own_checkin')).toBe('own')
-    expect(challengeFailureText('own')).toBe("You can't challenge your own check-in.")
+    expect(challengeFailureText('own')).toBe("You can't question your own check-in.")
     expect(challengeFailure('group_waiting')).toBe('waiting')
-    expect(challengeFailureText('waiting')).toBe('Challenges need a second member in the group.')
+    expect(challengeFailureText('waiting')).toBe(
+      'Questioning a check-in needs a second member in the group.',
+    )
     expect(challengeFailure('unknown')).toBe('failed')
   })
 
@@ -190,42 +192,47 @@ describe('challenge failures', () => {
     ]) {
       expect(isRpcErrorCode(code)).toBe(true)
     }
-    expect(errorCopy('already_challenged')).toBe("That check-in can't be challenged anymore.")
-    expect(errorCopy('challenge_expired')).toBe("That check-in can't be challenged anymore.")
+    expect(errorCopy('already_challenged')).toBe("That check-in can't be questioned anymore.")
+    expect(errorCopy('challenge_expired')).toBe("That check-in can't be questioned anymore.")
     // The check-in flow keeps its own copy for week_locked.
     expect(errorCopy('week_locked')).toBe("That week has locked, so this photo can't count.")
   })
 })
 
 describe('rulingLine', () => {
-  it('Real: the check-in stands, with the counts', () => {
+  it('counts: a tie keeps it, a majority backed it, with both counts', () => {
     expect(rulingLine(ruling({ outcome: 'real', fakeCount: 2, realCount: 2 }), 'user-1')).toBe(
-      "Ruled Real · Dev's Study stands. 2 Fake, 2 Real.",
+      "Counts · a tie keeps it · Dev's Study · 2 said it counts, 2 said it doesn't.",
+    )
+    expect(rulingLine(ruling({ outcome: 'real', fakeCount: 1, realCount: 2 }), 'user-1')).toBe(
+      "Counts · the group backed it · Dev's Study · 2 said it counts, 1 said it doesn't.",
     )
   })
 
-  it('Fake by votes', () => {
-    expect(rulingLine(ruling(), 'user-1')).toBe("Ruled Fake · Dev's Study removed. 3 Fake, 1 Real.")
+  it('didn’t count by votes', () => {
+    expect(rulingLine(ruling(), 'user-1')).toBe(
+      "Didn't count · Dev's Study · 3 said it doesn't count, 1 said it counts.",
+    )
   })
 
-  it('Fake by the lone challenger', () => {
+  it('didn’t count: nobody else voted', () => {
     expect(rulingLine(ruling({ variant: 'lone', fakeCount: 1, realCount: 0 }), 'user-1')).toBe(
-      "Ruled Fake · nobody else voted · Dev's Study removed.",
+      "Didn't count · Dev's Study · nobody else voted.",
     )
   })
 
-  it('Fake in a group of two names the challenger', () => {
+  it('didn’t count in a group of two names who questioned it', () => {
     expect(rulingLine(ruling({ variant: 'two_person' }), 'user-1')).toBe(
-      "Ruled Fake · Lena challenged · Dev's Study removed.",
+      "Didn't count · Dev's Study · Lena questioned it.",
     )
   })
 
   it('follows the Feed’s "You" rule', () => {
     expect(rulingLine(ruling({ variant: 'two_person' }), 'user-3')).toBe(
-      "Ruled Fake · You challenged · Dev's Study removed.",
+      "Didn't count · Dev's Study · You questioned it.",
     )
     expect(rulingLine(ruling({ outcome: 'real', fakeCount: 0, realCount: 1 }), 'user-4')).toBe(
-      'Ruled Real · Your Study stands. 0 Fake, 1 Real.',
+      "Counts · the group backed it · Your Study · 1 said it counts, 0 said it doesn't.",
     )
   })
 })
@@ -283,23 +290,23 @@ describe('overturn (Story 5.3)', () => {
     expect(overturnFailure('unknown', false)).toEqual({ kind: 'failed' })
     expect(overturnFailure('week_locked', false)).toEqual({
       kind: 'refused',
-      text: 'This week has locked. The ruling is final.',
+      text: 'This week has locked. The result is final.',
     })
     expect(overturnFailure('not_admin', false)).toEqual({
       kind: 'refused',
-      text: 'Only the group admin can overturn a ruling.',
+      text: 'Only the group admin can overturn a result.',
     })
     expect(overturnFailure('not_fake_ruling', false)).toEqual({
       kind: 'refused',
-      text: 'Only a Fake ruling can be overturned.',
+      text: "Only a check-in that didn't count can be overturned.",
     })
     expect(overturnFailure('already_overturned', false)).toEqual({
       kind: 'refused',
-      text: "That ruling's already overturned.",
+      text: 'That check-in already counts again.',
     })
     expect(overturnFailure('not_member', false)).toEqual({
       kind: 'refused',
-      text: 'That member left the group, so the ruling stands.',
+      text: 'That member left the group, so the result stands.',
     })
     expect(overturnFailure('own_checkin', false)).toEqual({
       kind: 'refused',

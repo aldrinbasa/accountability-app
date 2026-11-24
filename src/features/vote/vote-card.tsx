@@ -47,10 +47,10 @@ export interface VoteCardProps {
 }
 
 /**
- * The challenge Vote card (Story 5.2): a lavender sticky with the kicker "CHALLENGE · 18 H LEFT", a
- * 52px thumbnail of the check-in (opens the Photo viewer), "Lena challenged Dev's Study check-in.",
- * "Fake or Real?", the rule line, Fake | Real on a level row, and "N of M voted" from
- * `vote_tallies`. A tap casts at once; the toast "Voted Fake" offers Undo for 5 s. Locked states
+ * The challenge Vote card (Story 5.2): a lavender sticky with the kicker "QUESTION · 18 H LEFT", a
+ * 52px thumbnail of the check-in (opens the Photo viewer), "Lena questioned Dev's Study check-in.",
+ * "Does this count?", the rule line, Doesn't count | Counts on a level row, and "N of M voted" from
+ * `vote_tallies`. A tap casts at once; the toast "You said it doesn't count" offers Undo for 5 s. Locked states
  * (challenger, owner, joined later, past the deadline) show a status line instead of buttons; a
  * closed card shows the ruling line (the overturned line once an admin overturned a Fake ruling,
  * with its thumbnail back), a cancelled one a struck kicker. The card's own polite status

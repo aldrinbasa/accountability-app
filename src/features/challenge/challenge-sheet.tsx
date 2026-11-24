@@ -28,11 +28,11 @@ export interface ChallengeSheetProps {
 }
 
 /**
- * The challenge confirm Sheet (Story 5.1): "Challenge Dev's Study?" with the vote rules, the ritual
- * meta line and one coral "Challenge" (3+ members), or the at-once ruling and "Rule it Fake" (2
+ * The challenge confirm Sheet (Story 5.1): "Question Dev's Study?" with the vote rules, the ritual
+ * meta line and one coral "Question it" (3+ members), or the at-once ruling and "Don't count it" (2
  * members); the close is cancel. Offline and a plain failure show the challenge's own Inline retry
  * copy with Retry (the same request again). Already challenged, past its window or a locked week
- * read "That check-in can't be challenged anymore." with no Retry; every refusal refetches the
+ * read "That check-in can't be questioned anymore." with no Retry; every refusal refetches the
  * group's views so the Overflow goes away. Success refetches them too (`useCreateChallenge`).
  */
 export function ChallengeSheet({

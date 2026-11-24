@@ -329,7 +329,7 @@ export function removeTitle(name: string): string {
 }
 
 export const REMOVE_BODY =
-  'Their open challenges and freeze requests are cancelled and they leave the leaderboard.'
+  'Their open votes and freeze requests are cancelled and they leave the leaderboard.'
 
 /** "Remove Sam" (the row's Remove link, named for screen readers). */
 export function removeLabel(name: string): string {

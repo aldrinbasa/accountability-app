@@ -17,7 +17,7 @@ import { CheckinPhoto } from '@/features/feed/checkin-photo'
 
 /**
  * "Marco · Gym · 3/3 · 07:12" with the name in bold, plus the Late label of a late check-in and the
- * Vote chip of an open challenge ("CHALLENGED · 18 H LEFT").
+ * Vote chip of an open challenge ("QUESTIONED · 18 H LEFT").
  */
 export function CheckinMeta({ item, viewer }: { item: FeedCheckin; viewer: FeedViewer }) {
   const late = checkinLateLabel(item)

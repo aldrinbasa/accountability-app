@@ -10,20 +10,20 @@ import { formatLockTime } from '@/domain/time-zones'
  */
 
 export const CHALLENGE_COPY = {
-  challenge: 'Challenge',
-  ruleItFake: 'Rule it Fake',
+  challenge: 'Question it',
+  ruleItFake: "Don't count it",
   sending: 'Sending…',
   ritual: "The photo's a ritual, not a court case.",
-  offline: "You're offline. Challenges need a signal.",
-  failed: "Couldn't send the challenge. Tap Retry.",
-  gone: "That check-in can't be challenged anymore.",
-  rulingKicker: 'Ruling',
+  offline: "You're offline. Questioning a check-in needs a signal.",
+  failed: "Couldn't question the check-in. Tap Retry.",
+  gone: "That check-in can't be questioned anymore.",
+  rulingKicker: 'Result',
   overturnOffline: "You're offline. Overturns need a signal.",
-  overturnFailed: "Couldn't overturn the ruling. Tap Retry.",
-  overturnLocked: 'This week has locked. The ruling is final.',
-  overturnNotAdmin: 'Only the group admin can overturn a ruling.',
-  overturnOwn: "You can't overturn a ruling on your own check-in.",
-  overturnOwnerLeft: 'That member left the group, so the ruling stands.',
+  overturnFailed: "Couldn't overturn it. Tap Retry.",
+  overturnLocked: 'This week has locked. The result is final.',
+  overturnNotAdmin: 'Only the group admin can overturn a result.',
+  overturnOwn: "You can't overturn a result on your own check-in.",
+  overturnOwnerLeft: 'That member left the group, so the result stands.',
   retry: 'Retry',
 } as const
 
@@ -56,15 +56,15 @@ export function canChallenge(
   return !Number.isNaN(until) && viewer.now.getTime() < until
 }
 
-/** The Vote chip: what it shows ("CHALLENGED · 18 H LEFT") and what a screen reader says. */
+/** The Vote chip: what it shows ("QUESTIONED · 18 H LEFT") and what a screen reader says. */
 export interface ChallengeChip {
   text: string
   spoken: string
 }
 
 /**
- * The Vote chip of an open challenge: hours left rounded down ("CHALLENGED · 18 H LEFT", spoken
- * "challenged, 18 hours left"); under 1 hour the minutes, at least 1 ("CHALLENGED · 5 MIN LEFT").
+ * The Vote chip of an open challenge: hours left rounded down ("QUESTIONED · 18 H LEFT", spoken
+ * "questioned, 18 hours left"); under 1 hour the minutes, at least 1 ("QUESTIONED · 5 MIN LEFT").
  * Null unless the challenge is open and its `closes_at` is still ahead.
  */
 export function challengeChip(
@@ -79,14 +79,14 @@ export function challengeChip(
   const hours = Math.floor(left / 3_600_000)
   if (hours >= 1) {
     return {
-      text: `CHALLENGED · ${hours} H LEFT`,
-      spoken: `challenged, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`,
+      text: `QUESTIONED · ${hours} H LEFT`,
+      spoken: `questioned, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`,
     }
   }
   const minutes = Math.max(1, Math.floor(left / 60_000))
   return {
-    text: `CHALLENGED · ${minutes} MIN LEFT`,
-    spoken: `challenged, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`,
+    text: `QUESTIONED · ${minutes} MIN LEFT`,
+    spoken: `questioned, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`,
   }
 }
 
@@ -104,26 +104,26 @@ export function challengeActionsTitle(
   return `${item.authorName}'s ${feedTitle(item)} check-in`
 }
 
-/** The confirm Sheet's title: "Challenge Dev's Study?". */
+/** The confirm Sheet's title: "Question Dev's Study?". */
 export function challengeSheetTitle(
   item: Pick<FeedCheckin, 'authorName' | 'taskName' | 'activityName'>,
 ): string {
-  return `Challenge ${item.authorName}'s ${feedTitle(item)}?`
+  return `Question ${item.authorName}'s ${feedTitle(item)}?`
 }
 
-/** True for a group of exactly two: the challenge rules Fake at once, no vote. */
+/** True for a group of exactly two: the check-in stops counting at once, no vote. */
 export function isTwoPerson(memberCount: number): boolean {
   return memberCount === 2
 }
 
-/** The confirm Sheet's body: the vote rules (3+ members) or the at-once ruling (2 members). */
+/** The confirm Sheet's body: the vote rules (3+ members) or the at-once result (2 members). */
 export function challengeSheetBody(memberCount: number): string {
   return isTwoPerson(memberCount)
-    ? "It's just the two of you, so this rules it Fake right away. No vote."
-    : "Your challenge counts as a Fake vote. The group has 24 h. If nobody else votes, it's ruled Fake; a tie keeps it."
+    ? "It's just the two of you, so it stops counting right away. No vote."
+    : "This casts your vote: doesn't count. The group has 24 h. If nobody else votes, it doesn't count; a tie keeps it."
 }
 
-/** The confirm button: "Rule it Fake" (2 members) or "Challenge". */
+/** The confirm button: "Don't count it" (2 members) or "Question it". */
 export function challengeActionLabel(memberCount: number): string {
   return isTwoPerson(memberCount) ? CHALLENGE_COPY.ruleItFake : CHALLENGE_COPY.challenge
 }
@@ -157,7 +157,7 @@ export function challengeFailure(code: BackendErrorCode): ChallengeFailure | 'fa
   }
 }
 
-/** The copy of a challenge failure ("That check-in can't be challenged anymore." for `gone`). */
+/** The copy of a challenge failure ("That check-in can't be questioned anymore." for `gone`). */
 export function challengeFailureText(failure: ChallengeFailure): string {
   switch (failure) {
     case 'gone':
@@ -170,25 +170,28 @@ export function challengeFailureText(failure: ChallengeFailure): string {
 }
 
 /**
- * The ruling sticky's line, with the Feed's "You" rule (the viewer's own name reads "You", their own
- * check-in "Your Study"):
- * Real "Ruled Real · Dev's Study stands. 2 Fake, 2 Real.";
- * Fake "Ruled Fake · Dev's Study removed. 3 Fake, 1 Real.";
- * lone "Ruled Fake · nobody else voted · Dev's Study removed.";
- * 2-person "Ruled Fake · Lena challenged · Dev's Study removed.".
+ * The result sticky's line, with the Feed's "You" rule (the viewer's own name reads "You", their
+ * own check-in "Your Study"):
+ * real "Counts · the group backed it · Dev's Study · 3 said it counts, 1 said it doesn't.";
+ * tie "Counts · a tie keeps it · Dev's Study · 2 said it counts, 2 said it doesn't.";
+ * fake "Didn't count · Dev's Study · 3 said it doesn't count, 1 said it counts.";
+ * lone "Didn't count · Dev's Study · nobody else voted.";
+ * 2-person "Didn't count · Dev's Study · Lena questioned it.".
  */
 export function rulingLine(item: FeedRuling, viewerId: string): string {
   const ownCheckin = item.ownerId !== null && item.ownerId === viewerId
   const what = `${owner(item.ownerName, ownCheckin)} ${item.title}`
-  const counts = `${item.fakeCount} Fake, ${item.realCount} Real.`
-  if (item.outcome === 'real') return `Ruled Real · ${what} stands. ${counts}`
-  if (item.variant === 'lone') return `Ruled Fake · nobody else voted · ${what} removed.`
+  if (item.outcome === 'real') {
+    const why = item.fakeCount === item.realCount ? 'a tie keeps it' : 'the group backed it'
+    return `Counts · ${why} · ${what} · ${item.realCount} said it counts, ${item.fakeCount} said it doesn't.`
+  }
+  if (item.variant === 'lone') return `Didn't count · ${what} · nobody else voted.`
   if (item.variant === 'two_person') {
     const ownChallenge = item.challengerId !== null && item.challengerId === viewerId
     const who = ownChallenge ? 'You' : item.challengerName
-    return `Ruled Fake · ${who} challenged · ${what} removed.`
+    return `Didn't count · ${what} · ${who} questioned it.`
   }
-  return `Ruled Fake · ${what} removed. ${counts}`
+  return `Didn't count · ${what} · ${item.fakeCount} said it doesn't count, ${item.realCount} said it counts.`
 }
 
 /** What `overturn_ruling` returned (Story 5.3). */
@@ -269,7 +272,7 @@ export function overturnFailure(code: BackendErrorCode, offline: boolean): Overt
       return { kind: 'refused', text: CHALLENGE_COPY.overturnNotAdmin }
     case 'own_checkin':
       return { kind: 'refused', text: CHALLENGE_COPY.overturnOwn }
-    // Also raised when the check-in's owner left: the admin is told the ruling stands.
+    // Also raised when the check-in's owner left: the admin is told the result stands.
     case 'not_member':
       return { kind: 'refused', text: CHALLENGE_COPY.overturnOwnerLeft }
     case 'not_fake_ruling':

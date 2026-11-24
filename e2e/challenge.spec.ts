@@ -4,7 +4,7 @@ import { addTaskToday, checkIn } from './support/plan'
 
 /**
  * Story 5.1 against the local stack, in a group of two: Ada posts her task; Ben challenges it from
- * the Feed polaroid's Overflow and confirms "Rule it Fake". The challenge rules Fake at once: both
+ * the Feed polaroid's Overflow and confirms "Don't count it". The challenge rules Fake at once: both
  * see the lavender ruling sticky, the polaroid leaves both walls, and Ada's task is open again
  * (its session has not ended), so Today offers "Check in Grocery run" once more.
  */
@@ -33,27 +33,27 @@ test('a two-person challenge rules Fake at once and frees the session', async ({
   await expect(overflow).toBeVisible({ timeout: 15_000 })
   await overflow.click()
   const actions = ben.getByRole('dialog', { name: "Ada's Grocery run check-in" })
-  await actions.getByRole('button', { name: 'Challenge' }).click()
-  const confirm = ben.getByRole('dialog', { name: "Challenge Ada's Grocery run?" })
+  await actions.getByRole('button', { name: 'Question it', exact: true }).click()
+  const confirm = ben.getByRole('dialog', { name: "Question Ada's Grocery run?" })
   await expect(
-    confirm.getByText("It's just the two of you, so this rules it Fake right away. No vote."),
+    confirm.getByText("It's just the two of you, so it stops counting right away. No vote."),
   ).toBeVisible()
-  await confirm.getByRole('button', { name: 'Rule it Fake' }).click()
+  await confirm.getByRole('button', { name: "Don't count it", exact: true }).click()
   await expect(confirm).toBeHidden()
 
   // Ben's wall: the ruling sticky, no polaroid.
   const benRuling = ben.locator('article[data-kind="ruling"]')
   await expect(benRuling.getByRole('heading', { level: 2 })).toHaveText(
-    "Ruled Fake · You challenged · Ada's Grocery run removed.",
+    "Didn't count · Ada's Grocery run · You questioned it.",
   )
-  await expect(benRuling.getByText('Ruling', { exact: true })).toBeVisible()
+  await expect(benRuling.getByText('Result', { exact: true })).toBeVisible()
   await expect(ben.getByRole('heading', { level: 2, name: /^Ada · Grocery run/ })).toHaveCount(0)
 
   // Ada's wall: the same ruling from her side, her polaroid gone.
   await tab(page, 'Feed').click()
   const adaRuling = page.locator('article[data-kind="ruling"]')
   await expect(adaRuling.getByRole('heading', { level: 2 })).toHaveText(
-    'Ruled Fake · Ben challenged · Your Grocery run removed.',
+    "Didn't count · Your Grocery run · Ben questioned it.",
   )
   await expect(page.getByRole('heading', { level: 2, name: /^You · Grocery run/ })).toHaveCount(0)
 

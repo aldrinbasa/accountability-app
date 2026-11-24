@@ -22,9 +22,9 @@ export interface ConfirmSheetProps<F extends string> {
   onError: (code: BackendErrorCode) => SaveFailure<F>
   /** The copy of the caller's own failures (offline and failed use the Plan sheet's copy). */
   failureText: (failure: F) => string
-  /** Offline copy in place of the Plan sheet's ("You're offline. Challenges need a signal."). */
+  /** Offline copy in place of the Plan sheet's ("You're offline. Questioning a check-in needs a signal."). */
   offlineText?: string
-  /** Plain-failure copy in place of the Plan sheet's ("Couldn't send the challenge. Tap Retry."). */
+  /** Plain-failure copy in place of the Plan sheet's ("Couldn't question the check-in. Tap Retry."). */
   failedText?: string
   /** Where focus goes on close. */
   returnFocusTo?: () => HTMLElement | null

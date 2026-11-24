@@ -51,8 +51,8 @@ async function openConfirm() {
   const overflow = await screen.findByRole('button', { name: OVERFLOW })
   await user.click(overflow)
   const actions = await screen.findByRole('dialog', { name: "Priya's Gym check-in" })
-  await user.click(within(actions).getByRole('button', { name: 'Challenge' }))
-  const confirm = await screen.findByRole('dialog', { name: "Challenge Priya's Gym?" })
+  await user.click(within(actions).getByRole('button', { name: 'Question it' }))
+  const confirm = await screen.findByRole('dialog', { name: "Question Priya's Gym?" })
   return { user, overflow, confirm }
 }
 
@@ -78,42 +78,42 @@ describe('Challenge a check-in (Story 5.1)', () => {
     const { backend } = await renderFeed([PRIYA])
     const { user, confirm } = await openConfirm()
     expect(confirm).toHaveTextContent(
-      "Your challenge counts as a Fake vote. The group has 24 h. If nobody else votes, it's ruled Fake; a tie keeps it.",
+      "This casts your vote: doesn't count. The group has 24 h. If nobody else votes, it doesn't count; a tie keeps it.",
     )
     expect(confirm).toHaveTextContent("The photo's a ritual, not a court case.")
-    await user.click(within(confirm).getByRole('button', { name: 'Challenge' }))
+    await user.click(within(confirm).getByRole('button', { name: 'Question it' }))
 
     expect(backend.createChallenge).toHaveBeenCalledWith(PRIYA.id)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     // The fake opens it for 24 h from its clock; the wall's clock may run a moment later.
-    const chip = await screen.findByText(/^CHALLENGED · 2[34] H LEFT$/)
+    const chip = await screen.findByText(/^QUESTIONED · 2[34] H LEFT$/)
     expect(chip.closest('[data-component="vote-chip"]')).toHaveTextContent(
-      /challenged, 2[34] hours left/,
+      /questioned, 2[34] hours left/,
     )
     expect(screen.queryByRole('button', { name: OVERFLOW })).not.toBeInTheDocument()
     // Still counts provisionally: the polaroid stays.
     expect(screen.getByRole('heading', { level: 2, name: /^Priya · Gym/ })).toBeInTheDocument()
   })
 
-  it('2 members: Rule it Fake removes the polaroid and adds the ruling sticky', async () => {
+  it("2 members: Don't count it removes the polaroid and adds the result sticky", async () => {
     await renderFeed([PRIYA], 2)
     const { user, confirm } = await openConfirm()
     expect(confirm).toHaveTextContent(
-      "It's just the two of you, so this rules it Fake right away. No vote.",
+      "It's just the two of you, so it stops counting right away. No vote.",
     )
     expect(confirm).not.toHaveTextContent("The photo's a ritual")
-    await user.click(within(confirm).getByRole('button', { name: 'Rule it Fake' }))
+    await user.click(within(confirm).getByRole('button', { name: "Don't count it" }))
 
     const line = await screen.findByRole('heading', {
       level: 2,
-      name: "Ruled Fake · You challenged · Priya's Gym removed.",
+      name: "Didn't count · Priya's Gym · You questioned it.",
     })
     const sticky = line.closest('article') as HTMLElement
     expect(sticky).toHaveAttribute('data-kind', 'ruling')
-    expect(sticky).toHaveTextContent('Ruling')
+    expect(sticky).toHaveTextContent('Result')
     expect(sticky.querySelector('[data-component="sticky-note"]')).toHaveClass('bg-vote')
     expect(screen.queryByRole('heading', { level: 2, name: /^Priya · Gym/ })).toBeNull()
-    expect(screen.queryByText(/CHALLENGED/)).toBeNull()
+    expect(screen.queryByText(/QUESTIONED/)).toBeNull()
     // The check-in left with the ruling: focus is on the Feed's h1, not lost to <body>.
     expect(screen.getByRole('heading', { level: 1, name: /^Feed/ })).toHaveFocus()
   })
@@ -122,9 +122,9 @@ describe('Challenge a check-in (Story 5.1)', () => {
     const { backend } = await renderFeed([PRIYA])
     const { user, confirm } = await openConfirm()
     setOnline(false)
-    await user.click(within(confirm).getByRole('button', { name: 'Challenge' }))
+    await user.click(within(confirm).getByRole('button', { name: 'Question it' }))
     expect(await within(confirm).findByRole('alert')).toHaveTextContent(
-      "You're offline. Challenges need a signal.",
+      "You're offline. Questioning a check-in needs a signal.",
     )
     expect(backend.createChallenge).not.toHaveBeenCalled()
     setOnline(true)
@@ -137,9 +137,9 @@ describe('Challenge a check-in (Story 5.1)', () => {
     const { backend } = await renderFeed([PRIYA])
     vi.mocked(backend.createChallenge).mockRejectedValueOnce(new BackendError('unknown'))
     const { user, confirm } = await openConfirm()
-    await user.click(within(confirm).getByRole('button', { name: 'Challenge' }))
+    await user.click(within(confirm).getByRole('button', { name: 'Question it' }))
     expect(await within(confirm).findByRole('alert')).toHaveTextContent(
-      "Couldn't send the challenge. Tap Retry.",
+      "Couldn't question the check-in. Tap Retry.",
     )
     await user.click(within(confirm).getByRole('button', { name: 'Retry' }))
     await waitFor(() => expect(backend.createChallenge).toHaveBeenCalledTimes(2))
@@ -147,15 +147,15 @@ describe('Challenge a check-in (Story 5.1)', () => {
   })
 
   it.each(['already_challenged', 'challenge_expired', 'week_locked'] as const)(
-    '%s: "can\'t be challenged anymore", no Retry, the Feed refetches',
+    '%s: "can\'t be questioned anymore", no Retry, the Feed refetches',
     async (code) => {
       const { backend } = await renderFeed([PRIYA])
       vi.mocked(backend.createChallenge).mockRejectedValueOnce(new BackendError(code))
       const { user, confirm } = await openConfirm()
       const reads = vi.mocked(backend.listFeed).mock.calls.length
-      await user.click(within(confirm).getByRole('button', { name: 'Challenge' }))
+      await user.click(within(confirm).getByRole('button', { name: 'Question it' }))
       expect(await within(confirm).findByRole('alert')).toHaveTextContent(
-        "That check-in can't be challenged anymore.",
+        "That check-in can't be questioned anymore.",
       )
       expect(within(confirm).queryByRole('button', { name: 'Retry' })).toBeNull()
       await waitFor(() =>
@@ -206,7 +206,7 @@ describe('Challenge a check-in (Story 5.1)', () => {
     expect(
       await screen.findByRole('heading', {
         level: 2,
-        name: 'Ruled Real · Your Study stands. 0 Fake, 1 Real.',
+        name: "Counts · the group backed it · Your Study · 1 said it counts, 0 said it doesn't.",
       }),
     ).toBeInTheDocument()
   })
@@ -236,16 +236,16 @@ describe('Challenge from the Today friends strip', () => {
     const overflow = await screen.findByRole('button', { name: OVERFLOW })
     const frame = overflow.closest('[data-challenge-host]') as HTMLElement
     expect(within(frame).getByRole('button', { name: /^Priya's Gym check-in/ })).toBeInTheDocument()
-    expect(screen.getByText('CHALLENGED · 30 MIN LEFT')).toBeInTheDocument()
+    expect(screen.getByText('QUESTIONED · 30 MIN LEFT')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /^More actions for/ })).toHaveLength(1)
 
     const user = userEvent.setup()
     await user.click(overflow)
     const actions = await screen.findByRole('dialog', { name: "Priya's Gym check-in" })
-    await user.click(within(actions).getByRole('button', { name: 'Challenge' }))
-    const confirm = await screen.findByRole('dialog', { name: "Challenge Priya's Gym?" })
-    await user.click(within(confirm).getByRole('button', { name: 'Challenge' }))
+    await user.click(within(actions).getByRole('button', { name: 'Question it' }))
+    const confirm = await screen.findByRole('dialog', { name: "Question Priya's Gym?" })
+    await user.click(within(confirm).getByRole('button', { name: 'Question it' }))
     expect(backend.createChallenge).toHaveBeenCalledWith(PRIYA.id)
-    expect(await screen.findByText(/^CHALLENGED · 2[34] H LEFT$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^QUESTIONED · 2[34] H LEFT$/)).toBeInTheDocument()
   })
 })

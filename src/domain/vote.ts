@@ -25,18 +25,20 @@ export const UNDO_WINDOW_MS = 5000
 export const BALLOT_FINAL_MS = 6000
 
 export const VOTE_COPY = {
-  kicker: 'CHALLENGE',
-  question: 'Fake or Real?',
-  rule: "If nobody else votes, it's ruled Fake.",
-  fake: 'Fake',
-  real: 'Real',
-  voteFake: 'Vote Fake',
-  voteReal: 'Vote Real',
+  kicker: 'QUESTION',
+  question: 'Does this count?',
+  rule: "If nobody else votes, it doesn't count.",
+  fake: "Doesn't count",
+  real: 'Counts',
+  voteFake: "Vote: doesn't count",
+  voteReal: 'Vote: counts',
+  saidFake: "You said it doesn't count",
+  saidReal: 'You said it counts',
   undo: 'Undo',
   retry: 'Retry',
-  challenger: 'You challenged · counts as Fake',
+  challenger: "You flagged it · your vote: doesn't count",
   joinedLater: 'You joined after this vote opened.',
-  closing: "Voting's closed. The ruling is on its way.",
+  closing: "Voting's closed. The result is on its way.",
   cancelled: 'Cancelled',
   undone: 'Vote undone.',
   offline: "You're offline. Votes need a signal.",
@@ -135,19 +137,19 @@ export function voteCardState(
   return { kind: 'joinedLater' }
 }
 
-/** The kicker: what it shows ("CHALLENGE · 18 H LEFT") and what a screen reader says. */
+/** The kicker: what it shows ("QUESTION · 18 H LEFT") and what a screen reader says. */
 export interface VoteKicker {
   text: string
   spoken: string
 }
 
 /**
- * The kicker of an open challenge: hours left rounded down ("CHALLENGE · 18 H LEFT", spoken
- * "Challenge, 18 hours left"); under 1 hour the minutes, at least 1 ("CHALLENGE · 5 MIN LEFT").
- * Plain "CHALLENGE" once it is past `closes_at`, closed or cancelled.
+ * The kicker of an open challenge: hours left rounded down ("QUESTION · 18 H LEFT", spoken
+ * "Question, 18 hours left"); under 1 hour the minutes, at least 1 ("QUESTION · 5 MIN LEFT").
+ * Plain "QUESTION" once it is past `closes_at`, closed or cancelled.
  */
 export function voteKicker(vote: Pick<FeedVote, 'status' | 'closesAt'>, now: Date): VoteKicker {
-  const plain = { text: VOTE_COPY.kicker, spoken: 'Challenge' }
+  const plain = { text: VOTE_COPY.kicker, spoken: 'Question' }
   if (vote.status !== 'open') return plain
   const closes = Date.parse(vote.closesAt)
   if (Number.isNaN(closes)) return plain
@@ -157,13 +159,13 @@ export function voteKicker(vote: Pick<FeedVote, 'status' | 'closesAt'>, now: Dat
   if (hours >= 1) {
     return {
       text: `${VOTE_COPY.kicker} · ${hours} H LEFT`,
-      spoken: `Challenge, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`,
+      spoken: `Question, ${hours} ${hours === 1 ? 'hour' : 'hours'} left`,
     }
   }
   const minutes = Math.max(1, Math.floor(left / 60_000))
   return {
     text: `${VOTE_COPY.kicker} · ${minutes} MIN LEFT`,
-    spoken: `Challenge, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`,
+    spoken: `Question, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'} left`,
   }
 }
 
@@ -173,19 +175,19 @@ export function voteTitle(vote: Pick<FeedVote, 'taskName' | 'activityName'>): st
 }
 
 /**
- * "Lena challenged Dev's Study check-in." with the Feed's "You" rule: "You challenged Dev's Study
- * check-in.", "Lena challenged your Study check-in.".
+ * "Lena questioned Dev's Study check-in." with the Feed's "You" rule: "You questioned Dev's Study
+ * check-in.", "Lena questioned your Study check-in.".
  */
 export function voteWhoLine(vote: FeedVote, viewerId: string): string {
   const who = viewerId !== '' && vote.challengerId === viewerId ? 'You' : vote.challengerName
   const whose = viewerId !== '' && vote.ownerId === viewerId ? 'your' : `${vote.ownerName}'s`
-  return `${who} challenged ${whose} ${voteTitle(vote)} check-in.`
+  return `${who} questioned ${whose} ${voteTitle(vote)} check-in.`
 }
 
-/** The card's heading for screen readers: "Challenge vote on Dev's Study check-in". */
+/** The card's heading for screen readers: "Vote on whether Dev's Study check-in counts". */
 export function voteHeading(vote: FeedVote, viewerId: string): string {
   const whose = viewerId !== '' && vote.ownerId === viewerId ? 'your' : `${vote.ownerName}'s`
-  return `Challenge vote on ${whose} ${voteTitle(vote)} check-in`
+  return `Vote on whether ${whose} ${voteTitle(vote)} check-in counts`
 }
 
 /** "3 of 4 voted". */
@@ -193,28 +195,33 @@ export function tallyLine(tally: Pick<VoteTally, 'votedCount' | 'eligibleCount'>
   return `${tally.votedCount} of ${tally.eligibleCount} voted`
 }
 
-/** "Fake" / "Real". */
+/** The button's text: "Doesn't count" / "Counts". */
 export function choiceLabel(choice: VoteChoice): string {
   return choice === 'fake' ? VOTE_COPY.fake : VOTE_COPY.real
 }
 
-/** The button's name: "Vote Fake" / "Vote Real". */
+/** The button's name: "Vote: doesn't count" / "Vote: counts". */
 export function choiceButtonLabel(choice: VoteChoice): string {
   return choice === 'fake' ? VOTE_COPY.voteFake : VOTE_COPY.voteReal
 }
 
-/** "You voted Real · 3 of 4 voted" ("You voted Real" until the tally is in). */
+/** What the reader said: "You said it counts" / "You said it doesn't count". */
+export function choiceSaid(choice: VoteChoice): string {
+  return choice === 'fake' ? VOTE_COPY.saidFake : VOTE_COPY.saidReal
+}
+
+/** "You said it counts · 3 of 4 voted" ("You said it counts" until the tally is in). */
 export function votedLine(
   choice: VoteChoice,
   tally: Pick<VoteTally, 'votedCount' | 'eligibleCount'> | null,
 ): string {
-  const line = `You voted ${choiceLabel(choice)}`
+  const line = choiceSaid(choice)
   return tally ? `${line} · ${tallyLine(tally)}` : line
 }
 
-/** The toast after a cast: "Voted Fake" (its Undo button follows). */
+/** The toast after a cast: "You said it doesn't count" (its Undo button follows). */
 export function votedToast(choice: VoteChoice): string {
-  return `Voted ${choiceLabel(choice)}`
+  return choiceSaid(choice)
 }
 
 /** The closed card's ruling line (Story 5.1's `rulingLine`); null unless closed with counts. */

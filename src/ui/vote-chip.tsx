@@ -1,16 +1,16 @@
 import { cn } from '@/ui/lib/utils'
 
 export interface VoteChipProps {
-  /** What it shows, e.g. "CHALLENGED · 18 H LEFT". */
+  /** What it shows, e.g. "QUESTIONED · 18 H LEFT". */
   text: string
-  /** What a screen reader says, e.g. "challenged, 18 hours left". */
+  /** What a screen reader says, e.g. "questioned, 18 hours left". */
   spoken: string
   className?: string
 }
 
 /**
  * Vote chip (DESIGN.md `vote-chip`): `vote` fill, `obj-ink` text and 2px border, `wob-xs` corners,
- * `label` type ("CHALLENGED · 18 H LEFT"). Sits on a polaroid under an open challenge; the words
+ * `label` type ("QUESTIONED · 18 H LEFT"). Sits on a polaroid under an open challenge; the words
  * carry the meaning, not the color.
  */
 export function VoteChip({ text, spoken, className }: VoteChipProps) {

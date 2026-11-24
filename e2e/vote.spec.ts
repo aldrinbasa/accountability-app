@@ -5,8 +5,8 @@ import { addTaskToday, checkIn } from './support/plan'
 
 /**
  * Story 5.2 against the local stack, in a group of three: Ada posts her task; Ben challenges it, so
- * a lavender Vote card joins the Feed. Cy votes Real (toast with Undo, "You voted Real · 2 of 2
- * voted"), undoes it, then votes Fake; Ben's card shows the locked line. With DB_URL the challenge
+ * a lavender Vote card joins the Feed. Cy votes Counts (toast with Undo, "You said it counts · 2 of 2
+ * voted"), undoes it, then votes Doesn't count; Ben's card shows the locked line. With DB_URL the challenge
  * is closed by tick step 3, and Cy's card shows the ruling.
  */
 test('a member votes on a challenge, undoes it and votes again', async ({ page, newPhone }) => {
@@ -31,48 +31,49 @@ test('a member votes on a challenge, undoes it and votes again', async ({ page, 
   await checkIn(page, 'Grocery run')
   await expect(page.getByRole('button', { name: 'Check in Grocery run' })).toHaveCount(0)
 
-  // Ben challenges Ada's polaroid: the vote copy and "Challenge".
+  // Ben challenges Ada's polaroid: the vote copy and "Question it".
   await tab(ben, 'Feed').click()
   const overflow = ben.getByRole('button', { name: "More actions for Ada's Grocery run check-in" })
   await expect(overflow).toBeVisible({ timeout: 15_000 })
   await overflow.click()
   await ben
     .getByRole('dialog', { name: "Ada's Grocery run check-in" })
-    .getByRole('button', { name: 'Challenge' })
+    .getByRole('button', { name: 'Question it', exact: true })
     .click()
-  const confirm = ben.getByRole('dialog', { name: "Challenge Ada's Grocery run?" })
-  await expect(confirm.getByText(/Your challenge counts as a Fake vote\./)).toBeVisible()
-  await confirm.getByRole('button', { name: 'Challenge', exact: true }).click()
+  const confirm = ben.getByRole('dialog', { name: "Question Ada's Grocery run?" })
+  await expect(confirm.getByText(/This casts your vote: doesn't count\./)).toBeVisible()
+  await confirm.getByRole('button', { name: 'Question it', exact: true }).click()
   await expect(confirm).toBeHidden()
 
   const benCard = ben.locator('article[data-kind="vote"]')
-  await expect(benCard.getByText('You challenged · counts as Fake')).toBeVisible()
-  await expect(benCard.getByText("You challenged Ada's Grocery run check-in.")).toBeVisible()
+  await expect(benCard.getByText("You flagged it · your vote: doesn't count")).toBeVisible()
+  await expect(benCard.getByText("You questioned Ada's Grocery run check-in.")).toBeVisible()
 
   // Cy: the open card.
   await tab(cy, 'Feed').click()
   const card = cy.locator('article[data-kind="vote"]')
-  await expect(card.getByText("Ben challenged Ada's Grocery run check-in.")).toBeVisible({
+  await expect(card.getByText("Ben questioned Ada's Grocery run check-in.")).toBeVisible({
     timeout: 15_000,
   })
-  await expect(card.getByText(/^CHALLENGE · \d+ H LEFT$/)).toBeVisible()
-  await expect(card.getByRole('heading', { level: 3, name: 'Fake or Real?' })).toBeVisible()
-  await expect(card.getByText("If nobody else votes, it's ruled Fake.")).toBeVisible()
+  await expect(card.getByText(/^QUESTION · \d+ H LEFT$/)).toBeVisible()
+  await expect(card.getByRole('heading', { level: 3, name: 'Does this count?' })).toBeVisible()
+  await expect(card.getByText("If nobody else votes, it doesn't count.")).toBeVisible()
   await expect(card.getByText('1 of 2 voted')).toBeVisible()
   await expect(
     card.getByRole('button', { name: "View Ada's Grocery run check-in photo" }),
   ).toBeVisible()
 
-  // Real, then Undo inside the 5 s window.
-  await card.getByRole('button', { name: 'Vote Real' }).click()
-  await expect(card.getByText('You voted Real · 2 of 2 voted')).toBeVisible()
-  await expect(card.getByRole('button', { name: 'Vote Real' })).toHaveAttribute(
+  // Counts, then Undo inside the 5 s window.
+  await card.getByRole('button', { name: 'Vote: counts', exact: true }).click()
+  await expect(card.getByText('You said it counts · 2 of 2 voted')).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Vote: counts', exact: true })).toHaveAttribute(
     'aria-pressed',
     'true',
   )
-  await expect(cy.getByText('Voted Real', { exact: true })).toBeVisible()
-  await cy.getByRole('button', { name: 'Undo' }).click()
-  await expect(card.getByRole('button', { name: 'Vote Real' })).toHaveAttribute(
+  const toast = cy.locator('[data-sonner-toast]')
+  await expect(toast.getByText('You said it counts', { exact: true })).toBeVisible()
+  await toast.getByRole('button', { name: 'Undo' }).click()
+  await expect(card.getByRole('button', { name: 'Vote: counts', exact: true })).toHaveAttribute(
     'aria-pressed',
     'false',
   )
@@ -82,12 +83,12 @@ test('a member votes on a challenge, undoes it and votes again', async ({ page, 
   // Ben still sees the locked line (and never Cy's ballot). Checked before the last ballot: once
   // every voter has one, the minute tick may close the vote 6 s later.
   await ben.reload()
-  await expect(benCard.getByText('You challenged · counts as Fake')).toBeVisible()
-  await expect(benCard.getByRole('button', { name: /^Vote / })).toHaveCount(0)
+  await expect(benCard.getByText("You flagged it · your vote: doesn't count")).toBeVisible()
+  await expect(benCard.getByRole('button', { name: /^Vote: / })).toHaveCount(0)
 
-  // Fake, and let it stand.
-  await card.getByRole('button', { name: 'Vote Fake' }).click()
-  await expect(card.getByText('You voted Fake · 2 of 2 voted')).toBeVisible()
+  // Doesn't count, and let it stand.
+  await card.getByRole('button', { name: "Vote: doesn't count", exact: true }).click()
+  await expect(card.getByText("You said it doesn't count · 2 of 2 voted")).toBeVisible()
 
   const dbUrl = process.env.DB_URL
   if (!dbUrl) return
@@ -115,11 +116,13 @@ test('a member votes on a challenge, undoes it and votes again', async ({ page, 
   await cy.reload()
   await expect(
     // .first(): the card's polite status may hold the same line (a ruling seen arriving).
-    card.getByText("Ruled Fake · Ada's Grocery run removed. 2 Fake, 0 Real.").first(),
+    card
+      .getByText("Didn't count · Ada's Grocery run · 2 said it doesn't count, 0 said it counts.")
+      .first(),
   ).toBeVisible({
     timeout: 15_000,
   })
-  await expect(card.getByText('CHALLENGE', { exact: true })).toBeVisible()
+  await expect(card.getByText('QUESTION', { exact: true })).toBeVisible()
   // The photo is hidden on a Fake ruling: no thumbnail, no buttons.
   await expect(card.getByRole('button')).toHaveCount(0)
 })
