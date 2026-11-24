@@ -32,8 +32,8 @@ select has_table('public', 'freeze_requests', 'freeze_requests exists');
 select columns_are('public', 'freeze_requests',
   array['id', 'group_id', 'requester_id', 'commitment_id', 'session_id', 'week_start', 'reason',
         'opened_at', 'closes_at', 'early_close_at', 'closed_at', 'status', 'cancel_reason',
-        'created_at', 'updated_at'],
-  'freeze_requests has the story''s columns');
+        'created_at', 'updated_at', 'cancelled_by'],
+  'freeze_requests has the story''s columns (cancelled_by added by Story 5.6)');
 select ok(
   (select pg_catalog.pg_get_indexdef(i.indexrelid) like '%(session_id)%WHERE (status = ''pending''::text)%'
           and i.indisunique

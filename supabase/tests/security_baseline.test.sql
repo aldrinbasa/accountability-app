@@ -9,7 +9,8 @@
 -- counted_checkins and the feed_items view); Story 5.2 adds challenge_others_at_open and challenge_voter_eligible
 -- (the feed_items challenge rows); Story 5.3 adds ruling_can_overturn (the feed_items ruling rows); Story 5.4 adds
 -- session_frozen (called by session_status); Story 5.5 adds freeze_others_at_open and freeze_voter_eligible
--- (the feed_items freeze rows). Nothing else in private is executable by a client role.
+-- (the feed_items freeze rows); Story 5.6 adds checkin_subject, commitment_subject and freeze_session_day
+-- (the feed_items challenge and freeze rows). Nothing else in private is executable by a client role.
 begin;
 select plan(20);
 
@@ -23,7 +24,7 @@ select is(
    where p.pronamespace = 'private'::regnamespace
      and has_function_privilege('authenticated', p.oid, 'EXECUTE')),
   array['avatar_path_owner', 'can_read_checkin_photo', 'can_upload_checkin_photo',
-        'challenge_others_at_open', 'challenge_voter_eligible', 'checkin_challenge_until', 'checkin_lock_at', 'checkin_removed', 'commitment_is_active', 'counted_checkins', 'freeze_others_at_open', 'freeze_voter_eligible', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
+        'challenge_others_at_open', 'challenge_voter_eligible', 'checkin_challenge_until', 'checkin_lock_at', 'checkin_removed', 'checkin_subject', 'commitment_is_active', 'commitment_subject', 'counted_checkins', 'freeze_others_at_open', 'freeze_session_day', 'freeze_voter_eligible', 'is_admin', 'is_current_member', 'is_member', 'member_current_week',
         'member_time_zone', 'membership_is_current', 'prorated_target', 'ruling_can_overturn', 'session_frozen', 'session_status',
         'shares_group', 'week_start_of']::text[],
   'authenticated can execute only the RLS, view, Storage policy and plan_preview helpers in private'
