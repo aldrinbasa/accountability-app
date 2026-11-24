@@ -263,7 +263,7 @@ select tests.authenticate_as('carol');
 select throws_ok(format('select * from public.cast_vote(''challenge'', %L, ''maybe'')', current_setting('test.ch_b1')),
   'P0001', 'invalid_vote', 'a choice other than fake or real: invalid_vote');
 select throws_ok(format('select * from public.cast_vote(''freeze'', %L, ''approve'')', current_setting('test.ch_b1')),
-  'P0001', 'invalid_vote', 'a kind other than challenge (until Story 5.5): invalid_vote');
+  'P0001', 'not_member', 'kind freeze with a challenge id (no such freeze request): not_member');
 
 select is(
   (select r.cast_at::text from public.cast_vote('challenge', current_setting('test.ch_b1')::uuid, 'fake') r),
