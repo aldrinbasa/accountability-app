@@ -125,7 +125,13 @@ describe('freeze Vote card (Story 5.5)', () => {
         sortAt: '2026-11-20T00:58:00Z',
       }),
       feedFreezeVote({ id: 'f-denied', status: 'denied', sortAt: '2026-11-20T00:57:00Z' }),
-      feedFreezeVote({ id: 'f-cancelled', status: 'cancelled', sortAt: '2026-11-20T00:56:00Z' }),
+      feedFreezeVote({
+        id: 'f-cancelled',
+        status: 'cancelled',
+        sortAt: '2026-11-20T00:56:00Z',
+        cancelReason: 'removed',
+        cancelledById: 'user-4',
+      }),
     ]
     await renderFeed(items, [{ ...TALLY, targetId: 'f-own' }])
     await waitFor(() => expect(at('f-cancelled')).toBeInTheDocument())
@@ -146,7 +152,7 @@ describe('freeze Vote card (Story 5.5)', () => {
 
     const cancelled = at('f-cancelled')
     expect(within(cancelled).getByText('FREEZE REQUEST')).toHaveClass('line-through')
-    expect(cancelled).toHaveTextContent('Cancelled')
+    expect(cancelled).toHaveTextContent('Cancelled · Dev was removed from the group')
   })
 
   it('offline: the error toast and nothing is sent; an online failure shows the Inline retry', async () => {

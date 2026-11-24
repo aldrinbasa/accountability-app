@@ -2593,4 +2593,56 @@ describe('feed reads', () => {
     db.query.maybeSingle.mockResolvedValueOnce({ data: null, error: null, status: 200 })
     expect(await adapter.getFeedVote('g-1', 'ch-gone')).toBeNull()
   })
+  it("reads the group's open challenges and pending freezes (Story 5.6)", async () => {
+    const challenge = feedRow({
+      item_kind: 'challenge',
+      item_id: 'ch-1',
+      challenge_id: 'ch-1',
+      challenge_status: 'open',
+      challenge_closes_at: '2026-11-21T07:12:30+00:00',
+      challenge_until: null,
+      payload: { checkin_id: 'c-1', can_vote: true, my_choice: null },
+    })
+    const freeze = feedRow({
+      item_kind: 'freeze',
+      item_id: 'fr-1',
+      payload: { status: 'pending', reason: 'flu', closes_at: '2026-11-21T08:00:00+00:00' },
+    })
+    // Each query is awaited after its last .eq: a chain whose last call resolves to the rows.
+    const chain = (data: unknown, error: unknown = null) => {
+      const calls: unknown[][] = []
+      let eqs = 0
+      const node = {
+        select: () => node,
+        eq: (...args: unknown[]) => {
+          calls.push(args)
+          eqs += 1
+          return eqs === 3 ? Promise.resolve({ data, error, status: error ? 500 : 200 }) : node
+        },
+      }
+      return { node, calls }
+    }
+    const first = chain([challenge])
+    const second = chain([freeze])
+    db.from.mockReturnValueOnce(first.node as never).mockReturnValueOnce(second.node as never)
+    const items = await adapter.listOpenVotes('g-1')
+    expect(items.map((item) => [item.type, item.id])).toEqual([
+      ['vote', 'ch-1'],
+      ['freezeVote', 'fr-1'],
+    ])
+    expect(first.calls).toEqual([
+      ['group_id', 'g-1'],
+      ['item_kind', 'challenge'],
+      ['challenge_status', 'open'],
+    ])
+    expect(second.calls).toEqual([
+      ['group_id', 'g-1'],
+      ['item_kind', 'freeze'],
+      ['payload->>status', 'pending'],
+    ])
+
+    const failing = chain(null, pgError('boom'))
+    db.from.mockReturnValueOnce(failing.node as never).mockReturnValueOnce(chain([]).node as never)
+    expect(await backendCodeOf(adapter.listOpenVotes('g-1'))).toBe('unknown')
+  })
 })

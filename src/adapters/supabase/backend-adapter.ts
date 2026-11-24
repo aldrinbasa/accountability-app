@@ -950,6 +950,9 @@ export function toFeedVote(
     realCount: count('real_count'),
     variant: variant === 'lone' || variant === 'normal' ? variant : null,
     cancelReason: payloadString(payload, 'cancel_reason'),
+    cancelledById: payloadString(payload, 'cancelled_by_id'),
+    // Story 5.6: false once the check-in's owner left (older rows: visible).
+    photoVisible: payload.photo_visible !== false,
     myChoice: isVoteChoice(myChoice) ? myChoice : null,
     myCastAt: payloadString(payload, 'my_cast_at'),
     canVote: payload.can_vote === true,
@@ -1646,6 +1649,26 @@ export const supabaseBackendAdapter: BackendPort = {
       .maybeSingle()
     if (error) throw toBackendError(error, status)
     return data ? toFeedItem(data) : null
+  },
+
+  async listOpenVotes(groupId) {
+    const [challenges, freezes] = await Promise.all([
+      supabase
+        .from('feed_items')
+        .select(FEED_COLUMNS)
+        .eq('group_id', groupId)
+        .eq('item_kind', 'challenge')
+        .eq('challenge_status', 'open'),
+      supabase
+        .from('feed_items')
+        .select(FEED_COLUMNS)
+        .eq('group_id', groupId)
+        .eq('item_kind', 'freeze')
+        .eq('payload->>status', 'pending'),
+    ])
+    if (challenges.error) throw toBackendError(challenges.error, challenges.status)
+    if (freezes.error) throw toBackendError(freezes.error, freezes.status)
+    return toFeedRows([...(challenges.data ?? []), ...(freezes.data ?? [])]).items
   },
 
   async listFriendsToday(groupId) {

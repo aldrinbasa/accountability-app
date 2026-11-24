@@ -80,6 +80,7 @@ export function toFeedFreezeVote(
     closesAt,
     twoPerson: payload.two_person === true,
     cancelReason: text(payload, 'cancel_reason'),
+    cancelledById: text(payload, 'cancelled_by_id'),
     myChoice: isFreezeChoice(myChoice) ? myChoice : null,
     myCastAt: text(payload, 'my_cast_at'),
     canVote: payload.can_vote === true,

@@ -96,8 +96,12 @@ export interface FeedVote {
   realCount: number | null
   /** `lone` (no ballot counted) or `normal`; null unless closed. */
   variant: 'lone' | 'normal' | null
-  /** Story 5.6 fills it. */
+  /** Why it was cancelled (Story 5.6): the leaver's end reason, `left` | `removed` | `account_deleted`. */
   cancelReason: string | null
+  /** Story 5.6: who left (the challenger or the check-in's owner), cancelling it. */
+  cancelledById: string | null
+  /** Story 5.6: the reader can see the check-in (false once its owner left: no thumbnail). */
+  photoVisible: boolean
   myChoice: VoteChoice | null
   myCastAt: string | null
   canVote: boolean
@@ -278,13 +282,43 @@ export function voteOverturnLine(vote: FeedVote, viewerId: string): string | nul
 }
 
 /**
- * Whether the closed card still shows the thumbnail: not on a standing Fake ruling (Storage denies
- * its photo); again once overturned.
+ * Whether the card shows the thumbnail: never once the check-in's owner left (the reader cannot see
+ * it, Story 5.6); not on a standing Fake ruling (Storage denies its photo); again once overturned.
  */
 export function voteShowsThumbnail(
-  vote: Pick<FeedVote, 'status' | 'overturnedById' | 'overturnedByName'>,
+  vote: Pick<FeedVote, 'status' | 'overturnedById' | 'overturnedByName' | 'photoVisible'>,
 ): boolean {
+  if (!vote.photoVisible) return false
   return vote.status !== 'fake' || isOverturned(vote)
+}
+
+/**
+ * A cancelled vote's line (Story 5.6): "Cancelled · Sam left the group" (left, or the account was
+ * deleted), "Cancelled · Sam was removed from the group" (removed); plain "Cancelled" without a name.
+ */
+export function cancelledLine(name: string | null, reason: string | null): string {
+  if (name === null || name === '') return VOTE_COPY.cancelled
+  const what = reason === 'removed' ? 'was removed from the group' : 'left the group'
+  return `${VOTE_COPY.cancelled} · ${name} ${what}`
+}
+
+/** The cancelled challenge's line, naming the challenger or the owner who left. */
+export function voteCancelledLine(
+  vote: Pick<
+    FeedVote,
+    'cancelReason' | 'cancelledById' | 'challengerId' | 'challengerName' | 'ownerId' | 'ownerName'
+  >,
+): string {
+  const by = vote.cancelledById
+  const name =
+    by === null
+      ? null
+      : by === vote.challengerId
+        ? vote.challengerName
+        : by === vote.ownerId
+          ? vote.ownerName
+          : null
+  return cancelledLine(name, vote.cancelReason)
 }
 
 /**

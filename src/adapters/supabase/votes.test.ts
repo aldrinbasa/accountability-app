@@ -178,11 +178,35 @@ describe('feed_items challenge rows (Story 5.2)', () => {
       realCount: null,
       variant: null,
       cancelReason: null,
+      cancelledById: null,
+      photoVisible: true,
       myChoice: 'real',
       myCastAt: '2026-11-20T08:30:00+00:00',
       canVote: true,
       overturnedById: null,
       overturnedByName: null,
+    })
+  })
+
+  it('maps a cancelled challenge whose owner left (Story 5.6)', () => {
+    expect(
+      toFeedItem(
+        challengeRow({
+          challenge_status: 'cancelled',
+          payload: {
+            checkin_id: 'c-1',
+            cancel_reason: 'left',
+            cancelled_by_id: 'u-dev',
+            photo_visible: false,
+            can_vote: false,
+          },
+        }),
+      ),
+    ).toMatchObject({
+      status: 'cancelled',
+      cancelReason: 'left',
+      cancelledById: 'u-dev',
+      photoVisible: false,
     })
   })
 

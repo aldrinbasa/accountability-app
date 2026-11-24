@@ -71,10 +71,27 @@ describe('freeze feed rows (Story 5.5)', () => {
       closesAt: '2026-11-21T07:12:30.123456+00:00',
       twoPerson: false,
       cancelReason: null,
+      cancelledById: null,
       myChoice: 'approve',
       myCastAt: '2026-11-20T08:00:00+00:00',
       canVote: true,
     })
+  })
+
+  it('maps a cancelled request with who left (Story 5.6)', () => {
+    expect(
+      toFeedItem(
+        row({
+          payload: {
+            status: 'cancelled',
+            reason: 'flu, in bed',
+            closes_at: '2026-11-21T07:12:30.123456+00:00',
+            cancel_reason: 'removed',
+            cancelled_by_id: 'u-4',
+          },
+        }),
+      ),
+    ).toMatchObject({ status: 'cancelled', cancelReason: 'removed', cancelledById: 'u-4' })
   })
 
   it('takes a task name as the title, two_person and last week; drops unknown ballots', () => {

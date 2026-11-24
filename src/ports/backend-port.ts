@@ -270,6 +270,11 @@ export interface BackendPort {
    */
   getFeedVote(groupId: string, voteId: string): Promise<FeedItem | null>
   /**
+   * The group's open votes as Feed items (Story 5.6, Today's "Open votes"): challenges still `open`
+   * and freeze requests still `pending`, each with the reader's own ballot and `can_vote`.
+   */
+  listOpenVotes(groupId: string): Promise<FeedItem[]>
+  /**
    * `get_friends_today`: the group's check-ins received since the caller's local midnight, newest
    * first, at most 30 (Today's Friends today strip).
    */

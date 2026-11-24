@@ -10,6 +10,7 @@ import {
   UNDO_WINDOW_MS,
   undoFailure,
   VOTE_COPY,
+  voteCancelledLine,
   voteCardState,
   voteCheckin,
   votedLine,
@@ -208,7 +209,7 @@ export function VoteCard({ item, viewer, tilt, articleRef, onOpenPhoto }: VoteCa
           <p className="mt-2 type-hand-md">{closedLine}</p>
         ) : null}
         {state.kind === 'cancelled' ? (
-          <p className="mt-2 type-hand-md">{VOTE_COPY.cancelled}</p>
+          <p className="mt-2 type-hand-md">{voteCancelledLine(item)}</p>
         ) : null}
         {/* Counter-rotated so the buttons and their tally sit level on the tilted card. */}
         <div

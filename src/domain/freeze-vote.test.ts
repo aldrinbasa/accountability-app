@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   dayOf,
+  freezeCancelledLine,
   freezeChoiceButtonLabel,
   freezeChoiceLabel,
   freezeOutcomeLine,
@@ -146,5 +147,16 @@ describe('freeze outcome copy (Story 5.5)', () => {
     expect(dayOf('2026-11-21')).toBe('Sat')
     expect(dayOf('nope')).toBe('')
     expect(dayOf(null)).toBe('')
+  })
+})
+
+describe('cancelled freeze requests (Story 5.6)', () => {
+  it('names the requester who left', () => {
+    expect(
+      freezeCancelledLine(
+        feedFreezeVote({ status: 'cancelled', cancelReason: 'left', cancelledById: 'user-4' }),
+      ),
+    ).toBe('Cancelled · Dev left the group')
+    expect(freezeCancelledLine(feedFreezeVote({ status: 'cancelled' }))).toBe('Cancelled')
   })
 })

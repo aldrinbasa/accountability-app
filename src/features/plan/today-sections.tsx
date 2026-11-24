@@ -34,7 +34,7 @@ import { DueRow } from '@/features/plan/due-row'
 import { usePlanSheet } from '@/features/plan/plan-sheet-context'
 import { RowActionsSheet } from '@/features/plan/row-actions-sheet'
 import { FreezeSheet } from '@/features/freeze/freeze-sheet'
-import { useMinuteClock } from '@/features/freeze/use-minute-clock'
+import { useMinuteClock } from '@/ui/use-minute-clock'
 
 function Section({
   title,

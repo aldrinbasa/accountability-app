@@ -922,6 +922,16 @@ export function createFakeBackend(
         ) ?? null
       )
     }),
+    // Open challenges and pending freeze requests of the wall; a non-member reads none.
+    listOpenVotes: vi.fn(async (groupId: string) =>
+      groups.some((group) => group.id === groupId)
+        ? (feed[groupId] ?? []).filter(
+            (item) =>
+              (item.type === 'vote' && item.status === 'open') ||
+              (item.type === 'freezeVote' && item.status === 'pending'),
+          )
+        : [],
+    ),
     // RLS: a non-member gets nothing.
     listFriendsToday: vi.fn(async (groupId: string) =>
       groups.some((group) => group.id === groupId) ? [...(friendsToday[groupId] ?? [])] : [],
@@ -1023,6 +1033,8 @@ export function createFakeBackend(
           realCount: null,
           variant: null,
           cancelReason: null,
+          cancelledById: null,
+          photoVisible: true,
           myChoice: null,
           myCastAt: null,
           canVote: false,

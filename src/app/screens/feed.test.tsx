@@ -342,6 +342,23 @@ describe('Feed wall', () => {
   })
 })
 
+describe('Feed clock (Story 5.6)', () => {
+  it('a wall left open drops "More actions" once the challenge window ends, at the next minute tick', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval'] })
+    // 30 s before Priya's check-in stops being challengeable.
+    vi.setSystemTime(new Date('2026-11-21T00:12:00.000Z'))
+    renderFeed('/feed', [feedCheckin()])
+    const more = await screen.findByRole('button', {
+      name: "More actions for Priya's Gym check-in",
+    })
+    expect(more).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(60_000))
+    expect(
+      screen.queryByRole('button', { name: "More actions for Priya's Gym check-in" }),
+    ).toBeNull()
+  })
+})
+
 describe('Photo viewer', () => {
   it('opens full screen from the photo, closes by Close or Esc, and returns focus to the photo', async () => {
     const user = userEvent.setup()

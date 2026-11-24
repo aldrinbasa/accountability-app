@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import type { FeedItem, FeedPage } from '@/domain/feed'
 import type { FeedFreezeVote } from '@/domain/freeze-vote'
+import type { OpenVote, OpenVotesData } from '@/domain/open-votes'
 import {
   BALLOT_FINAL_MS,
   choiceKind,
@@ -13,6 +14,7 @@ import {
 import type { BackendPort } from '@/ports/backend-port'
 import { useBackendContext } from '@/data/backend-context-value'
 import { feedKey } from '@/data/feed'
+import { openVotesKey } from '@/data/open-votes'
 import { retryOnline } from '@/data/query-client'
 
 /**
@@ -66,9 +68,18 @@ function isFeedPages(data: unknown): data is { pages: FeedPage[] } {
   )
 }
 
+function isOpenVotes(data: unknown): data is OpenVotesData {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    Array.isArray((data as { openVotes?: unknown }).openVotes)
+  )
+}
+
 /**
  * Writes the reader's own ballot into every cached Feed page of the group (wall and anchored
- * pages), so the card shows it before the next refetch: a challenge's or a freeze request's card.
+ * pages) and into Today's Open votes (Story 5.6), so the card shows it before the next refetch: a
+ * challenge's or a freeze request's card.
  */
 export function patchFeedVote(
   queryClient: QueryClient,
@@ -77,6 +88,11 @@ export function patchFeedVote(
   patch: { myChoice: AnyVoteChoice | null; myCastAt: string | null },
 ): void {
   queryClient.setQueriesData({ queryKey: feedKey(groupId) }, (data: unknown) => {
+    if (isOpenVotes(data)) {
+      return {
+        openVotes: data.openVotes.map((item) => patchItem(item, voteId, patch) as OpenVote),
+      }
+    }
     if (!isFeedPages(data)) return data
     return {
       ...data,
@@ -140,7 +156,11 @@ export function useCastVote(groupId: string) {
       const refetch = () =>
         void queryClient.invalidateQueries({ queryKey: voteTalliesKey(groupId) })
       refetch()
-      setTimeout(refetch, BALLOT_FINAL_MS + 500)
+      setTimeout(() => {
+        refetch()
+        // Today's Open votes lets the voted card go once its ballot is final (Story 5.6).
+        void queryClient.invalidateQueries({ queryKey: openVotesKey(groupId) })
+      }, BALLOT_FINAL_MS + 500)
     },
   })
 }

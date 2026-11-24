@@ -149,7 +149,15 @@ describe('Vote card (Story 5.2)', () => {
         variant: 'normal',
         sortAt: '2026-11-20T00:56:00Z',
       }),
-      feedVote({ id: 'v-cancelled', status: 'cancelled', sortAt: '2026-11-20T00:55:00Z' }),
+      feedVote({
+        id: 'v-cancelled',
+        status: 'cancelled',
+        sortAt: '2026-11-20T00:55:00Z',
+        // Story 5.6: the check-in's owner left, so the reader can no longer see the photo.
+        cancelReason: 'left',
+        cancelledById: 'user-4',
+        photoVisible: false,
+      }),
     ]
     await renderFeed(items, {
       tallies: ['v-challenger', 'v-owner', 'v-late', 'v-closing'].map((id) => ({
@@ -189,7 +197,8 @@ describe('Vote card (Story 5.2)', () => {
 
     const cancelled = at('v-cancelled')
     expect(within(cancelled).getByText('QUESTION')).toHaveClass('line-through')
-    expect(cancelled).toHaveTextContent('Cancelled')
+    expect(cancelled).toHaveTextContent('Cancelled · Dev left the group')
+    expect(within(cancelled).queryByRole('button', { name: /check-in photo/ })).toBeNull()
   })
 
   it('offline: the error toast, the card stays unvoted and nothing is sent', async () => {

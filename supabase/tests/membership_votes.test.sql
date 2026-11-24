@@ -19,7 +19,7 @@
 -- unqualified; their search_path is pointed at test_overrides so tests.freeze_time moves the clock.
 begin;
 set local timezone = 'UTC';
-select plan(91);
+select plan(93);
 
 select tests.create_supabase_user('alice');
 select tests.create_supabase_user('bob');
@@ -425,13 +425,21 @@ select tests.freeze_time('2026-11-16 09:25:00+00');
 select tests.authenticate_as('dan');
 select lives_ok(format('select * from public.cast_vote(''challenge'', %L, ''real'')', current_setting('test.ch1')), 'dan votes on ch1');
 select is(pg_temp.chs('ch1'), 'open|-|-|2026-11-16 09:25:06+00', 'all voted: early_close_at = dan''s cast_at + 6 s');
-select tests.freeze_time('2026-11-16 09:30:00+00');
+-- 09:25:03, inside dan's undo window (a vote already due would be decided first, with eve's ballot:
+-- membership_votes_due.test.sql).
+select tests.freeze_time('2026-11-16 09:25:03+00');
 select tests.authenticate_as('alice');
 select lives_ok(format('select public.remove_member(%L, %L)', current_setting('test.g1'), tests.get_supabase_uid('eve')),
   'alice removes eve (a voter on ch1)');
 select is(pg_temp.ballots('eve', 'ch1'), 0, 'eve''s ballot on ch1 is deleted');
-select is(pg_temp.chs('ch1'), 'real|-|-|2026-11-16 09:30:00+00',
-  'every remaining ballot is final: ch1 closes at once (1 doesn''t count with the challenger, 1 counts: a tie keeps it)');
+select is(pg_temp.chs('ch1'), 'open|-|-|2026-11-16 09:25:06+00',
+  'dan is the only voter left and has a ballot: early_close_at stays at its cast_at + 6 s');
+reset role;
+select tests.freeze_time('2026-11-16 09:25:06+00');
+select is(private.tick_step_3_close_votes(), null, 'tick step 3 closes ch1 at early_close_at');
+select is(pg_temp.chs('ch1'), 'real|-|-|2026-11-16 09:25:06+00',
+  'ch1 is ruled without eve''s ballot (1 doesn''t count with the challenger, 1 counts: a tie keeps it)');
+select tests.authenticate_as('alice');
 select is(pg_temp.ruling('ch1'), 'real:normal', 'ch1 wrote its ruling event');
 select is((select pg_catalog.count(*)::integer from public.votes v where v.voter_id = tests.get_supabase_uid('eve')), 0,
   'a removed member''s ballots are unreadable to others');

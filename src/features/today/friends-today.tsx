@@ -20,6 +20,7 @@ import { VoteChip } from '@/ui/vote-chip'
 import { ChallengeActions } from '@/features/challenge/challenge-actions'
 import { CheckinPhoto } from '@/features/feed/checkin-photo'
 import { PhotoViewer } from '@/features/feed/photo-viewer'
+import { useMinuteClock } from '@/ui/use-minute-clock'
 
 /** DESIGN.md `mini-polaroid`: -3 / 2.5 / -1.5 deg, repeating. */
 const MINI_TILTS = ['-rotate-3', 'rotate-[2.5deg]', '-rotate-[1.5deg]'] as const
@@ -111,8 +112,9 @@ export function FriendsToday({
   const zone = useMemberTimeZone()
   const [open, setOpen] = useState<FeedCheckin | null>(null)
   const opener = useRef<HTMLElement | null>(null)
-  // Stamps are relative to the later of the last fetch and this mount; a render never reads the clock.
-  const [mountedAt] = useState(() => Date.now())
+  // Stamps are relative to the later of the last fetch and a clock taken at mount and once a minute
+  // (Story 5.6: chips count down, "…" goes when the challenge window ends); a render never reads it.
+  const clock = useMinuteClock()
 
   const items = query.data ?? []
   // Until a list fetched after the post arrives, the post shows from the moment's own photo.
@@ -127,7 +129,7 @@ export function FriendsToday({
   const viewer: FeedViewer = {
     userId: session.user?.id ?? '',
     zone,
-    now: new Date(Math.max(query.dataUpdatedAt, mountedAt)),
+    now: new Date(Math.max(query.dataUpdatedAt, clock.getTime())),
   }
 
   function onSeeAllClick(event: MouseEvent<HTMLAnchorElement>) {

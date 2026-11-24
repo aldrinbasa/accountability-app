@@ -6,6 +6,7 @@ import {
   markInstalled,
   resetInstallState,
 } from '@/data/install-state'
+import { dismissRitualHint } from '@/data/ritual-hint'
 import { renderRoutes } from '@/test/fake-backend'
 import { keepFakePrompt, restoreDevice, setDevice, setStandalone, UA } from '@/test/install-env'
 import { waitForGroupInUrl } from '@/test/router'
@@ -20,6 +21,8 @@ afterEach(() => {
 })
 
 async function openToday() {
+  // Story 5.6's ritual Hint has its own "Not now"; these tests are about the install notice.
+  dismissRitualHint('group-1')
   const result = renderRoutes(['/today'])
   await screen.findByRole('button', { name: 'Group: Gym Rats, switch group' })
   // Act only once the focused group is in the URL, or "Show me how" can still carry the old,

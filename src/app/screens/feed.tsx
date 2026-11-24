@@ -24,6 +24,7 @@ import { useFocusedGroup } from '@/features/group/use-focused-group'
 import { WaitingEmptyState } from '@/features/group/waiting-empty-state'
 import { FeedSkeleton } from '@/features/feed/feed-skeleton'
 import { FeedWall } from '@/features/feed/feed-wall'
+import { useMinuteClock } from '@/ui/use-minute-clock'
 import { SendingPolaroid } from '@/features/feed/sending-polaroid'
 
 type FeedQuery = UseInfiniteQueryResult<InfiniteData<FeedPage>, unknown>
@@ -69,14 +70,15 @@ function FeedContent({ group, query, anchorId = null, anchorRef }: FeedContentPr
   )
   const waiting = isWaiting(group)
   const items = wallItems(query)
-  // Stamps are relative to the later of the last fetch and this mount, so a saved wall opened the
-  // next morning reads "Thu 07:12", not "07:12"; a render never reads the clock.
-  const [mountedAt] = useState(() => Date.now())
+  // Stamps are relative to the later of the last fetch and a clock taken at mount and once a minute,
+  // so a saved wall opened the next morning reads "Thu 07:12", not "07:12", and a wall left open
+  // drops "Question it" and counts its Vote chips down (Story 5.6); a render never reads the clock.
+  const clock = useMinuteClock()
   const hasNewer = query.data?.pages[0]?.hasNewer === true
   const viewer: FeedViewer = {
     userId: session.user?.id ?? '',
     zone,
-    now: new Date(Math.max(query.dataUpdatedAt, mountedAt)),
+    now: new Date(Math.max(query.dataUpdatedAt, clock.getTime())),
   }
 
   function body() {

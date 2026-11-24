@@ -4,6 +4,7 @@ import { backendErrorCode } from '@/domain/error-codes'
 import type { FeedViewer } from '@/domain/feed'
 import {
   FREEZE_VOTE_COPY,
+  freezeCancelledLine,
   freezeChoiceButtonLabel,
   freezeChoiceLabel,
   freezeOutcomeLine,
@@ -191,7 +192,7 @@ export function FreezeVoteCard({ item, viewer, tilt, articleRef }: FreezeVoteCar
         {showRule ? <p className="mt-2 type-meta text-obj-muted">{freezeRuleLine(item)}</p> : null}
         {outcome ? <p className="mt-2 type-hand-md">{outcome}</p> : null}
         {state.kind === 'cancelled' ? (
-          <p className="mt-2 type-hand-md">{FREEZE_VOTE_COPY.cancelled}</p>
+          <p className="mt-2 type-hand-md">{freezeCancelledLine(item)}</p>
         ) : null}
         {/* Counter-rotated so the buttons and their tally sit level on the tilted card. */}
         <div

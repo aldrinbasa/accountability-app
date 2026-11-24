@@ -1,4 +1,5 @@
 import {
+  cancelledLine,
   castFailure,
   choiceButtonLabel,
   choiceLabel,
@@ -6,6 +7,7 @@ import {
   isVoteChoice,
   tallyLine,
   undoFailure,
+  voteCancelledLine,
   voteCardState,
   voteCheckin,
   votedLine,
@@ -184,5 +186,32 @@ describe('failure mapping', () => {
       kind: 'failed',
       text: "Couldn't undo your vote. Tap Retry.",
     })
+  })
+})
+
+describe('cancelled votes (Story 5.6)', () => {
+  it('names who left, or says Cancelled alone', () => {
+    expect(cancelledLine('Sam', 'left')).toBe('Cancelled · Sam left the group')
+    expect(cancelledLine('Sam', 'account_deleted')).toBe('Cancelled · Sam left the group')
+    expect(cancelledLine('Sam', 'removed')).toBe('Cancelled · Sam was removed from the group')
+    expect(cancelledLine(null, 'left')).toBe('Cancelled')
+    expect(cancelledLine('', 'left')).toBe('Cancelled')
+  })
+
+  it('picks the challenger or the owner who left', () => {
+    const owner = feedVote({ status: 'cancelled', cancelReason: 'left', cancelledById: 'user-4' })
+    expect(voteCancelledLine(owner)).toBe('Cancelled · Dev left the group')
+    const challenger = feedVote({
+      status: 'cancelled',
+      cancelReason: 'removed',
+      cancelledById: 'user-5',
+    })
+    expect(voteCancelledLine(challenger)).toBe('Cancelled · Lena was removed from the group')
+    expect(voteCancelledLine(feedVote({ status: 'cancelled' }))).toBe('Cancelled')
+  })
+
+  it('hides the thumbnail once the check-in is out of sight', () => {
+    expect(voteShowsThumbnail(feedVote({ status: 'cancelled', photoVisible: false }))).toBe(false)
+    expect(voteShowsThumbnail(feedVote({ status: 'cancelled', photoVisible: true }))).toBe(true)
   })
 })

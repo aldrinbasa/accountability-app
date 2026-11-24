@@ -1,6 +1,6 @@
 import { DAY_SHORT } from '@/domain/dates'
 import type { FreezeWhich } from '@/domain/freeze'
-import type { FreezeChoice, VoteKicker, VoteTally } from '@/domain/vote'
+import { cancelledLine, type FreezeChoice, type VoteKicker, type VoteTally } from '@/domain/vote'
 
 /**
  * Freeze votes and their outcomes (Story 5.5). The server decides who may vote, every time and the
@@ -66,8 +66,10 @@ export interface FeedFreezeVote extends FreezeSubject {
   closesAt: string
   /** Only one other member could vote when it opened (a 2-member group). */
   twoPerson: boolean
-  /** Story 5.6 fills it. */
+  /** Why it was cancelled (Story 5.6): the requester's end reason, `left` | `removed` | `account_deleted`. */
   cancelReason: string | null
+  /** Story 5.6: the requester who left, cancelling it. */
+  cancelledById: string | null
   /** The reader's own ballot (readable only by its voter). */
   myChoice: FreezeChoice | null
   myCastAt: string | null
@@ -250,4 +252,15 @@ export function freezeResultWho(item: FeedFreezeResult, viewerId: string): strin
   return viewerId !== '' && item.requesterId === viewerId
     ? FREEZE_VOTE_COPY.yourRequest
     : `${item.requesterName}'s request`
+}
+
+/** The cancelled request's line (Story 5.6): "Cancelled · Dev left the group". */
+export function freezeCancelledLine(
+  vote: Pick<FeedFreezeVote, 'cancelReason' | 'cancelledById' | 'requesterId' | 'requesterName'>,
+): string {
+  const name =
+    vote.cancelledById !== null && vote.cancelledById === vote.requesterId
+      ? vote.requesterName
+      : null
+  return cancelledLine(name, vote.cancelReason)
 }
